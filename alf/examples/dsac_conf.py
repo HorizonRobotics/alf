@@ -47,18 +47,16 @@ print(f"Evaluate on DM control: {dmc_tasks}!")
 
 # environment config
 if dmc_tasks:
-    alf.config(
-        "create_environment",
-        env_name="cheetah:run",
-        num_parallel_environments=1,
-        env_load_fn=suite_dmc.load)
+    alf.config("create_environment",
+               env_name="cheetah:run",
+               num_parallel_environments=1,
+               env_load_fn=suite_dmc.load)
 
-    alf.config(
-        "suite_dmc.load",
-        from_pixels=False,
-        visualize_reward=True,
-        gym_env_wrappers=(partial(FrameSkip, skip=1), ),
-        max_episode_steps=1000)
+    alf.config("suite_dmc.load",
+               from_pixels=False,
+               visualize_reward=True,
+               gym_env_wrappers=(partial(FrameSkip, skip=1), ),
+               max_episode_steps=1000)
     if use_epistemic_alpha:
         alpha_optimizer = None
         initial_log_alpha = -3.2
@@ -69,10 +67,9 @@ if dmc_tasks:
     target_update_period = 2
     num_iterations = 1000000
 else:
-    alf.config(
-        'create_environment',
-        env_name="HalfCheetah-v3",
-        num_parallel_environments=1)
+    alf.config('create_environment',
+               env_name="HalfCheetah-v3",
+               num_parallel_environments=1)
     if use_epistemic_alpha:
         alpha_optimizer = None
         initial_log_alpha = -3.2
@@ -85,14 +82,13 @@ else:
 
 # algorithm config
 fc_layer_params = (layer_width, layer_width)
-actor_network_cls = partial(
-    ActorDistributionNetwork,
-    fc_layer_params=fc_layer_params,
-    continuous_projection_net_ctor=partial(
-        NormalProjectionNetwork,
-        state_dependent_std=True,
-        scale_distribution=True,
-        std_transform=clipped_exp))
+actor_network_cls = partial(ActorDistributionNetwork,
+                            fc_layer_params=fc_layer_params,
+                            continuous_projection_net_ctor=partial(
+                                NormalProjectionNetwork,
+                                state_dependent_std=True,
+                                scale_distribution=True,
+                                std_transform=clipped_exp))
 
 obs_act_tau_joint_fc_layer_params = (layer_width, )
 num_quantiles = 32
@@ -108,40 +104,38 @@ alf.config('calc_default_target_entropy', min_prob=0.184)
 alf.config('OneStepTDQRLoss', num_quantiles=num_quantiles)
 
 critic_loss_ctor = OneStepTDQRLoss
-alf.config(
-    'DSacAlgorithm',
-    tau_type='iqn',
-    num_quantiles=num_quantiles,
-    actor_network_cls=actor_network_cls,
-    critic_network_cls=critic_network_cls,
-    critic_loss_ctor=critic_loss_ctor,
-    num_critic_replicas=2,
-    use_entropy_reward=True,
-    target_update_tau=0.005,
-    target_update_period=target_update_period,
-    initial_log_alpha=initial_log_alpha,
-    actor_optimizer=AdamTF(lr=3e-4),
-    critic_optimizer=AdamTF(lr=3e-4),
-    alpha_optimizer=alpha_optimizer)
+alf.config('DSacAlgorithm',
+           tau_type='iqn',
+           num_quantiles=num_quantiles,
+           actor_network_cls=actor_network_cls,
+           critic_network_cls=critic_network_cls,
+           critic_loss_ctor=critic_loss_ctor,
+           num_critic_replicas=2,
+           use_entropy_reward=True,
+           target_update_tau=0.005,
+           target_update_period=target_update_period,
+           initial_log_alpha=initial_log_alpha,
+           actor_optimizer=AdamTF(lr=3e-4),
+           critic_optimizer=AdamTF(lr=3e-4),
+           alpha_optimizer=alpha_optimizer)
 
 # training config
 alf.config('Agent', rl_algorithm_cls=DSacAlgorithm)
 
-alf.config(
-    'TrainerConfig',
-    async_eval=True,
-    initial_collect_steps=10000,
-    mini_batch_length=2,
-    unroll_length=1,
-    mini_batch_size=256,
-    num_updates_per_train_iter=1,
-    num_iterations=num_iterations,
-    num_checkpoints=1,
-    evaluate=True,
-    eval_interval=5000,
-    num_eval_episodes=5,
-    debug_summaries=True,
-    random_seed=0,
-    summarize_grads_and_vars=True,
-    summary_interval=1000,
-    replay_buffer_length=int(1e6))
+alf.config('TrainerConfig',
+           async_eval=True,
+           initial_collect_steps=10000,
+           mini_batch_length=2,
+           unroll_length=1,
+           mini_batch_size=256,
+           num_updates_per_train_iter=1,
+           num_iterations=num_iterations,
+           num_checkpoints=1,
+           evaluate=True,
+           eval_interval=5000,
+           num_eval_episodes=5,
+           debug_summaries=True,
+           random_seed=0,
+           summarize_grads_and_vars=True,
+           summary_interval=1000,
+           replay_buffer_length=int(1e6))

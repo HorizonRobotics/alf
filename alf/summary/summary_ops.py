@@ -163,8 +163,11 @@ def images(name, data, step=None, dataformat='NCHW', walltime=None):
         walltime (float): Optional override default walltime (time.time())
             seconds after epoch of event
     """
-    _summary_writer_stack[-1].add_images(
-        name, data, step, walltime=walltime, dataformats=dataformat)
+    _summary_writer_stack[-1].add_images(name,
+                                         data,
+                                         step,
+                                         walltime=walltime,
+                                         dataformats=dataformat)
 
 
 @_summary_wrapper
@@ -184,8 +187,11 @@ def video(name: str,
         walltime: Optional override default walltime (time.time())
             seconds after epoch of event
     """
-    _summary_writer_stack[-1].add_video(
-        name, data, step, fps=fps, walltime=walltime)
+    _summary_writer_stack[-1].add_video(name,
+                                        data,
+                                        step,
+                                        fps=fps,
+                                        walltime=walltime)
 
 
 @_summary_wrapper
@@ -240,8 +246,12 @@ def histogram(name, data, step=None, bins=None, walltime=None, max_bins=None):
     """
     if bins is None:
         bins = _default_bins
-    _summary_writer_stack[-1].add_histogram(
-        name, data, step, bins=bins, walltime=walltime, max_bins=max_bins)
+    _summary_writer_stack[-1].add_histogram(name,
+                                            data,
+                                            step,
+                                            bins=bins,
+                                            walltime=walltime,
+                                            max_bins=max_bins)
 
 
 @_summary_wrapper
@@ -267,12 +277,11 @@ def embedding(name, data, step=None, class_labels=None, label_imgs=None):
             label img corresponds to an embedding. Use this if you want to
             associate each embedding with an image for visualization.
     """
-    _summary_writer_stack[-1].add_embedding(
-        tag=name,
-        mat=data,
-        metadata=class_labels,
-        label_img=label_imgs,
-        global_step=step)
+    _summary_writer_stack[-1].add_embedding(tag=name,
+                                            mat=data,
+                                            metadata=class_labels,
+                                            label_img=label_imgs,
+                                            global_step=step)
 
 
 def should_record_summaries():
@@ -346,8 +355,9 @@ def create_summary_writer(summary_dir, flush_secs=10, max_queue=10):
     Returns:
         SummaryWriter
     """
-    return SummaryWriter(
-        log_dir=summary_dir, flush_secs=flush_secs, max_queue=max_queue)
+    return SummaryWriter(log_dir=summary_dir,
+                         flush_secs=flush_secs,
+                         max_queue=max_queue)
 
 
 def set_default_writer(writer):
@@ -393,6 +403,7 @@ def should_summarize_output(flag=None):
 
 
 class push_summary_writer(object):
+
     def __init__(self, writer):
         self._writer = writer
 

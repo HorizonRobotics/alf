@@ -30,44 +30,40 @@ alf.config("AverageDiscountedReturnMetric", discount=discount)
 #   while v4 has 0 (always follow your issued action)
 # Because we already implements frame_skip in AtariPreprocessing, we should always
 # use 'NoFrameSkip' Atari environments from OpenAI gym
-alf.config(
-    'create_environment',
-    env_name='BreakoutNoFrameskip-v4',
-    num_parallel_environments=num_envs)
+alf.config('create_environment',
+           env_name='BreakoutNoFrameskip-v4',
+           num_parallel_environments=num_envs)
 
 CONV_LAYER_PARAMS = ((32, 8, 4), (64, 4, 2), (64, 3, 1))
-actor_network_cls = functools.partial(
-    ActorDistributionNetwork,
-    fc_layer_params=(128, ),
-    conv_layer_params=CONV_LAYER_PARAMS)
-value_network_cls = functools.partial(
-    ValueNetwork, fc_layer_params=(128, ), conv_layer_params=CONV_LAYER_PARAMS)
+actor_network_cls = functools.partial(ActorDistributionNetwork,
+                                      fc_layer_params=(128, ),
+                                      conv_layer_params=CONV_LAYER_PARAMS)
+value_network_cls = functools.partial(ValueNetwork,
+                                      fc_layer_params=(128, ),
+                                      conv_layer_params=CONV_LAYER_PARAMS)
 
 alf.config('CategoricalProjectionNetwork', logits_init_output_factor=1e-10)
 
-alf.config(
-    'PPOLoss',
-    entropy_regularization=1e-2,
-    gamma=discount,
-    normalize_advantages=False)
+alf.config('PPOLoss',
+           entropy_regularization=1e-2,
+           gamma=discount,
+           normalize_advantages=False)
 
-alf.config(
-    'ActorCriticAlgorithm',
-    actor_network_ctor=actor_network_cls,
-    value_network_ctor=value_network_cls)
+alf.config('ActorCriticAlgorithm',
+           actor_network_ctor=actor_network_cls,
+           value_network_ctor=value_network_cls)
 
 alf.config('Agent', optimizer=alf.optimizers.Adam(lr=1e-3))
 
-alf.config(
-    'TrainerConfig',
-    unroll_length=8,
-    mini_batch_size=64,
-    mini_batch_length=None,
-    num_updates_per_train_iter=3,
-    algorithm_ctor=Agent,
-    num_iterations=0,
-    num_env_steps=5000000,
-    evaluate=False,
-    debug_summaries=True,
-    summarize_grads_and_vars=True,
-    summary_interval=50)
+alf.config('TrainerConfig',
+           unroll_length=8,
+           mini_batch_size=64,
+           mini_batch_length=None,
+           num_updates_per_train_iter=3,
+           algorithm_ctor=Agent,
+           num_iterations=0,
+           num_env_steps=5000000,
+           evaluate=False,
+           debug_summaries=True,
+           summarize_grads_and_vars=True,
+           summary_interval=50)

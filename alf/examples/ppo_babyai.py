@@ -36,10 +36,9 @@ alf.config(
     use_rollout_state=True,
 )
 
-alf.config(
-    'suite_babyai.load',
-    mode='sent',
-    alf_env_wrappers=[alf_wrappers.ActionObservationWrapper])
+alf.config('suite_babyai.load',
+           mode='sent',
+           alf_env_wrappers=[alf_wrappers.ActionObservationWrapper])
 
 alf.config(
     'create_environment',
@@ -69,33 +68,29 @@ observation_preprocessors = {
             alf.layers.Conv2D(encoding_dim, encoding_dim, kernel_size=3),
             alf.layers.Reshape((encoding_dim, -1)), alf.layers.Transpose()),
     "direction":
-        torch.nn.Sequential(
-            torch.nn.Embedding(4, encoding_dim),
-            alf.layers.Reshape((1, encoding_dim))),
+        torch.nn.Sequential(torch.nn.Embedding(4, encoding_dim),
+                            alf.layers.Reshape((1, encoding_dim))),
     "mission":
-        torch.nn.Sequential(
-            torch.nn.Embedding(vocab_size, encoding_dim),
-            alf.layers.Reshape((-1, encoding_dim)))
+        torch.nn.Sequential(torch.nn.Embedding(vocab_size, encoding_dim),
+                            alf.layers.Reshape((-1, encoding_dim)))
 }
 input_preprocessors = {
     'observation':
         observation_preprocessors,
     'prev_action':
-        torch.nn.Sequential(
-            torch.nn.Embedding(7, encoding_dim),
-            alf.layers.Reshape((1, encoding_dim)))
+        torch.nn.Sequential(torch.nn.Embedding(7, encoding_dim),
+                            alf.layers.Reshape((1, encoding_dim)))
 }
 
-encoder_cls = partial(
-    alf.networks.TransformerNetwork,
-    input_preprocessors=input_preprocessors,
-    memory_size=8,
-    core_size=1,
-    num_prememory_layers=0,
-    num_memory_layers=4,
-    num_attention_heads=3,
-    d_ff=encoding_dim,
-    centralized_memory=True)
+encoder_cls = partial(alf.networks.TransformerNetwork,
+                      input_preprocessors=input_preprocessors,
+                      memory_size=8,
+                      core_size=1,
+                      num_prememory_layers=0,
+                      num_memory_layers=4,
+                      num_attention_heads=3,
+                      d_ff=encoding_dim,
+                      centralized_memory=True)
 
 repr_learner_cls = partial(EncodingAlgorithm, encoder_cls=encoder_cls)
 
@@ -105,36 +100,31 @@ actor_network_ctor = partial(
     activation=activation,
     discrete_projection_net_ctor=alf.networks.CategoricalProjectionNetwork)
 
-value_network_ctor = partial(
-    alf.networks.ValueNetwork,
-    fc_layer_params=fc_layers_params,
-    activation=activation)
+value_network_ctor = partial(alf.networks.ValueNetwork,
+                             fc_layer_params=fc_layers_params,
+                             activation=activation)
 
-alf.config(
-    'PPOLoss',
-    entropy_regularization=0.0,
-    gamma=0.99,
-    normalize_advantages=True,
-    td_lambda=0.95,
-    td_error_loss_fn=alf.utils.losses.element_wise_squared_loss,
-    check_numerics=True)
+alf.config('PPOLoss',
+           entropy_regularization=0.0,
+           gamma=0.99,
+           normalize_advantages=True,
+           td_lambda=0.95,
+           td_error_loss_fn=alf.utils.losses.element_wise_squared_loss,
+           check_numerics=True)
 
-alf.config(
-    'PPOAlgorithm',
-    actor_network_ctor=actor_network_ctor,
-    value_network_ctor=value_network_ctor,
-    loss_class=PPOLoss)
+alf.config('PPOAlgorithm',
+           actor_network_ctor=actor_network_ctor,
+           value_network_ctor=value_network_ctor,
+           loss_class=PPOLoss)
 
-alf.config(
-    'TracAlgorithm',
-    ac_algorithm_cls=PPOAlgorithm,
-    action_dist_clip_per_dim=0.01)
+alf.config('TracAlgorithm',
+           ac_algorithm_cls=PPOAlgorithm,
+           action_dist_clip_per_dim=0.01)
 
 alf.config('EntropyTargetAlgorithm', initial_alpha=0.001)
 
-alf.config(
-    'Agent',
-    representation_learner_cls=repr_learner_cls,
-    optimizer=alf.optimizers.AdamTF(lr=1e-4),
-    rl_algorithm_cls=TracAlgorithm,
-    enforce_entropy_target=True)
+alf.config('Agent',
+           representation_learner_cls=repr_learner_cls,
+           optimizer=alf.optimizers.AdamTF(lr=1e-4),
+           rl_algorithm_cls=TracAlgorithm,
+           enforce_entropy_target=True)

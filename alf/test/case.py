@@ -21,6 +21,7 @@ from alf.utils import common
 
 
 class TestCase(unittest.TestCase):
+
     def __init__(self, methodName='runTest'):
         super().__init__(methodName)
         self.addTypeEqualityFunc(torch.Tensor, 'assertTensorEqual')

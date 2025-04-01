@@ -28,8 +28,9 @@ from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork, ParallelEnc
 from .preprocessors import CosineEmbeddingPreprocessor
 
 
-def _check_action_specs_for_critic_networks(
-        action_spec, action_input_processors, action_preprocessing_combiner):
+def _check_action_specs_for_critic_networks(action_spec,
+                                            action_input_processors,
+                                            action_preprocessing_combiner):
 
     if len(nest.flatten(action_spec)) > 1:
         assert action_preprocessing_combiner is not None, (
@@ -141,11 +142,10 @@ class CriticNetwork(EncodingNetwork):
             name (str):
         """
         if kernel_initializer is None:
-            kernel_initializer = functools.partial(
-                variance_scaling_init,
-                gain=math.sqrt(1.0 / 3),
-                mode='fan_in',
-                distribution='uniform')
+            kernel_initializer = functools.partial(variance_scaling_init,
+                                                   gain=math.sqrt(1.0 / 3),
+                                                   mode='fan_in',
+                                                   distribution='uniform')
 
         observation_spec, action_spec = input_tensor_spec
 
@@ -177,28 +177,28 @@ class CriticNetwork(EncodingNetwork):
             use_fc_ln=use_fc_ln,
             name=name + ".action_encoder")
 
-        last_kernel_initializer = functools.partial(
-            torch.nn.init.uniform_, a=-0.003, b=0.003)
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_,
+                                                    a=-0.003,
+                                                    b=0.003)
 
         if observation_action_combiner is None:
             observation_action_combiner = alf.layers.NestConcat(dim=-1)
 
-        super().__init__(
-            input_tensor_spec=input_tensor_spec,
-            output_tensor_spec=output_tensor_spec,
-            input_preprocessors=(obs_encoder, action_encoder),
-            preprocessing_combiner=observation_action_combiner,
-            fc_layer_params=joint_fc_layer_params,
-            activation=activation,
-            kernel_initializer=kernel_initializer,
-            use_fc_bn=use_fc_bn,
-            use_fc_ln=use_fc_ln,
-            last_layer_size=output_tensor_spec.numel,
-            last_activation=last_layer_activation,
-            last_kernel_initializer=last_kernel_initializer,
-            last_use_fc_bn=last_use_fc_bn,
-            last_use_fc_ln=last_use_fc_ln,
-            name=name)
+        super().__init__(input_tensor_spec=input_tensor_spec,
+                         output_tensor_spec=output_tensor_spec,
+                         input_preprocessors=(obs_encoder, action_encoder),
+                         preprocessing_combiner=observation_action_combiner,
+                         fc_layer_params=joint_fc_layer_params,
+                         activation=activation,
+                         kernel_initializer=kernel_initializer,
+                         use_fc_bn=use_fc_bn,
+                         use_fc_ln=use_fc_ln,
+                         last_layer_size=output_tensor_spec.numel,
+                         last_activation=last_layer_activation,
+                         last_kernel_initializer=last_kernel_initializer,
+                         last_use_fc_bn=last_use_fc_bn,
+                         last_use_fc_ln=last_use_fc_ln,
+                         name=name)
         self._use_naive_parallel_network = use_naive_parallel_network
 
     def make_parallel(self, n):
@@ -277,11 +277,10 @@ class CriticRNNNetwork(LSTMEncodingNetwork):
             name (str):
         """
         if kernel_initializer is None:
-            kernel_initializer = functools.partial(
-                variance_scaling_init,
-                gain=math.sqrt(1.0 / 3),
-                mode='fan_in',
-                distribution='uniform')
+            kernel_initializer = functools.partial(variance_scaling_init,
+                                                   gain=math.sqrt(1.0 / 3),
+                                                   mode='fan_in',
+                                                   distribution='uniform')
 
         observation_spec, action_spec = input_tensor_spec
 
@@ -305,22 +304,22 @@ class CriticRNNNetwork(LSTMEncodingNetwork):
             activation=activation,
             kernel_initializer=kernel_initializer)
 
-        last_kernel_initializer = functools.partial(
-            torch.nn.init.uniform_, a=-0.003, b=0.003)
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_,
+                                                    a=-0.003,
+                                                    b=0.003)
 
-        super().__init__(
-            input_tensor_spec=input_tensor_spec,
-            output_tensor_spec=output_tensor_spec,
-            input_preprocessors=(obs_encoder, action_encoder),
-            preprocessing_combiner=alf.layers.NestConcat(dim=-1),
-            pre_fc_layer_params=joint_fc_layer_params,
-            hidden_size=lstm_hidden_size,
-            post_fc_layer_params=critic_fc_layer_params,
-            activation=activation,
-            kernel_initializer=kernel_initializer,
-            last_layer_size=output_tensor_spec.numel,
-            last_activation=math_ops.identity,
-            last_kernel_initializer=last_kernel_initializer)
+        super().__init__(input_tensor_spec=input_tensor_spec,
+                         output_tensor_spec=output_tensor_spec,
+                         input_preprocessors=(obs_encoder, action_encoder),
+                         preprocessing_combiner=alf.layers.NestConcat(dim=-1),
+                         pre_fc_layer_params=joint_fc_layer_params,
+                         hidden_size=lstm_hidden_size,
+                         post_fc_layer_params=critic_fc_layer_params,
+                         activation=activation,
+                         kernel_initializer=kernel_initializer,
+                         last_layer_size=output_tensor_spec.numel,
+                         last_activation=math_ops.identity,
+                         last_kernel_initializer=last_kernel_initializer)
 
     def make_parallel(self, n):
         """Create a parallel critic RNN network using ``n`` replicas of ``self``.
@@ -433,15 +432,15 @@ class CriticQuantileNetwork(EncodingNetwork):
         """
 
         if kernel_initializer is None:
-            kernel_initializer = functools.partial(
-                variance_scaling_init,
-                gain=math.sqrt(1.0 / 3),
-                mode='fan_in',
-                distribution='uniform')
+            kernel_initializer = functools.partial(variance_scaling_init,
+                                                   gain=math.sqrt(1.0 / 3),
+                                                   mode='fan_in',
+                                                   distribution='uniform')
 
         if last_kernel_initializer is None:
-            last_kernel_initializer = functools.partial(
-                torch.nn.init.uniform_, a=-0.003, b=0.003)
+            last_kernel_initializer = functools.partial(torch.nn.init.uniform_,
+                                                        a=-0.003,
+                                                        b=0.003)
 
         obs_act_encoder = CriticNetwork(
             input_tensor_spec,

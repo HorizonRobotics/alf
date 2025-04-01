@@ -26,6 +26,7 @@ from alf.utils.averager import WindowAverager, EMAverager, AdaptiveAverager
 
 @alf.configurable(whitelist=['max_dims_to_summarize'])
 class Normalizer(nn.Module):
+
     def __init__(self,
                  tensor_spec,
                  auto_update=True,
@@ -173,6 +174,7 @@ class Normalizer(nn.Module):
         return self._normalize(tensor, clip_value)
 
     def _normalize(self, tensor, clip_value=-1.0):
+
         def _normalize(m2, t, m):
             # in some extreme cases, due to floating errors, var might be a very
             # large negative value (close to 0)
@@ -231,23 +233,24 @@ class WindowNormalizer(Normalizer):
             name (str):
         """
         self._window_size = window_size
-        super(WindowNormalizer, self).__init__(
-            tensor_spec=tensor_spec,
-            auto_update=auto_update,
-            zero_mean=zero_mean,
-            unit_std=unit_std,
-            variance_epsilon=variance_epsilon,
-            debug_summaries=debug_summaries,
-            name=name)
+        super(WindowNormalizer,
+              self).__init__(tensor_spec=tensor_spec,
+                             auto_update=auto_update,
+                             zero_mean=zero_mean,
+                             unit_std=unit_std,
+                             variance_epsilon=variance_epsilon,
+                             debug_summaries=debug_summaries,
+                             name=name)
 
     def _create_averager(self):
         """Returns a window averager."""
-        return WindowAverager(
-            tensor_spec=self._tensor_spec, window_size=self._window_size)
+        return WindowAverager(tensor_spec=self._tensor_spec,
+                              window_size=self._window_size)
 
 
 @alf.configurable
 class ScalarWindowNormalizer(WindowNormalizer):
+
     def __init__(self,
                  window_size=1000,
                  auto_update=True,
@@ -256,15 +259,15 @@ class ScalarWindowNormalizer(WindowNormalizer):
                  variance_epsilon=1e-10,
                  debug_summaries=False,
                  name="ScalarWindowNormalizer"):
-        super(ScalarWindowNormalizer, self).__init__(
-            tensor_spec=TensorSpec((), dtype='float32'),
-            window_size=window_size,
-            auto_update=auto_update,
-            zero_mean=zero_mean,
-            unit_std=unit_std,
-            variance_epsilon=variance_epsilon,
-            debug_summaries=debug_summaries,
-            name=name)
+        super(ScalarWindowNormalizer,
+              self).__init__(tensor_spec=TensorSpec((), dtype='float32'),
+                             window_size=window_size,
+                             auto_update=auto_update,
+                             zero_mean=zero_mean,
+                             unit_std=unit_std,
+                             variance_epsilon=variance_epsilon,
+                             debug_summaries=debug_summaries,
+                             name=name)
 
 
 @alf.configurable
@@ -298,14 +301,13 @@ class EMNormalizer(Normalizer):
             name (str):
         """
         self._update_rate = update_rate
-        super(EMNormalizer, self).__init__(
-            tensor_spec=tensor_spec,
-            auto_update=auto_update,
-            zero_mean=zero_mean,
-            unit_std=unit_std,
-            variance_epsilon=variance_epsilon,
-            debug_summaries=debug_summaries,
-            name=name)
+        super(EMNormalizer, self).__init__(tensor_spec=tensor_spec,
+                                           auto_update=auto_update,
+                                           zero_mean=zero_mean,
+                                           unit_std=unit_std,
+                                           variance_epsilon=variance_epsilon,
+                                           debug_summaries=debug_summaries,
+                                           name=name)
 
     def _create_averager(self):
         """Returns an exponential moving averager."""
@@ -314,6 +316,7 @@ class EMNormalizer(Normalizer):
 
 @alf.configurable
 class ScalarEMNormalizer(EMNormalizer):
+
     def __init__(self,
                  update_rate=1e-3,
                  auto_update=True,
@@ -322,19 +325,20 @@ class ScalarEMNormalizer(EMNormalizer):
                  unit_std=False,
                  debug_summaries=False,
                  name="ScalarEMNormalizer"):
-        super(ScalarEMNormalizer, self).__init__(
-            tensor_spec=TensorSpec((), dtype='float32'),
-            update_rate=update_rate,
-            auto_update=auto_update,
-            zero_mean=zero_mean,
-            unit_std=unit_std,
-            variance_epsilon=variance_epsilon,
-            debug_summaries=debug_summaries,
-            name=name)
+        super(ScalarEMNormalizer,
+              self).__init__(tensor_spec=TensorSpec((), dtype='float32'),
+                             update_rate=update_rate,
+                             auto_update=auto_update,
+                             zero_mean=zero_mean,
+                             unit_std=unit_std,
+                             variance_epsilon=variance_epsilon,
+                             debug_summaries=debug_summaries,
+                             name=name)
 
 
 @alf.configurable
 class AdaptiveNormalizer(Normalizer):
+
     def __init__(self,
                  tensor_spec,
                  speed=8.0,
@@ -365,23 +369,24 @@ class AdaptiveNormalizer(Normalizer):
             name (str):
         """
         self._speed = speed
-        super(AdaptiveNormalizer, self).__init__(
-            tensor_spec=tensor_spec,
-            auto_update=auto_update,
-            variance_epsilon=variance_epsilon,
-            zero_mean=zero_mean,
-            unit_std=unit_std,
-            debug_summaries=debug_summaries,
-            name=name)
+        super(AdaptiveNormalizer,
+              self).__init__(tensor_spec=tensor_spec,
+                             auto_update=auto_update,
+                             variance_epsilon=variance_epsilon,
+                             zero_mean=zero_mean,
+                             unit_std=unit_std,
+                             debug_summaries=debug_summaries,
+                             name=name)
 
     def _create_averager(self):
         """Create an adaptive averager."""
-        return AdaptiveAverager(
-            tensor_spec=self._tensor_spec, speed=self._speed)
+        return AdaptiveAverager(tensor_spec=self._tensor_spec,
+                                speed=self._speed)
 
 
 @alf.configurable
 class ScalarAdaptiveNormalizer(AdaptiveNormalizer):
+
     def __init__(self,
                  speed=8.0,
                  auto_update=True,
@@ -390,12 +395,12 @@ class ScalarAdaptiveNormalizer(AdaptiveNormalizer):
                  variance_epsilon=1e-10,
                  debug_summaries=False,
                  name="ScalarAdaptiveNormalizer"):
-        super(ScalarAdaptiveNormalizer, self).__init__(
-            tensor_spec=TensorSpec((), dtype='float32'),
-            speed=speed,
-            auto_update=auto_update,
-            zero_mean=zero_mean,
-            unit_std=unit_std,
-            variance_epsilon=variance_epsilon,
-            debug_summaries=debug_summaries,
-            name=name)
+        super(ScalarAdaptiveNormalizer,
+              self).__init__(tensor_spec=TensorSpec((), dtype='float32'),
+                             speed=speed,
+                             auto_update=auto_update,
+                             zero_mean=zero_mean,
+                             unit_std=unit_std,
+                             variance_epsilon=variance_epsilon,
+                             debug_summaries=debug_summaries,
+                             name=name)

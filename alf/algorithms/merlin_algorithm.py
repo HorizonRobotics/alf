@@ -82,22 +82,23 @@ class MemoryBasedPredictor(Algorithm):
         """
         action_encoder = SimpleActionEncoder(action_spec)
 
-        memory = MemoryWithUsage(
-            latent_dim, memory_size, name=name + "/memory")
+        memory = MemoryWithUsage(latent_dim,
+                                 memory_size,
+                                 name=name + "/memory")
 
         rnn_input_size = (latent_dim + num_read_keys * latent_dim +
                           action_encoder.output_spec.shape[0])
 
-        rnn = LSTMEncodingNetwork(
-            input_tensor_spec=alf.TensorSpec((rnn_input_size, )),
-            hidden_size=lstm_size,
-            name=name + "/lstm")
+        rnn = LSTMEncodingNetwork(input_tensor_spec=alf.TensorSpec(
+            (rnn_input_size, )),
+                                  hidden_size=lstm_size,
+                                  name=name + "/lstm")
 
-        state_spec = MBPState(
-            latent_vector=alf.TensorSpec((latent_dim, )),
-            mem_readout=alf.TensorSpec((num_read_keys * latent_dim, )),
-            rnn_state=rnn.state_spec,
-            memory=memory.state_spec)
+        state_spec = MBPState(latent_vector=alf.TensorSpec((latent_dim, )),
+                              mem_readout=alf.TensorSpec(
+                                  (num_read_keys * latent_dim, )),
+                              rnn_state=rnn.state_spec,
+                              memory=memory.state_spec)
 
         super().__init__(train_state_spec=state_spec, name=name)
 
@@ -170,11 +171,10 @@ class MemoryBasedPredictor(Algorithm):
 
         vae_step = self._vae.train_step((prior_input, current_input))
 
-        next_state = MBPState(
-            latent_vector=vae_step.output.z,
-            mem_readout=prev_mem_readout,
-            rnn_state=prev_rnn_state,
-            memory=self._memory.states)
+        next_state = MBPState(latent_vector=vae_step.output.z,
+                              mem_readout=prev_mem_readout,
+                              rnn_state=prev_rnn_state,
+                              memory=self._memory.states)
 
         return vae_step._replace(output=vae_step.output.z, state=next_state)
 
@@ -226,11 +226,10 @@ class MemoryBasedPredictor(Algorithm):
         decoder_loss = self.decode_step(encode_step.output, observation)
 
         return encode_step._replace(
-            info=LossInfo(
-                loss=self._loss_weight *
-                (decoder_loss.loss + encode_step.info.loss),
-                extra=MBPLossInfo(
-                    decoder=decoder_loss.extra, vae=encode_step.info.kld)))
+            info=LossInfo(loss=self._loss_weight *
+                          (decoder_loss.loss + encode_step.info.loss),
+                          extra=MBPLossInfo(decoder=decoder_loss.extra,
+                                            vae=encode_step.info.kld)))
 
 
 @alf.configurable
@@ -279,28 +278,27 @@ class MemoryBasedActor(OnPolicyAlgorithm):
             epsilon_greedy = alf.get_config_value(
                 'TrainerConfig.epsilon_greedy')
         self._epsilon_greedy = epsilon_greedy
-        rnn = LSTMEncodingNetwork(
-            input_tensor_spec=alf.TensorSpec((latent_dim, )),
-            hidden_size=lstm_size,
-            name=name + "/lstm")
+        rnn = LSTMEncodingNetwork(input_tensor_spec=alf.TensorSpec(
+            (latent_dim, )),
+                                  hidden_size=lstm_size,
+                                  name=name + "/lstm")
 
-        actor_input_dim = (
-            latent_dim + rnn.output_spec.shape[0] + num_read_keys * memory.dim)
+        actor_input_dim = (latent_dim + rnn.output_spec.shape[0] +
+                           num_read_keys * memory.dim)
 
-        actor_net = ActorDistributionNetwork(
-            input_tensor_spec=alf.TensorSpec((actor_input_dim, ),
-                                             dtype=torch.float32),
-            action_spec=action_spec,
-            fc_layer_params=(200, ),
-            activation=torch.tanh,
-            name=name + "/actor_net")
+        actor_net = ActorDistributionNetwork(input_tensor_spec=alf.TensorSpec(
+            (actor_input_dim, ), dtype=torch.float32),
+                                             action_spec=action_spec,
+                                             fc_layer_params=(200, ),
+                                             activation=torch.tanh,
+                                             name=name + "/actor_net")
 
-        super(MemoryBasedActor, self).__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=rnn.state_spec,
-            name=name)
+        super(MemoryBasedActor,
+              self).__init__(observation_spec=observation_spec,
+                             action_spec=action_spec,
+                             reward_spec=reward_spec,
+                             train_state_spec=rnn.state_spec,
+                             name=name)
 
         if loss is None:
             loss = loss_class(debug_summaries=debug_summaries)
@@ -313,11 +311,11 @@ class MemoryBasedActor(OnPolicyAlgorithm):
 
         # TODO: add log p(a_i) as input to value net
         value_input_dim = latent_dim
-        self._value_net = ValueNetwork(
-            input_tensor_spec=alf.TensorSpec((value_input_dim, )),
-            fc_layer_params=(200, ),
-            activation=torch.tanh,
-            name=name + "/value_net")
+        self._value_net = ValueNetwork(input_tensor_spec=alf.TensorSpec(
+            (value_input_dim, )),
+                                       fc_layer_params=(200, ),
+                                       activation=torch.tanh,
+                                       name=name + "/value_net")
 
         self._rnn = rnn
         self._actor_net = actor_net
@@ -345,13 +343,12 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         value, _ = self._value_net(latent_vector)
         action = dist_utils.sample_action_distribution(action_distribution)
 
-        info = ActorCriticInfo(
-            action=common.detach(action),
-            reward=time_step.reward,
-            step_type=time_step.step_type,
-            discount=time_step.discount,
-            action_distribution=action_distribution,
-            value=value)
+        info = ActorCriticInfo(action=common.detach(action),
+                               reward=time_step.reward,
+                               step_type=time_step.step_type,
+                               discount=time_step.discount,
+                               action_distribution=action_distribution,
+                               value=value)
         return AlgStep(output=action, state=state, info=info)
 
     def predict_step(self, time_step: TimeStep, state):
@@ -430,30 +427,27 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             debug_summaries: True if debug summaries should be created.
             name (str): name of the algorithm.
         """
-        mbp = MemoryBasedPredictor(
-            action_spec=action_spec,
-            encoders=encoders,
-            decoders=decoders,
-            latent_dim=latent_dim,
-            lstm_size=lstm_size,
-            memory_size=memory_size)
+        mbp = MemoryBasedPredictor(action_spec=action_spec,
+                                   encoders=encoders,
+                                   decoders=decoders,
+                                   latent_dim=latent_dim,
+                                   lstm_size=lstm_size,
+                                   memory_size=memory_size)
 
-        mba = MemoryBasedActor(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            latent_dim=latent_dim,
-            lstm_size=lstm_size,
-            loss=rl_loss,
-            memory=mbp.memory,
-            debug_summaries=debug_summaries)
+        mba = MemoryBasedActor(observation_spec=observation_spec,
+                               action_spec=action_spec,
+                               latent_dim=latent_dim,
+                               lstm_size=lstm_size,
+                               loss=rl_loss,
+                               memory=mbp.memory,
+                               debug_summaries=debug_summaries)
 
         super(MerlinAlgorithm, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
-            train_state_spec=MerlinState(
-                mbp_state=mbp.train_state_spec,
-                mba_state=mba.train_state_spec),
+            train_state_spec=MerlinState(mbp_state=mbp.train_state_spec,
+                                         mba_state=mba.train_state_spec),
             env=env,
             config=config,
             optimizer=optimizer,
@@ -465,31 +459,30 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
 
     def rollout_step(self, time_step: TimeStep, state):
         """Train one step."""
-        mbp_step = self._mbp.train_step(
-            inputs=(time_step.observation, time_step.prev_action),
-            state=state.mbp_state)
+        mbp_step = self._mbp.train_step(inputs=(time_step.observation,
+                                                time_step.prev_action),
+                                        state=state.mbp_state)
         mba_step = self._mba.rollout_step(
             time_step=time_step._replace(observation=mbp_step.output),
             state=state.mba_state)
 
-        return AlgStep(
-            output=mba_step.output,
-            state=MerlinState(
-                mbp_state=mbp_step.state, mba_state=mba_step.state),
-            info=MerlinInfo(mbp_info=mbp_step.info, mba_info=mba_step.info))
+        return AlgStep(output=mba_step.output,
+                       state=MerlinState(mbp_state=mbp_step.state,
+                                         mba_state=mba_step.state),
+                       info=MerlinInfo(mbp_info=mbp_step.info,
+                                       mba_info=mba_step.info))
 
     def predict_step(self, time_step: TimeStep, state):
-        mbp_step = self._mbp.predict_step(
-            inputs=(time_step.observation, time_step.prev_action),
-            state=state.mbp_state)
+        mbp_step = self._mbp.predict_step(inputs=(time_step.observation,
+                                                  time_step.prev_action),
+                                          state=state.mbp_state)
         mba_step = self._mba.predict_step(
             time_step=time_step._replace(observation=mbp_step.output),
             state=state.mba_state)
-        return AlgStep(
-            output=mba_step.output,
-            state=MerlinState(
-                mbp_state=mbp_step.state, mba_state=mba_step.state),
-            info=())
+        return AlgStep(output=mba_step.output,
+                       state=MerlinState(mbp_state=mbp_step.state,
+                                         mba_state=mba_step.state),
+                       info=())
 
     def calc_loss(self, info: MerlinInfo):
         """Calculate loss."""
@@ -497,10 +490,9 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
         mbp_loss_info = self._mbp.calc_loss(info.mbp_info)
         mba_loss_info = self._mba.calc_loss(info.mba_info)
 
-        return LossInfo(
-            loss=mbp_loss_info.loss + mba_loss_info.loss,
-            extra=MerlinLossInfo(
-                mbp=mbp_loss_info.extra, mba=mba_loss_info.extra))
+        return LossInfo(loss=mbp_loss_info.loss + mba_loss_info.loss,
+                        extra=MerlinLossInfo(mbp=mbp_loss_info.extra,
+                                             mba=mba_loss_info.extra))
 
 
 @alf.configurable
@@ -534,22 +526,20 @@ class ResnetEncodingNetwork(alf.networks.Network):
         in_channels = input_tensor_spec.shape[0]
         shape = input_tensor_spec.shape
         for stride in [2, 1, 2, 1, 2, 1]:
-            res_block = alf.layers.BottleneckBlock(
-                in_channels=in_channels,
-                kernel_size=3,
-                filters=(64, 32, 64),
-                stride=stride)
+            res_block = alf.layers.BottleneckBlock(in_channels=in_channels,
+                                                   kernel_size=3,
+                                                   filters=(64, 32, 64),
+                                                   stride=stride)
             shape = res_block.calc_output_shape(shape)
             enc_layers.append(res_block)
             in_channels = 64
 
         enc_layers.extend([
             nn.Flatten(),
-            alf.layers.FC(
-                input_size=int(np.prod(shape)),
-                output_size=output_size,
-                use_bn=use_fc_bn,
-                activation=output_activation)
+            alf.layers.FC(input_size=int(np.prod(shape)),
+                          output_size=output_size,
+                          use_bn=use_fc_bn,
+                          activation=output_activation)
         ])
 
         if norm_layer:
@@ -595,19 +585,17 @@ class ResnetDecodingNetwork(alf.networks.Network):
 
         for stride in reversed([2, 1, 2, 1, 2, 1]):
             dec_layers.append(
-                alf.layers.BottleneckBlock(
-                    in_channels=64,
-                    kernel_size=3,
-                    filters=(64, 32, 64),
-                    stride=stride,
-                    transpose=True))
+                alf.layers.BottleneckBlock(in_channels=64,
+                                           kernel_size=3,
+                                           filters=(64, 32, 64),
+                                           stride=stride,
+                                           transpose=True))
 
         dec_layers.append(
-            alf.layers.ConvTranspose2D(
-                in_channels=64,
-                out_channels=3,
-                kernel_size=1,
-                activation=torch.sigmoid))
+            alf.layers.ConvTranspose2D(in_channels=64,
+                                       out_channels=3,
+                                       kernel_size=1,
+                                       activation=torch.sigmoid))
 
         self._model = nn.Sequential(*dec_layers)
 

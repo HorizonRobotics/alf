@@ -283,26 +283,25 @@ class Conv2dAdapter(LoRA):
             # 2. m.padding is a string: torch will compute paddings on the fly,
             #    so we won't know its values in advance.
             # 3. low-rank decomposition is not available
-            return F.conv2d(
-                input,
-                self._adapter_weight(),
-                stride=m.stride,
-                padding=m.padding,
-                dilation=m.dilation,
-                groups=m.groups)
+            return F.conv2d(input,
+                            self._adapter_weight(),
+                            stride=m.stride,
+                            padding=m.padding,
+                            dilation=m.dilation,
+                            groups=m.groups)
         else:
-            input = F.conv2d(
-                input,
-                self._wA.reshape(self._r, m.in_channels, 1, m.kernel_size[1]),
-                stride=(1, m.stride[1]),
-                padding=(0, m.padding[1]),
-                dilation=(1, m.dilation[1]))
-            output = F.conv2d(
-                input,
-                self._wB.reshape(m.out_channels, self._r, m.kernel_size[0], 1),
-                stride=(m.stride[0], 1),
-                padding=(m.padding[0], 0),
-                dilation=(m.dilation[0], 1))
+            input = F.conv2d(input,
+                             self._wA.reshape(self._r, m.in_channels, 1,
+                                              m.kernel_size[1]),
+                             stride=(1, m.stride[1]),
+                             padding=(0, m.padding[1]),
+                             dilation=(1, m.dilation[1]))
+            output = F.conv2d(input,
+                              self._wB.reshape(m.out_channels, self._r,
+                                               m.kernel_size[0], 1),
+                              stride=(m.stride[0], 1),
+                              padding=(m.padding[0], 0),
+                              dilation=(m.dilation[0], 1))
             return output * self.scaling
 
     def _adapter_weight(self):

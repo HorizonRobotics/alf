@@ -86,44 +86,43 @@ class DOacAlgorithm(DSacAlgorithm):
             beta_ub (float): parameter for computing the upperbound of Q value:
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`
         """
-        super().__init__(
-            observation_spec,
-            action_spec,
-            reward_spec=reward_spec,
-            num_quantiles=num_quantiles,
-            tau_type=tau_type,
-            actor_network_cls=actor_network_cls,
-            critic_network_cls=critic_network_cls,
-            repr_alg_ctor=repr_alg_ctor,
-            epsilon_greedy=epsilon_greedy,
-            use_entropy_reward=use_entropy_reward,
-            normalize_entropy_reward=normalize_entropy_reward,
-            calculate_priority=calculate_priority,
-            num_critic_replicas=num_critic_replicas,
-            min_critic_by_critic_mean=min_critic_by_critic_mean,
-            env=env,
-            config=config,
-            critic_loss_ctor=critic_loss_ctor,
-            target_entropy=target_entropy,
-            target_kld_per_dim=target_kld_per_dim,
-            initial_log_alpha=initial_log_alpha,
-            max_log_alpha=max_log_alpha,
-            target_update_tau=target_update_tau,
-            target_update_period=target_update_period,
-            dqda_clipping=dqda_clipping,
-            actor_optimizer=actor_optimizer,
-            critic_optimizer=critic_optimizer,
-            alpha_optimizer=alpha_optimizer,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec,
+                         action_spec,
+                         reward_spec=reward_spec,
+                         num_quantiles=num_quantiles,
+                         tau_type=tau_type,
+                         actor_network_cls=actor_network_cls,
+                         critic_network_cls=critic_network_cls,
+                         repr_alg_ctor=repr_alg_ctor,
+                         epsilon_greedy=epsilon_greedy,
+                         use_entropy_reward=use_entropy_reward,
+                         normalize_entropy_reward=normalize_entropy_reward,
+                         calculate_priority=calculate_priority,
+                         num_critic_replicas=num_critic_replicas,
+                         min_critic_by_critic_mean=min_critic_by_critic_mean,
+                         env=env,
+                         config=config,
+                         critic_loss_ctor=critic_loss_ctor,
+                         target_entropy=target_entropy,
+                         target_kld_per_dim=target_kld_per_dim,
+                         initial_log_alpha=initial_log_alpha,
+                         max_log_alpha=max_log_alpha,
+                         target_update_tau=target_update_tau,
+                         target_update_period=target_update_period,
+                         dqda_clipping=dqda_clipping,
+                         actor_optimizer=actor_optimizer,
+                         critic_optimizer=critic_optimizer,
+                         alpha_optimizer=alpha_optimizer,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         assert self._act_type == ActionType.Continuous, (
             "Only continuous action space is supported for DOacAlgorithm.")
         self._explore_delta = explore_delta
         self._beta_ub = beta_ub
 
-        self._explore_tau_hat, _ = self._get_tau(
-            batch_size=1, tau_type='fixed')
+        self._explore_tau_hat, _ = self._get_tau(batch_size=1,
+                                                 tau_type='fixed')
 
     def _get_q_ub_from_critics(self, observation, action, state):
         critic_inputs = (observation, action)

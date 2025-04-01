@@ -38,12 +38,14 @@ class TicTacToeEnvironment(AlfEnvironment):
                                                   minimum=0,
                                                   maximum=8,
                                                   dtype=torch.int64)
-        self._line_x = torch.tensor(
-            [[0, 0, 0], [1, 1, 1], [2, 2, 2], [0, 1, 2], [0, 1, 2], [0, 1, 2],
-             [0, 1, 2], [0, 1, 2]]).unsqueeze(0)
-        self._line_y = torch.tensor(
-            [[0, 1, 2], [0, 1, 2], [0, 1, 2], [0, 0, 0], [1, 1, 1], [2, 2, 2],
-             [0, 1, 2], [2, 1, 0]]).unsqueeze(0)
+        self._line_x = torch.tensor([[0, 0, 0], [1, 1, 1], [2, 2,
+                                                            2], [0, 1, 2],
+                                     [0, 1, 2], [0, 1, 2], [0, 1, 2],
+                                     [0, 1, 2]]).unsqueeze(0)
+        self._line_y = torch.tensor([[0, 1, 2], [0, 1, 2], [0, 1,
+                                                            2], [0, 0, 0],
+                                     [1, 1, 1], [2, 2, 2], [0, 1, 2],
+                                     [2, 1, 0]]).unsqueeze(0)
         self._B = torch.arange(self._batch_size)
         self._empty_board = self._observation_spec.zeros()
         self._boards = self._observation_spec.zeros((self._batch_size, ))
@@ -84,19 +86,20 @@ class TicTacToeEnvironment(AlfEnvironment):
         self._boards = self._observation_spec.zeros((self._batch_size, ))
         self._game_over = torch.zeros((self._batch_size, ), dtype=torch.bool)
         self._prev_action = self._action_spec.zeros((self._batch_size, ))
-        return TimeStep(
-            observation=self._boards.clone().detach(),
-            step_type=torch.full((self._batch_size, ), StepType.FIRST),
-            reward=torch.zeros((self._batch_size, )),
-            discount=torch.ones((self._batch_size, )),
-            prev_action=self._action_spec.zeros((self._batch_size, )),
-            env_id=self._env_ids,
-            env_info={
-                "play0_win": torch.zeros(self._batch_size),
-                "play1_win": torch.zeros(self._batch_size),
-                "draw": torch.zeros(self._batch_size),
-                "invalid_move": torch.zeros(self._batch_size),
-            })
+        return TimeStep(observation=self._boards.clone().detach(),
+                        step_type=torch.full((self._batch_size, ),
+                                             StepType.FIRST),
+                        reward=torch.zeros((self._batch_size, )),
+                        discount=torch.ones((self._batch_size, )),
+                        prev_action=self._action_spec.zeros(
+                            (self._batch_size, )),
+                        env_id=self._env_ids,
+                        env_info={
+                            "play0_win": torch.zeros(self._batch_size),
+                            "play1_win": torch.zeros(self._batch_size),
+                            "draw": torch.zeros(self._batch_size),
+                            "invalid_move": torch.zeros(self._batch_size),
+                        })
 
     def _step(self, action):
         prev_game_over = self._game_over
@@ -125,19 +128,18 @@ class TicTacToeEnvironment(AlfEnvironment):
         player1_win = self._check_player_win(self._player_1)
         draw = torch.min(game_over, reward == 0)
 
-        return TimeStep(
-            observation=self._boards.clone().detach(),
-            reward=reward.detach(),
-            step_type=step_type.detach(),
-            discount=discount.detach(),
-            prev_action=prev_action.detach(),
-            env_id=self._env_ids,
-            env_info={
-                "play0_win": player0_win.to(torch.float32),
-                "play1_win": player1_win.to(torch.float32),
-                "draw": draw.to(torch.float32),
-                "invalid_move": (~valid).to(torch.float32),
-            })
+        return TimeStep(observation=self._boards.clone().detach(),
+                        reward=reward.detach(),
+                        step_type=step_type.detach(),
+                        discount=discount.detach(),
+                        prev_action=prev_action.detach(),
+                        env_id=self._env_ids,
+                        env_info={
+                            "play0_win": player0_win.to(torch.float32),
+                            "play1_win": player1_win.to(torch.float32),
+                            "draw": draw.to(torch.float32),
+                            "invalid_move": (~valid).to(torch.float32),
+                        })
 
     def _check_player_win(self, player):
         B = self._B.unsqueeze(-1).unsqueeze(-1)

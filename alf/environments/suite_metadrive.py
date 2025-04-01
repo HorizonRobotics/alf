@@ -42,11 +42,10 @@ except ImportError:
 def _space_to_spec(space: gym.spaces.box.Box):
     # NOTE: this is meta drive specific conversion function as it
     # assumes low and high are uniform.
-    return BoundedTensorSpec(
-        shape=space.shape,
-        dtype=space.dtype.name,
-        minimum=space.low.flat[0],
-        maximum=space.high.flat[0])
+    return BoundedTensorSpec(shape=space.shape,
+                             dtype=space.dtype.name,
+                             minimum=space.low.flat[0],
+                             maximum=space.high.flat[0])
 
 
 class AlfMetaDriveWrapper(AlfEnvironment):

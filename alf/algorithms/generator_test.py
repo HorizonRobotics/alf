@@ -28,9 +28,10 @@ from alf.utils.math_ops import identity
 
 
 class Net(Network):
+
     def __init__(self, dim=2):
-        super().__init__(
-            input_tensor_spec=TensorSpec(shape=(dim, )), name="Net")
+        super().__init__(input_tensor_spec=TensorSpec(shape=(dim, )),
+                         name="Net")
 
         self.fc = nn.Linear(3, dim, bias=False)
         w = torch.tensor([[1, 2], [-1, 1], [1, 1]], dtype=torch.float32)
@@ -41,13 +42,13 @@ class Net(Network):
 
 
 class Net2(Network):
+
     def __init__(self, dim=2):
-        super().__init__(
-            input_tensor_spec=[
-                TensorSpec(shape=(dim, )),
-                TensorSpec(shape=(dim, ))
-            ],
-            name="Net")
+        super().__init__(input_tensor_spec=[
+            TensorSpec(shape=(dim, )),
+            TensorSpec(shape=(dim, ))
+        ],
+                         name="Net")
         self.fc1 = nn.Linear(dim, dim, bias=False)
         self.fc2 = nn.Linear(dim, dim, bias=False)
         w = torch.tensor([[1, 2], [1, 1]], dtype=torch.float32)
@@ -60,6 +61,7 @@ class Net2(Network):
 
 
 class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
+
     def assertArrayEqual(self, x, y, eps):
         self.assertEqual(x.shape, y.shape)
         self.assertLessEqual(float(torch.max(abs(x - y))), eps)
@@ -70,10 +72,9 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         dict(entropy_regularization=1.0, par_vi='svgd2'),
         dict(entropy_regularization=1.0, par_vi='svgd3'),
         dict(entropy_regularization=1.0, par_vi='minmax'),
-        dict(
-            entropy_regularization=1.0,
-            par_vi='svgd',
-            functional_gradient=True),
+        dict(entropy_regularization=1.0,
+             par_vi='svgd',
+             functional_gradient=True),
         dict(entropy_regularization=0.0),
         dict(entropy_regularization=0.0, mi_weight=1),
     )
@@ -129,13 +130,14 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
 
         def _neglogprob(x):
             return torch.squeeze(
-                0.5 * torch.matmul(x * x,
-                                   torch.reshape(precision, (output_dim, 1))),
+                0.5 *
+                torch.matmul(x * x, torch.reshape(precision, (output_dim, 1))),
                 axis=-1)
 
         def _train():
-            alg_step = generator.train_step(
-                inputs=None, loss_func=_neglogprob, batch_size=batch_size)
+            alg_step = generator.train_step(inputs=None,
+                                            loss_func=_neglogprob,
+                                            batch_size=batch_size)
             generator.update_with_gradient(alg_step.info)
 
         for i in range(2100):
@@ -152,11 +154,11 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             self.assertArrayEqual(torch.diag(var), learned_var, 0.2)
         else:
             if mi_weight is None:
-                self.assertArrayEqual(
-                    torch.zeros(output_dim, output_dim), learned_var, 0.2)
+                self.assertArrayEqual(torch.zeros(output_dim, output_dim),
+                                      learned_var, 0.2)
             else:
-                self.assertGreater(
-                    float(torch.sum(torch.abs(learned_var))), 0.5)
+                self.assertGreater(float(torch.sum(torch.abs(learned_var))),
+                                   0.5)
 
     @parameterized.parameters(
         dict(entropy_regularization=1.0),
@@ -177,16 +179,15 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         output_dim = 2
         batch_size = 128
         net = Net2(output_dim)
-        generator = Generator(
-            output_dim,
-            noise_dim=output_dim,
-            entropy_regularization=entropy_regularization,
-            net=net,
-            mi_weight=mi_weight,
-            par_vi=par_vi,
-            use_kernel_averager=True,
-            input_tensor_spec=TensorSpec((output_dim, )),
-            optimizer=alf.optimizers.Adam(lr=2e-3))
+        generator = Generator(output_dim,
+                              noise_dim=output_dim,
+                              entropy_regularization=entropy_regularization,
+                              net=net,
+                              mi_weight=mi_weight,
+                              par_vi=par_vi,
+                              use_kernel_averager=True,
+                              input_tensor_spec=TensorSpec((output_dim, )),
+                              optimizer=alf.optimizers.Adam(lr=2e-3))
 
         var = torch.tensor([1, 4], dtype=torch.float32)
         precision = 1. / var
@@ -196,8 +197,8 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             x, y = xy
             d = x - torch.matmul(y, u)
             return torch.squeeze(
-                0.5 * torch.matmul(d * d,
-                                   torch.reshape(precision, (output_dim, 1))),
+                0.5 *
+                torch.matmul(d * d, torch.reshape(precision, (output_dim, 1))),
                 axis=-1)
 
         def _train():
@@ -219,8 +220,8 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             self.assertArrayEqual(torch.diag(var), learned_var, 0.2)
         else:
             self.assertArrayEqual(net.fc2.weight.t(), u, 0.2)
-            self.assertArrayEqual(
-                torch.zeros(output_dim, output_dim), learned_var, 0.2)
+            self.assertArrayEqual(torch.zeros(output_dim, output_dim),
+                                  learned_var, 0.2)
 
 
 if __name__ == '__main__':

@@ -25,6 +25,7 @@ import alf.utils.common as common
 
 
 class WraningOnceTest(alf.test.TestCase):
+
     def setUp(self):
         logging.use_absl_handler()
 
@@ -51,6 +52,7 @@ class WraningOnceTest(alf.test.TestCase):
 
 
 class MyObject(object):
+
     def __init__(self):
         self._list = [alf.layers.FC(3, 4), alf.layers.FC(4, 5)]
         self._dict = {
@@ -63,6 +65,7 @@ class MyObject(object):
 
 
 class GetAllParametersTest(alf.test.TestCase):
+
     def test_get_all_parameters(self):
         obj = MyObject()
         names = set([
@@ -76,6 +79,7 @@ class GetAllParametersTest(alf.test.TestCase):
 
 
 class _TestModule(torch.nn.Module):
+
     def __init__(self):
         super().__init__()
         # create a CPU tensor
@@ -130,6 +134,7 @@ def _test_tensor_sharing():
 
 
 class TensorSharingTest(alf.test.TestCase):
+
     def test_tensor_sharing(self):
         _test_tensor_sharing()
 

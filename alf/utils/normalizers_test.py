@@ -25,6 +25,7 @@ from alf.utils.normalizers import ScalarAdaptiveNormalizer
 
 
 class NormalizersTest(parameterized.TestCase, alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         self._batch_size = 5
@@ -46,48 +47,47 @@ class NormalizersTest(parameterized.TestCase, alf.test.TestCase):
                 tensors_mean,
                 tensors_var,
                 variance_epsilon=eps)
-            self.assertTensorClose(
-                normalized_tensor, target_normalized_tensor, epsilon=1e-4)
+            self.assertTensorClose(normalized_tensor,
+                                   target_normalized_tensor,
+                                   epsilon=1e-4)
 
         self._verify_normalization = _verify_normalization
 
     @parameterized.parameters((True, ), (False, ))
     def test_window_normalizer(self, unit_std):
-        normalizer = ScalarWindowNormalizer(
-            window_size=self._window_size, unit_std=unit_std)
+        normalizer = ScalarWindowNormalizer(window_size=self._window_size,
+                                            unit_std=unit_std)
         for i in range(self._window_size):
             normalized_tensor = normalizer.normalize(self._tensors[i])
         weights = torch.ones((self._window_size, self._batch_size),
                              dtype=torch.float32)
         weights /= torch.sum(weights)
 
-        self._verify_normalization(
-            weights,
-            normalized_tensor,
-            normalizer._variance_epsilon,
-            use_var=not unit_std)
+        self._verify_normalization(weights,
+                                   normalized_tensor,
+                                   normalizer._variance_epsilon,
+                                   use_var=not unit_std)
 
     @parameterized.parameters((True, ), (False, ))
     def test_em_normalizer(self, unit_std):
         update_rate = 0.1
-        normalizer = ScalarEMNormalizer(
-            update_rate=update_rate, unit_std=unit_std)
+        normalizer = ScalarEMNormalizer(update_rate=update_rate,
+                                        unit_std=unit_std)
         for i in range(self._window_size):
             normalized_tensor = normalizer.normalize(self._tensors[i])
 
-        weights = torch.as_tensor([(
-            math.pow(1 - update_rate, self._window_size - 1 - i) * update_rate)
-                                   for i in range(self._window_size)],
-                                  dtype=torch.float32)
+        weights = torch.as_tensor(
+            [(math.pow(1 - update_rate, self._window_size - 1 - i) *
+              update_rate) for i in range(self._window_size)],
+            dtype=torch.float32)
         ones = torch.ones((self._batch_size, ), dtype=torch.float32)
         weights = torch.ger(weights, ones)
         weights /= torch.sum(weights)  # reduce em bias
 
-        self._verify_normalization(
-            weights,
-            normalized_tensor,
-            normalizer._variance_epsilon,
-            use_var=not unit_std)
+        self._verify_normalization(weights,
+                                   normalized_tensor,
+                                   normalizer._variance_epsilon,
+                                   use_var=not unit_std)
 
     @parameterized.parameters((True, ), (False, ))
     def test_adaptive_normalizer(self, unit_std):
@@ -107,11 +107,10 @@ class NormalizersTest(parameterized.TestCase, alf.test.TestCase):
         weights = torch.ger(weights, ones)
         weights /= torch.sum(weights)  # reduce adaptive bias
 
-        self._verify_normalization(
-            weights,
-            normalized_tensor,
-            normalizer._variance_epsilon,
-            use_var=not unit_std)
+        self._verify_normalization(weights,
+                                   normalized_tensor,
+                                   normalizer._variance_epsilon,
+                                   use_var=not unit_std)
 
 
 if __name__ == '__main__':

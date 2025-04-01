@@ -31,6 +31,7 @@ from absl.testing import parameterized
 
 
 class MockMCTSModel(nn.Module):
+
     def __init__(self, observation_spec, action_spec, scale):
         super().__init__()
         self._observation_spec = observation_spec
@@ -56,11 +57,10 @@ class MockMCTSModel(nn.Module):
 
     def _predict(self, state):
         action_probs = state[:, 3:5] * self._scale
-        return ModelOutput(
-            value=state[:, -1] * 0.5 * self._scale,
-            actions=(),
-            action_probs=action_probs,
-            state=state)
+        return ModelOutput(value=state[:, -1] * 0.5 * self._scale,
+                           actions=(),
+                           action_probs=action_probs,
+                           state=state)
 
 
 _mcts_model_id = 0
@@ -75,15 +75,15 @@ def _create_mcts_model(observation_spec, action_spec, num_unroll_steps,
 
 
 class MockMCTSAlgorithm(OffPolicyAlgorithm):
+
     def __init__(self, observation_spec, action_spec, model, discount,
                  debug_summaries, name):
-        super().__init__(
-            observation_spec,
-            action_spec,
-            train_state_spec=MCTSState(
-                steps=alf.TensorSpec((), dtype=torch.int64)),
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec,
+                         action_spec,
+                         train_state_spec=MCTSState(
+                             steps=alf.TensorSpec((), dtype=torch.int64)),
+                         debug_summaries=debug_summaries,
+                         name=name)
         self._model = model
         self._discount = discount
 
@@ -98,8 +98,8 @@ class MockMCTSAlgorithm(OffPolicyAlgorithm):
         model_output = self._model.initial_inference(time_step.observation)
         action_id = model_output.action_probs.argmax(dim=1)
         if isinstance(model_output.actions, torch.Tensor):
-            action = model_output.actions[torch.arange(model_output.actions.
-                                                       shape[0]), action_id]
+            action = model_output.actions[
+                torch.arange(model_output.actions.shape[0]), action_id]
         else:
             action = action_id
         return ds.AlgStep(
@@ -116,6 +116,7 @@ class MockMCTSAlgorithm(OffPolicyAlgorithm):
 
 
 class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+
     def _step_types(self):
         #        01234567890123
         return ['FMMMLFMMLFMMMM', 'FMMMMMLFMMMMLF']
@@ -197,11 +198,10 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         experience = ds.make_experience(time_step, alg_step, state)
         experience_spec = ds.make_experience(time_step_spec, alg_step_spec,
                                              muzero.train_state_spec)
-        replay_buffer = ReplayBuffer(
-            data_spec=experience_spec,
-            num_environments=batch_size,
-            max_length=16,
-            keep_episodic_info=True)
+        replay_buffer = ReplayBuffer(data_spec=experience_spec,
+                                     num_environments=batch_size,
+                                     max_length=16,
+                                     keep_episodic_info=True)
 
         #     01234567890123
         # 0  'FMMMLFMMLFMMMM'
@@ -240,18 +240,17 @@ class MuzeroAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             state = alg_step.state
 
         # TODO(breakds): Add documentation for this
-        positions = torch.arange(14).unfold(0, mini_batch_length, 1).repeat(
-            2, 1)
+        positions = torch.arange(14).unfold(0, mini_batch_length,
+                                            1).repeat(2, 1)
         env_ids = torch.zeros(positions.shape[0], 1, dtype=torch.int64)
         env_ids[(positions.shape[0] // 2):] = 1
 
         experience = replay_buffer.get_field(None, env_ids.cpu(),
                                              positions.cpu())
 
-        batch_info = BatchInfo(
-            env_ids=env_ids[:, 0],
-            positions=positions[:, 0],
-            replay_buffer=replay_buffer)
+        batch_info = BatchInfo(env_ids=env_ids[:, 0],
+                               positions=positions[:, 0],
+                               replay_buffer=replay_buffer)
 
         processed_experience, processed_rollout_info = muzero.preprocess_experience(
             experience, experience.rollout_info, batch_info)

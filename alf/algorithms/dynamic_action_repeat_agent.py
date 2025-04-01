@@ -26,12 +26,11 @@ from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.utils.conditional_ops import conditional_update
 from alf.utils import common, summary_utils
 
-ActionRepeatState = namedtuple(
-    "ActionRepeatState", [
-        "rl", "action", "steps", "k", "rl_discount", "rl_reward",
-        "sample_rewards", "repr"
-    ],
-    default_value=())
+ActionRepeatState = namedtuple("ActionRepeatState", [
+    "rl", "action", "steps", "k", "rl_discount", "rl_reward", "sample_rewards",
+    "repr"
+],
+                               default_value=())
 
 
 @alf.configurable
@@ -105,21 +104,21 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                 debug_summaries=debug_summaries)
             rl_observation_spec = repr_learner.output_spec
 
-        self._rl_action_spec = (BoundedTensorSpec(
-            shape=(), dtype='int64', maximum=K - 1), action_spec)
-        rl = rl_algorithm_cls(
-            observation_spec=rl_observation_spec,
-            action_spec=self._rl_action_spec,
-            debug_summaries=debug_summaries)
+        self._rl_action_spec = (BoundedTensorSpec(shape=(),
+                                                  dtype='int64',
+                                                  maximum=K - 1), action_spec)
+        rl = rl_algorithm_cls(observation_spec=rl_observation_spec,
+                              action_spec=self._rl_action_spec,
+                              debug_summaries=debug_summaries)
 
         self._action_spec = action_spec
         self._observation_spec = observation_spec
         self._gamma = gamma
 
-        predict_state_spec = ActionRepeatState(
-            rl=rl.predict_state_spec,
-            action=action_spec,
-            steps=TensorSpec(shape=(), dtype='int64'))
+        predict_state_spec = ActionRepeatState(rl=rl.predict_state_spec,
+                                               action=action_spec,
+                                               steps=TensorSpec(shape=(),
+                                                                dtype='int64'))
 
         rollout_state_spec = predict_state_spec._replace(
             rl=rl.rollout_state_spec,
@@ -138,18 +137,17 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             train_state_spec = train_state_spec._replace(
                 repr=repr_learner.train_state_spec)
 
-        super().__init__(
-            observation_spec,
-            action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=train_state_spec,
-            rollout_state_spec=rollout_state_spec,
-            predict_state_spec=predict_state_spec,
-            env=env,
-            config=config,
-            optimizer=optimizer,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec,
+                         action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=train_state_spec,
+                         rollout_state_spec=rollout_state_spec,
+                         predict_state_spec=predict_state_spec,
+                         env=env,
+                         config=config,
+                         optimizer=optimizer,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._repr_learner = repr_learner
         self._reward_normalizer = None
@@ -187,12 +185,11 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                 rl=rl_step.state,
                 repr=repr_state)
 
-        new_state = conditional_update(
-            target=state,
-            cond=switch_action,
-            func=_generate_new_action,
-            time_step=time_step,
-            state=state)
+        new_state = conditional_update(target=state,
+                                       cond=switch_action,
+                                       func=_generate_new_action,
+                                       time_step=time_step,
+                                       state=state)
         new_state = new_state._replace(steps=new_state.steps - 1)
 
         return AlgStep(
@@ -206,8 +203,9 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
         # state.k is the current step index over K steps
         state = state._replace(
-            rl_reward=state.rl_reward + torch.pow(
-                self._gamma, state.k.to(torch.float32)) * time_step.reward,
+            rl_reward=state.rl_reward +
+            torch.pow(self._gamma, state.k.to(torch.float32)) *
+            time_step.reward,
             rl_discount=state.rl_discount * time_step.discount * self._gamma,
             k=state.k + 1)
 
@@ -215,11 +213,10 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             # The probability of a reward at step k being kept till K steps is:
             # 1/k * k/(k+1) * .. * (K-1)/K = 1/K. This provides enough randomness
             # to make the normalizer unbiased.
-            state = state._replace(
-                sample_rewards=torch.where((
-                    torch.rand_like(state.sample_rewards) < 1. /
-                    state.k.to(torch.float32)
-                ), time_step.reward, state.sample_rewards))
+            state = state._replace(sample_rewards=torch.where((
+                torch.rand_like(state.sample_rewards) < 1. /
+                state.k.to(torch.float32)
+            ), time_step.reward, state.sample_rewards))
 
         @torch.no_grad()
         def _generate_new_action(time_step, state):
@@ -238,8 +235,8 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
             rl_step = self._rl.rollout_step(
                 rl_time_step._replace(observation=observation), state.rl)
-            rl_step = rl_step._replace(
-                info=(rl_step.info, state.k, state.sample_rewards))
+            rl_step = rl_step._replace(info=(rl_step.info, state.k,
+                                             state.sample_rewards))
             # Store to replay buffer.
             super(DynamicActionRepeatAgent, self).observe_for_replay(
                 make_experience(
@@ -260,12 +257,11 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                 sample_rewards=torch.zeros_like(state.sample_rewards),
                 rl_discount=torch.ones_like(state.rl_discount))
 
-        new_state = conditional_update(
-            target=state,
-            cond=switch_action,
-            func=_generate_new_action,
-            time_step=time_step,
-            state=state)
+        new_state = conditional_update(target=state,
+                                       cond=switch_action,
+                                       func=_generate_new_action,
+                                       time_step=time_step,
+                                       state=state)
 
         new_state = new_state._replace(steps=new_state.steps - 1)
 
@@ -335,8 +331,9 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             var = torch.relu(m2 - m**2)
 
             # compute accumulated mean over ``repeats`` steps
-            acc_mean = ((1 - torch.pow(self._gamma, repeats.to(torch.float32)))
-                        / (1 - self._gamma) * m)
+            acc_mean = (
+                (1 - torch.pow(self._gamma, repeats.to(torch.float32))) /
+                (1 - self._gamma) * m)
 
             reward -= acc_mean
             reward = alf.layers.normalize_along_batch_dims(

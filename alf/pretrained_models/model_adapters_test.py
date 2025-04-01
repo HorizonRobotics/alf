@@ -21,11 +21,13 @@ import alf
 from alf.optimizers import AdamTF
 
 from alf.pretrained_models.pretrained_model import PretrainedModel
-from alf.pretrained_models.model_adapters.lora import (
-    LinearAdapter, Conv2dAdapter, EmbeddingAdapter)
+from alf.pretrained_models.model_adapters.lora import (LinearAdapter,
+                                                       Conv2dAdapter,
+                                                       EmbeddingAdapter)
 
 
 class LoRATest(alf.test.TestCase, parameterized.TestCase):
+
     def _test(self, x, pretrained):
         y0 = pretrained._model(x)
         y1 = pretrained(x)
@@ -78,8 +80,8 @@ class LoRATest(alf.test.TestCase, parameterized.TestCase):
 
         x = torch.tensor([0.1, 0.2, 0.3, 0.4])
 
-        fc = torch.nn.Sequential(
-            torch.nn.Linear(4, 8), torch.nn.Tanh(), torch.nn.Linear(8, 4))
+        fc = torch.nn.Sequential(torch.nn.Linear(4, 8), torch.nn.Tanh(),
+                                 torch.nn.Linear(8, 4))
         pretrained = PretrainedModel(fc, [LinearAdapter])
 
         self._test(x, pretrained)
@@ -91,13 +93,12 @@ class LoRATest(alf.test.TestCase, parameterized.TestCase):
 
         x = torch.rand([8, 10, 10])
         conv = torch.nn.Sequential(
-            torch.nn.Conv2d(
-                8,
-                8,
-                kernel_size=(3, 5),
-                padding=(1, 2),
-                dilation=2,
-                stride=(2, 4)), torch.nn.Tanh(),
+            torch.nn.Conv2d(8,
+                            8,
+                            kernel_size=(3, 5),
+                            padding=(1, 2),
+                            dilation=2,
+                            stride=(2, 4)), torch.nn.Tanh(),
             torch.nn.Conv2d(8, 16, kernel_size=1, groups=2))
 
         pretrained = PretrainedModel(conv, [Conv2dAdapter])

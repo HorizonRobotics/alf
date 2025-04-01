@@ -31,8 +31,9 @@ def define_config(name, default_value):
     return alf.get_config_value('_CONFIG._USER.' + name)
 
 
-alf.config(
-    "create_environment", env_name="Pendulum-v0", num_parallel_environments=1)
+alf.config("create_environment",
+           env_name="Pendulum-v0",
+           num_parallel_environments=1)
 
 # +------------------------------+
 # | Dynamics Learning            |
@@ -40,26 +41,23 @@ alf.config(
 
 stochastic_dynamics = define_config("stochastic_dynamics", False)
 
-alf.config(
-    "DynamicsNetwork",
-    activation=swish,
-    joint_fc_layer_params=(500, 500, 500),
-    kernel_initializer=variance_scaling_init)
+alf.config("DynamicsNetwork",
+           activation=swish,
+           joint_fc_layer_params=(500, 500, 500),
+           kernel_initializer=variance_scaling_init)
 
 alf.config("NormalProjectionNetwork", std_transform=clipped_exp)
 
 if stochastic_dynamics:
     alf.config("DynamicsNetwork", prob=1)
-    dynamics_algorithm_ctor = partial(
-        StochasticDynamicsAlgorithm,
-        num_replicas=1,
-        dynamics_network_ctor=DynamicsNetwork)
+    dynamics_algorithm_ctor = partial(StochasticDynamicsAlgorithm,
+                                      num_replicas=1,
+                                      dynamics_network_ctor=DynamicsNetwork)
 else:
     alf.config("DynamicsNetwork", prob=0)
-    dynamics_algorithm_ctor = partial(
-        DeterministicDynamicsAlgorithm,
-        num_replicas=1,
-        dynamics_network_ctor=DynamicsNetwork)
+    dynamics_algorithm_ctor = partial(DeterministicDynamicsAlgorithm,
+                                      num_replicas=1,
+                                      dynamics_network_ctor=DynamicsNetwork)
 
 # +------------------------------+
 # | Planner                      |
@@ -71,30 +69,29 @@ assert planner_type in ["cem", "random_shooting"
                         ], (f"Unrecognized planner type '{planner_type}'.")
 
 if planner_type == "cem":
-    planner_ctor = partial(
-        CEMPlanAlgorithm,
-        population_size=400,
-        planning_horizon=25,
-        elite_size=40,
-        max_iter_num=5,
-        epsilon=0.01,
-        tau=0.9,
-        scalar_var=1.0)
+    planner_ctor = partial(CEMPlanAlgorithm,
+                           population_size=400,
+                           planning_horizon=25,
+                           elite_size=40,
+                           max_iter_num=5,
+                           epsilon=0.01,
+                           tau=0.9,
+                           scalar_var=1.0)
 elif planner_type == "random_shooting":
-    planner_ctor = partial(
-        RandomShootingAlgorithm, population_size=5000, planning_horizon=25)
+    planner_ctor = partial(RandomShootingAlgorithm,
+                           population_size=5000,
+                           planning_horizon=25)
 
 # +------------------------------+
 # | MBRL Algorithm               |
 # +------------------------------+
 
-alf.config(
-    "MbrlAlgorithm",
-    dynamics_module_ctor=dynamics_algorithm_ctor,
-    reward_module=FixedRewardFunction(reward_function_for_pendulum),
-    planner_module_ctor=planner_ctor,
-    particles_per_replica=1,
-    dynamics_optimizer=AdamW(lr=1e-3, weight_decay=1e-4))
+alf.config("MbrlAlgorithm",
+           dynamics_module_ctor=dynamics_algorithm_ctor,
+           reward_module=FixedRewardFunction(reward_function_for_pendulum),
+           planner_module_ctor=planner_ctor,
+           particles_per_replica=1,
+           dynamics_optimizer=AdamW(lr=1e-3, weight_decay=1e-4))
 
 alf.config(
     "TrainerConfig",

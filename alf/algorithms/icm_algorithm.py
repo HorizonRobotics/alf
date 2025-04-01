@@ -81,11 +81,10 @@ class ICMAlgorithm(Algorithm):
         else:
             feature_spec = observation_spec
 
-        super(ICMAlgorithm, self).__init__(
-            train_state_spec=feature_spec,
-            predict_state_spec=(),
-            optimizer=optimizer,
-            name=name)
+        super(ICMAlgorithm, self).__init__(train_state_spec=feature_spec,
+                                           predict_state_spec=(),
+                                           optimizer=optimizer,
+                                           name=name)
 
         flat_action_spec = alf.nest.flatten(action_spec)
         assert len(
@@ -201,13 +200,11 @@ class ICMAlgorithm(Algorithm):
             intrinsic_reward = self._reward_normalizer.normalize(
                 intrinsic_reward)
 
-        return AlgStep(
-            output=intrinsic_reward,
-            state=feature,
-            info=ICMInfo(
-                step_type=time_step.step_type,
-                forward_loss=forward_loss,
-                inverse_loss=inverse_loss))
+        return AlgStep(output=intrinsic_reward,
+                       state=feature,
+                       info=ICMInfo(step_type=time_step.step_type,
+                                    forward_loss=forward_loss,
+                                    inverse_loss=inverse_loss))
 
     def predict_step(self, inputs: TimeStep, state):
         return self._step(inputs, state)
@@ -222,6 +219,6 @@ class ICMAlgorithm(Algorithm):
         mask = (info.step_type != StepType.FIRST).to(torch.float32)
         forward_loss = (info.forward_loss * mask).mean()
         inverse_loss = (info.inverse_loss * mask).mean()
-        return LossInfo(
-            scalar_loss=forward_loss + inverse_loss,
-            extra=dict(forward_loss=forward_loss, inverse_loss=inverse_loss))
+        return LossInfo(scalar_loss=forward_loss + inverse_loss,
+                        extra=dict(forward_loss=forward_loss,
+                                   inverse_loss=inverse_loss))

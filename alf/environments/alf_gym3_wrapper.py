@@ -82,11 +82,10 @@ def _gym3_space_to_tensor_spec(space, force_int64: bool = False):
             # Currently this follows gym3's logic to convert it to unbounded
             # tesnor as gym3.types.Real is not bounded.
             eltype = gym3_space.eltype
-            return BoundedTensorSpec(
-                shape=gym3_space.shape,
-                dtype=eltype.dtype_name,
-                minimum=float('-inf'),
-                maximum=float('inf'))
+            return BoundedTensorSpec(shape=gym3_space.shape,
+                                     dtype=eltype.dtype_name,
+                                     minimum=float('-inf'),
+                                     maximum=float('inf'))
         else:
             raise NotImplementedError(
                 f'AlfGym3Wrapper does not support space element type {eltype} yet'
@@ -240,19 +239,19 @@ class AlfGym3Wrapper(AlfEnvironment):
             # simply assumes ndim == 3 implies an image.
             if spec.ndim != 3:
                 return spec
-            return BoundedTensorSpec(
-                shape=(spec.shape[2], spec.shape[0], spec.shape[1]),
-                dtype=spec.dtype,
-                minimum=spec.minimum,
-                maximum=spec.maximum)
+            return BoundedTensorSpec(shape=(spec.shape[2], spec.shape[0],
+                                            spec.shape[1]),
+                                     dtype=spec.dtype,
+                                     minimum=spec.minimum,
+                                     maximum=spec.maximum)
 
         if image_channel_first:
             self._observation_spec = nest.map_structure(
                 _image_channel_first_permute_spec, self._observation_spec)
 
         # For discrete action type, always use int64 during the conversion.
-        self._action_spec = _gym3_space_to_tensor_spec(
-            self._gym3_env.ac_space, force_int64=True)
+        self._action_spec = _gym3_space_to_tensor_spec(self._gym3_env.ac_space,
+                                                       force_int64=True)
         self._env_info_spec = _extract_env_info_spec(
             self._gym3_env.get_info()[0], ignored_info_keys=ignored_info_keys)
 
@@ -317,15 +316,15 @@ class AlfGym3Wrapper(AlfEnvironment):
             0.0 if s == ds.StepType.LAST else self._discount for s in step_type
         ]
 
-        return ds.TimeStep(
-            step_type=torch.as_tensor(step_type),
-            reward=torch.as_tensor(reward),
-            discount=torch.as_tensor(discount),
-            observation=observation,
-            env_id=torch.arange(self.batch_size),
-            prev_action=torch.as_tensor(action),
-            env_info=nest.map_structure(
-                lambda *values: torch.as_tensor(values), *trimmed_info))
+        return ds.TimeStep(step_type=torch.as_tensor(step_type),
+                           reward=torch.as_tensor(reward),
+                           discount=torch.as_tensor(discount),
+                           observation=observation,
+                           env_id=torch.arange(self.batch_size),
+                           prev_action=torch.as_tensor(action),
+                           env_info=nest.map_structure(
+                               lambda *values: torch.as_tensor(values),
+                               *trimmed_info))
 
     # Implement abstract _reset
     def _reset(self) -> ds.TimeStep:
@@ -416,11 +415,10 @@ class AlfGym3Wrapper(AlfEnvironment):
             for d, f in zip(self._prev_first, first)
         ]
 
-        time_step = self._create_time_step(
-            reward=reward,
-            observation=observation,
-            step_type=step_type,
-            action=action)
+        time_step = self._create_time_step(reward=reward,
+                                           observation=observation,
+                                           step_type=step_type,
+                                           action=action)
 
         self._prev_first = first
 

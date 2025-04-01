@@ -160,8 +160,8 @@ class ParallelDynamicsNetwork(Network):
                 initializations.
             name (str):
         """
-        super().__init__(
-            input_tensor_spec=dynamics_network.input_tensor_spec, name=name)
+        super().__init__(input_tensor_spec=dynamics_network.input_tensor_spec,
+                         name=name)
         self._joint_encoder = dynamics_network._joint_encoder.make_parallel(
             n, True)
         self._prob = dynamics_network._prob

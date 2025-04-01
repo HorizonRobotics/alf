@@ -23,6 +23,7 @@ from alf.utils import losses
 
 
 class LossTest(alf.test.TestCase):
+
     def test_discrete_regression_loss(self):
         n = 10
         batch_size = 256
@@ -85,6 +86,7 @@ class LossTest(alf.test.TestCase):
 
 
 class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(('mean', ), ('sum', ), ('none', ))
     def test_loss_shape(self, reduction):
         prediction = torch.rand([2, 5, 4])
@@ -119,9 +121,8 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
         """
         samples_n = 20200
         N = 5
-        mean = torch.arange(
-            N, dtype=torch.float32).unsqueeze(0).expand(samples_n,
-                                                        -1)  # [samples_n, N]
+        mean = torch.arange(N, dtype=torch.float32).unsqueeze(0).expand(
+            samples_n, -1)  # [samples_n, N]
         std = torch.ones_like(mean) * 0.01
         target = torch.normal(mean, std).unsqueeze(-1)  # [samples_n, N, 1]
 
@@ -137,11 +138,10 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
         transform_layers = []
         for i in range(3):
             transform_layers.append(
-                alf.layers.TransformerBlock(
-                    d_model=d_model,
-                    num_heads=3,
-                    memory_size=N + 1,
-                    positional_encoding='abs'))
+                alf.layers.TransformerBlock(d_model=d_model,
+                                            num_heads=3,
+                                            memory_size=N + 1,
+                                            positional_encoding='abs'))
         model = torch.nn.Sequential(
             alf.layers.FC(1, d_model, torch.relu_),
             alf.layers.FC(d_model, d_model, torch.relu_), *transform_layers,
@@ -208,16 +208,16 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
         mean = torch.randn((N, D)).unsqueeze(0)  # [1,N,D]
         std = torch.ones_like(mean) * 0.5  # [1,N,D]
 
-        inputs = torch.normal(
-            mean.repeat(samples_n, 1, 1), std.repeat(samples_n, 1,
-                                                     1))  # [samples_n,N,D]
+        inputs = torch.normal(mean.repeat(samples_n, 1, 1),
+                              std.repeat(samples_n, 1, 1))  # [samples_n,N,D]
         target = torch.arange(N).unsqueeze(0).repeat(samples_n,
                                                      1)  # [samples_n,N]
 
         # randomly shuffle
         idx = torch.argsort(torch.randn(samples_n, N), dim=1)
-        inputs = torch.gather(
-            inputs, dim=1, index=idx.unsqueeze(-1).expand(-1, -1, D))
+        inputs = torch.gather(inputs,
+                              dim=1,
+                              index=idx.unsqueeze(-1).expand(-1, -1, D))
         target = torch.gather(target, dim=1, index=idx)
         # Only take the first M objects for each sample
         inputs = inputs[:, :M, :]
@@ -235,8 +235,8 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
                     num_heads=3,
                     memory_size=M * 2,  # input + queries
                     positional_encoding='abs' if i == 0 else 'none'))
-        model = torch.nn.Sequential(*transform_layers, alf.layers.FC(
-            d_model, N))
+        model = torch.nn.Sequential(*transform_layers,
+                                    alf.layers.FC(d_model, N))
         input_fc = alf.layers.FC(D, d_model)
 
         queries = torch.nn.Parameter(torch.Tensor(M, d_model))
@@ -250,13 +250,13 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
 
         def _compute_cost_mat(p, t):
             p = torch.nn.functional.log_softmax(p, dim=-1)
-            oh_t = torch.nn.functional.one_hot(
-                t, num_classes=N).to(torch.float32)
+            oh_t = torch.nn.functional.one_hot(t,
+                                               num_classes=N).to(torch.float32)
             return -torch.einsum('bnk,bmk->bnm', p, oh_t)
 
-        optimizer = torch.optim.Adam(
-            list(model.parameters()) + list(input_fc.parameters()) + [queries],
-            lr=1e-3)
+        optimizer = torch.optim.Adam(list(model.parameters()) +
+                                     list(input_fc.parameters()) + [queries],
+                                     lr=1e-3)
         epochs = 5
         batch_size = 100
         matcher = losses.BipartiteMatchingLoss(reduction='mean')

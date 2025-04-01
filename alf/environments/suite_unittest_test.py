@@ -26,13 +26,15 @@ from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 
 
 class SuiteUnittestEnvTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(ActionType.Discrete, ActionType.Continuous)
     def test_value_unittest_env(self, action_type):
         batch_size = 1
         steps_per_episode = 13
 
-        env = ValueUnittestEnv(
-            batch_size, steps_per_episode, action_type=action_type)
+        env = ValueUnittestEnv(batch_size,
+                               steps_per_episode,
+                               action_type=action_type)
 
         time_step = env.reset()
         for _ in range(10):
@@ -61,8 +63,9 @@ class SuiteUnittestEnvTest(parameterized.TestCase, alf.test.TestCase):
         batch_size = 100
         steps_per_episode = 13
 
-        env = PolicyUnittestEnv(
-            batch_size, steps_per_episode, action_type=action_type)
+        env = PolicyUnittestEnv(batch_size,
+                                steps_per_episode,
+                                action_type=action_type)
 
         time_step = env.reset()
         for _ in range(10):

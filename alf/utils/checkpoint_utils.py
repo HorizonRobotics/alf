@@ -221,8 +221,8 @@ class Checkpointer(object):
                 if len(unexpected_keys) > 0:
                     error_msgs.insert(
                         0, 'Unexpected key(s) in state_dict: {}. '.format(
-                            ', '.join(
-                                '"{}"'.format(k) for k in unexpected_keys)))
+                            ', '.join('"{}"'.format(k)
+                                      for k in unexpected_keys)))
                 if len(missing_keys) > 0:
                     error_msgs.insert(
                         0, 'Missing key(s) in state_dict: {}. '.format(
@@ -259,12 +259,12 @@ class Checkpointer(object):
 
         checkpoint = torch.load(f_path, map_location=map_location)
         if including_optimizer:
-            opt_checkpoint = torch.load(
-                f_path + '-optimizer', map_location=map_location)
+            opt_checkpoint = torch.load(f_path + '-optimizer',
+                                        map_location=map_location)
             _merge_checkpoint(checkpoint, opt_checkpoint)
         if including_replay_buffer:
-            replay_buffer_checkpoint = torch.load(
-                f_path + '-replay_buffer', map_location=map_location)
+            replay_buffer_checkpoint = torch.load(f_path + '-replay_buffer',
+                                                  map_location=map_location)
             _merge_checkpoint(checkpoint, replay_buffer_checkpoint)
 
         self._global_step = checkpoint["global_step"]
@@ -350,8 +350,9 @@ class Checkpointer(object):
 
         f_path = os.path.join(self._ckpt_dir, f"ckpt-{suffix}")
         state = {
-            k: v.module.state_dict()
-            if type(v) == torch.nn.DataParallel else v.state_dict()
+            k:
+                v.module.state_dict()
+                if type(v) == torch.nn.DataParallel else v.state_dict()
             for k, v in self._modules.items()
         }
         model_state = {}
@@ -388,25 +389,25 @@ class Checkpointer(object):
 
             # save all the state dictionary to json files, only retaining the
             # structures, replacing value with placeholders
-            with open(
-                    os.path.join(self._ckpt_dir, "ckpt-structure.json"),
-                    "w") as outfile:
-                json.dump(
-                    _use_placeholder_value(model_state), outfile, indent=4)
+            with open(os.path.join(self._ckpt_dir, "ckpt-structure.json"),
+                      "w") as outfile:
+                json.dump(_use_placeholder_value(model_state),
+                          outfile,
+                          indent=4)
             with open(
                     os.path.join(self._ckpt_dir,
                                  "ckpt-structure-optimizer.json"),
                     "w") as outfile:
-                json.dump(
-                    _use_placeholder_value(optimizer_state), outfile, indent=4)
+                json.dump(_use_placeholder_value(optimizer_state),
+                          outfile,
+                          indent=4)
             with open(
                     os.path.join(self._ckpt_dir,
                                  "ckpt-structure-replay_buffer.json"),
                     "w") as outfile:
-                json.dump(
-                    _use_placeholder_value(replay_buffer_state),
-                    outfile,
-                    indent=4)
+                json.dump(_use_placeholder_value(replay_buffer_state),
+                          outfile,
+                          indent=4)
 
         self._global_step = global_step
 

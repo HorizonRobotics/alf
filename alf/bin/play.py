@@ -116,19 +116,17 @@ def play():
 
     seed = common.set_random_seed(FLAGS.random_seed)
     if FLAGS.parallel_play > 1:
-        alf.config(
-            'create_environment',
-            for_evaluation=True,
-            num_parallel_environments=FLAGS.parallel_play,
-            mutable=False)
+        alf.config('create_environment',
+                   for_evaluation=True,
+                   num_parallel_environments=FLAGS.parallel_play,
+                   mutable=False)
     else:
-        alf.config(
-            'create_environment',
-            for_evaluation=True,
-            nonparallel=True,
-            num_parallel_environments=1,
-            batch_size_per_env=1,
-            mutable=False)
+        alf.config('create_environment',
+                   for_evaluation=True,
+                   nonparallel=True,
+                   num_parallel_environments=1,
+                   batch_size_per_env=1,
+                   mutable=False)
     alf.config('TrainerConfig', mutable=False, random_seed=seed)
     conf_file = common.get_conf_file()
     assert conf_file is not None, "Conf file not found! Check your root_dir"
@@ -218,12 +216,11 @@ def launch_snapshot_play():
 
     args = ['python', '-m', 'alf.bin.play'] + flags
     try:
-        subprocess.check_call(
-            args,
-            env=env_vars,
-            stdout=sys.stdout,
-            stderr=sys.stdout,
-            shell=False)
+        subprocess.check_call(args,
+                              env=env_vars,
+                              stdout=sys.stdout,
+                              stderr=sys.stdout,
+                              shell=False)
     except subprocess.CalledProcessError:
         # No need to output anything
         pass

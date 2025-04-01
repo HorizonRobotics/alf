@@ -31,8 +31,10 @@ from alf.algorithms.rl_algorithm_test import MyEnv
 def create_algorithm(env):
     config = TrainerConfig(root_dir="dummy", unroll_length=5)
     obs_spec = alf.TensorSpec((2, ), dtype='float32')
-    action_spec = alf.BoundedTensorSpec(
-        shape=(), dtype='int32', minimum=0, maximum=2)
+    action_spec = alf.BoundedTensorSpec(shape=(),
+                                        dtype='int32',
+                                        minimum=0,
+                                        maximum=2)
 
     fc_layer_params = (10, 8, 6)
 
@@ -43,21 +45,21 @@ def create_algorithm(env):
 
     value_network = partial(ValueNetwork, fc_layer_params=(10, 8, 1))
 
-    alg = ActorCriticAlgorithm(
-        observation_spec=obs_spec,
-        action_spec=action_spec,
-        reward_spec=env.reward_spec(),
-        actor_network_ctor=actor_network,
-        value_network_ctor=value_network,
-        env=env,
-        config=config,
-        optimizer=alf.optimizers.Adam(lr=1e-2),
-        debug_summaries=True,
-        name="MyActorCritic")
+    alg = ActorCriticAlgorithm(observation_spec=obs_spec,
+                               action_spec=action_spec,
+                               reward_spec=env.reward_spec(),
+                               actor_network_ctor=actor_network,
+                               value_network_ctor=value_network,
+                               env=env,
+                               config=config,
+                               optimizer=alf.optimizers.Adam(lr=1e-2),
+                               debug_summaries=True,
+                               name="MyActorCritic")
     return alg
 
 
 class ActorCriticAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((1, ), (3, ))
     def test_ac_algorithm(self, reward_dim):
         env = MyEnv(batch_size=3, reward_dim=reward_dim)

@@ -21,26 +21,23 @@ from alf.environments import suite_carla
 from alf.environments.alf_wrappers import ActionObservationWrapper, ScalarRewardWrapper
 from alf.networks import SocialAttentionNetwork
 
-alf.config(
-    'suite_carla.load',
-    wrappers=[ActionObservationWrapper, ScalarRewardWrapper])
+alf.config('suite_carla.load',
+           wrappers=[ActionObservationWrapper, ScalarRewardWrapper])
 
 alf.config('CameraSensor', image_size_x=192, image_size_y=96, fov=135)
 
 alf.config('CollisionSensor', include_collision_location=True)
 
 history_idx = [-16, -11, -6, -1]
-alf.config(
-    'DynamicObjectSensor',
-    with_ego_history=True,
-    history_idx=history_idx,
-    max_object_number=6)
+alf.config('DynamicObjectSensor',
+           with_ego_history=True,
+           history_idx=history_idx,
+           max_object_number=6)
 
-alf.config(
-    'create_environment',
-    env_name='Town01',
-    env_load_fn=suite_carla.load,
-    num_parallel_environments=4)
+alf.config('create_environment',
+           env_name='Town01',
+           env_load_fn=suite_carla.load,
+           num_parallel_environments=4)
 
 
 def create_input_preprocessors(encoding_dim, use_bn=False, preproc_bn=False):
@@ -53,9 +50,10 @@ def create_input_preprocessors(encoding_dim, use_bn=False, preproc_bn=False):
     def _make_simple_preproc(spec, use_bias=False):
         return torch.nn.Sequential(
             alf.layers.Reshape([-1]),
-            alf.layers.FC(
-                spec.numel, encoding_dim, use_bias=use_bias,
-                use_bn=preproc_bn))
+            alf.layers.FC(spec.numel,
+                          encoding_dim,
+                          use_bias=use_bias,
+                          use_bn=preproc_bn))
 
     for sensor, spec in observation_spec['observation'].items():
         if sensor == 'camera':
@@ -84,9 +82,9 @@ def create_input_preprocessors(encoding_dim, use_bn=False, preproc_bn=False):
         'observation':
             observation_preprocessors,
         'prev_action':
-            _make_simple_preproc(
-                prev_action_spec,
-                use_bias='camera' not in observation_spec['observation']),
+            _make_simple_preproc(prev_action_spec,
+                                 use_bias='camera'
+                                 not in observation_spec['observation']),
     }
 
 

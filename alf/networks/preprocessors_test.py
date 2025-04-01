@@ -72,13 +72,12 @@ class TestInputpreprocessor(parameterized.TestCase, alf.test.TestCase):
                                      input_preprocessor)
 
         if lstm:
-            network_ctor = functools.partial(
-                LSTMEncodingNetwork,
-                hidden_size=(1, ),
-                post_fc_layer_params=(2, 2))
+            network_ctor = functools.partial(LSTMEncodingNetwork,
+                                             hidden_size=(1, ),
+                                             post_fc_layer_params=(2, 2))
         else:
-            network_ctor = functools.partial(
-                EncodingNetwork, fc_layer_params=(10, 10))
+            network_ctor = functools.partial(EncodingNetwork,
+                                             fc_layer_params=(10, 10))
 
         net = network_ctor(
             input_tensor_spec=[
@@ -129,8 +128,10 @@ class TestInputpreprocessor(parameterized.TestCase, alf.test.TestCase):
             outer_dims=(batch_size, ))
 
         input_preprocessor(batch)
-        self.assertRaises(
-            AssertionError, input_preprocessor, inputs=batch, state=batch)
+        self.assertRaises(AssertionError,
+                          input_preprocessor,
+                          inputs=batch,
+                          state=batch)
 
 
 if __name__ == '__main__':

@@ -20,6 +20,7 @@ from alf.experience_replayers.segment_tree import SumSegmentTree, MaxSegmentTree
 
 
 class SegmentTreeTest(alf.test.TestCase):
+
     def test_max_tree(self):
         for size in [1, 2, 3, 4, 7, 8, 9, 15, 16, 128]:
             tree = MaxSegmentTree(size)

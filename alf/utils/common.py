@@ -66,6 +66,7 @@ def add_method(cls):
     """
 
     def decorator(func):
+
         @wraps(func)
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
@@ -124,6 +125,7 @@ def tuplify2d(x):
 
 
 class Periodically(nn.Module):
+
     def __init__(self, body, period, name='periodically'):
         """Periodically performs the operation defined in body.
 
@@ -195,8 +197,8 @@ class TargetUpdater(nn.Module):
         target_models = as_list(target_models)
         assert len(models) == len(target_models), (
             "The length of models and "
-            "target_models are different: %s vs. %s" % (len(models),
-                                                        len(target_models)))
+            "target_models are different: %s vs. %s" %
+            (len(models), len(target_models)))
         for model, target_model in zip(models, target_models):
             self._validate(model, target_model)
         self._models = models
@@ -233,6 +235,7 @@ class TargetUpdater(nn.Module):
             return module
 
     def _validate(self, s, t):
+
         def _error_msg(ns, nt):
             return ("The corresponding parameter/buffer of the source model "
                     "and the target model have different name: %s vs %s" %
@@ -442,9 +445,9 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     """
     if torch.any(reset_mask):
         return alf.nest.map_structure(
-            lambda i_s, s: torch.where(
-                expand_dims_as(reset_mask, i_s), i_s.to(s.dtype), s),
-            initial_state, state)
+            lambda i_s, s: torch.where(expand_dims_as(reset_mask, i_s),
+                                       i_s.to(s.dtype), s), initial_state,
+            state)
     else:
         return state
 
@@ -473,8 +476,8 @@ def run_under_record_context(func,
     # For DDP training, we only do summary on one of the ranks.
     # Since rank-0 does more work than other rank (e.g. Evaluation),
     # we do summary on rank-1 to reduce the load of rank-0
-    if PerProcessContext(
-    ).is_distributed and PerProcessContext().ddp_rank != 1:
+    if PerProcessContext().is_distributed and PerProcessContext(
+    ).ddp_rank != 1:
         func()
         return
 
@@ -540,8 +543,9 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
 
     fields = fields or [None]
     for field in fields:
-        observation = nest.transform_nest(
-            nested=observation, field=field, func=_transform_image)
+        observation = nest.transform_nest(nested=observation,
+                                          field=field,
+                                          func=_transform_image)
     return observation
 
 
@@ -1389,8 +1393,8 @@ def check_numerics(nested):
     nested_finite = alf.nest.map_structure(
         lambda x: torch.all(torch.isfinite(x)), nested)
     if not all(alf.nest.flatten(nested_finite)):
-        bad = alf.nest.map_structure(lambda x, finite: () if finite else x,
-                                     nested, nested_finite)
+        bad = alf.nest.map_structure(lambda x, finite: ()
+                                     if finite else x, nested, nested_finite)
         assert all(alf.nest.flatten(nested_finite)), (
             "Some tensor in nested is not finite: %s" % bad)
 
@@ -1533,8 +1537,10 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
         args += ['--exclude=*']
         args += [src, target]
         # shell=True preserves string arguments
-        subprocess.check_call(
-            " ".join(args), stdout=sys.stdout, stderr=sys.stdout, shell=True)
+        subprocess.check_call(" ".join(args),
+                              stdout=sys.stdout,
+                              stderr=sys.stdout,
+                              shell=True)
 
     includes = [
         "*.py", "*.gin", "*.so", "*.json", "*.xml", "*.cpp", "*.c", "*.cc",
@@ -1660,8 +1666,8 @@ def compute_summary_or_eval_interval(config, summary_or_eval_calls=100):
         # the rollout env is always created with ``nonparallel=False``
         num_envs = alf.get_config_value(
             "create_environment.num_parallel_environments")
-        num_iterations = config.num_env_steps / (
-            num_envs * config.unroll_length)
+        num_iterations = config.num_env_steps / (num_envs *
+                                                 config.unroll_length)
 
     interval = math.ceil(num_iterations / summary_or_eval_calls)
     info_once("A summary or eval interval=%d is calculated" % interval)
@@ -1742,9 +1748,8 @@ def prune_exp_replay_state(
         exp = exp._replace(state=())
     elif id(rollout_state_spec) != id(train_state_spec):
         # Prune exp's state (rollout_state) according to the train state spec
-        exp = exp._replace(
-            state=alf.nest.prune_nest_like(
-                exp.state, train_state_spec, value_to_match=()))
+        exp = exp._replace(state=alf.nest.prune_nest_like(
+            exp.state, train_state_spec, value_to_match=()))
     return exp
 
 
@@ -1764,11 +1769,12 @@ def prune_exp_replay_env_info(
         env_info_spec = {}
 
     env_info = exp.time_step.env_info
-    pruned_env_info = alf.nest.prune_nest_like(
-        env_info, env_info_spec, value_to_match=())
+    pruned_env_info = alf.nest.prune_nest_like(env_info,
+                                               env_info_spec,
+                                               value_to_match=())
 
-    exp = exp.update_time_step_field(
-        field="env_info", new_value=pruned_env_info)
+    exp = exp.update_time_step_field(field="env_info",
+                                     new_value=pruned_env_info)
     return exp
 
 

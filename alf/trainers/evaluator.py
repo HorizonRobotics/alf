@@ -36,9 +36,9 @@ from alf.trainers import policy_trainer
 from alf.utils.schedulers import Scheduler, as_scheduler
 from collections import namedtuple
 
-EvalJob = namedtuple(
-    "EvalJob", ["type", "global_counter", "step_metrics", "state_dict"],
-    defaults=[None] * 4)
+EvalJob = namedtuple("EvalJob",
+                     ["type", "global_counter", "step_metrics", "state_dict"],
+                     defaults=[None] * 4)
 
 
 class Evaluator(object):
@@ -70,16 +70,15 @@ class Evaluator(object):
             self._job_queue = ctx.Queue()
             self._done_queue = ctx.Queue()
             pre_configs = dict(alf.get_handled_pre_configs())
-            self._worker = ctx.Process(
-                target=_worker,
-                args=(self._job_queue, self._done_queue, conf_file,
-                      pre_configs, num_envs, config.root_dir, seed))
+            self._worker = ctx.Process(target=_worker,
+                                       args=(self._job_queue, self._done_queue,
+                                             conf_file, pre_configs, num_envs,
+                                             config.root_dir, seed))
             self._worker.start()
         else:
-            self._env = create_environment(
-                for_evaluation=True,
-                num_parallel_environments=num_envs,
-                seed=seed)
+            self._env = create_environment(for_evaluation=True,
+                                           num_parallel_environments=num_envs,
+                                           seed=seed)
             self._evaluator = SyncEvaluator(self._env, config)
 
     def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
@@ -102,11 +101,11 @@ class Evaluator(object):
         with alf.summary.record_if(lambda: True):
             with record_time("time/evaluation"):
                 if self._async:
-                    job = EvalJob(
-                        type="eval",
-                        step_metrics=step_metric_values,
-                        global_counter=int(alf.summary.get_global_counter()),
-                        state_dict=algorithm.state_dict())
+                    job = EvalJob(type="eval",
+                                  step_metrics=step_metric_values,
+                                  global_counter=int(
+                                      alf.summary.get_global_counter()),
+                                  state_dict=algorithm.state_dict())
                     logging.info("Sending evaluation job...")
                     self._job_queue.put(job)
                     self._done_queue.get()
@@ -317,11 +316,10 @@ def _worker(job_queue: mp.Queue,
             seed = seed + 13579
         common.set_random_seed(seed)
         alf.config('TrainerConfig', mutable=False, random_seed=seed)
-        alf.config(
-            'create_environment',
-            for_evaluation=True,
-            num_parallel_environments=num_parallel_envs,
-            mutable=False)
+        alf.config('create_environment',
+                   for_evaluation=True,
+                   num_parallel_environments=num_parallel_envs,
+                   mutable=False)
         try:
             alf.pre_config(pre_configs)
             common.parse_conf_file(conf_file)
@@ -342,11 +340,10 @@ def _worker(job_queue: mp.Queue,
         common.set_transformed_observation_spec(observation_spec)
 
         algorithm_ctor = config.algorithm_ctor
-        algorithm = algorithm_ctor(
-            observation_spec=observation_spec,
-            action_spec=env.action_spec(),
-            reward_spec=env.reward_spec(),
-            config=config)
+        algorithm = algorithm_ctor(observation_spec=observation_spec,
+                                   action_spec=env.action_spec(),
+                                   reward_spec=env.reward_spec(),
+                                   config=config)
         algorithm.set_path('')
         policy_trainer.Trainer.get_trainer_progress(
         ).set_termination_criterion(config.num_iterations,
@@ -385,12 +382,13 @@ def _worker(job_queue: mp.Queue,
 
 
 @common.mark_eval
-def evaluate(env: AlfEnvironment,
-             algorithm: RLAlgorithm,
-             num_episodes: int,
-             num_steps: Union[int, Scheduler] = 0,
-             job_queue: Optional[PeekableQueue] = None
-             ) -> List[alf.metrics.StepMetric]:
+def evaluate(
+        env: AlfEnvironment,
+        algorithm: RLAlgorithm,
+        num_episodes: int,
+        num_steps: Union[int, Scheduler] = 0,
+        job_queue: Optional[PeekableQueue] = None
+) -> List[alf.metrics.StepMetric]:
     """Perform one round of evaluation.
 
     Args:
@@ -415,18 +413,18 @@ def evaluate(env: AlfEnvironment,
 
     buffer_size = max(num_episodes, 1)
     metrics = [
-        alf.metrics.AverageReturnMetric(
-            buffer_size=buffer_size, example_time_step=time_step),
-        alf.metrics.AverageEpisodeLengthMetric(
-            example_time_step=time_step, buffer_size=buffer_size),
-        alf.metrics.AverageEnvInfoMetric(
-            example_time_step=time_step, buffer_size=buffer_size),
-        alf.metrics.AverageDiscountedReturnMetric(
-            buffer_size=buffer_size, example_time_step=time_step),
+        alf.metrics.AverageReturnMetric(buffer_size=buffer_size,
+                                        example_time_step=time_step),
+        alf.metrics.AverageEpisodeLengthMetric(example_time_step=time_step,
+                                               buffer_size=buffer_size),
+        alf.metrics.AverageEnvInfoMetric(example_time_step=time_step,
+                                         buffer_size=buffer_size),
+        alf.metrics.AverageDiscountedReturnMetric(buffer_size=buffer_size,
+                                                  example_time_step=time_step),
         alf.metrics.EpisodicStartAverageDiscountedReturnMetric(
             example_time_step=time_step, buffer_size=buffer_size),
-        alf.metrics.AverageRewardMetric(
-            example_time_step=time_step, buffer_size=buffer_size),
+        alf.metrics.AverageRewardMetric(example_time_step=time_step,
+                                        buffer_size=buffer_size),
     ]
 
     counter = 0

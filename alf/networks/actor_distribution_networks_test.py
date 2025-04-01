@@ -32,13 +32,14 @@ from alf.utils.dist_utils import DistributionSpec
 
 
 class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
+
     def setUp(self):
         self._input_spec = [
             TensorSpec((3, 20, 20), torch.float32),
             TensorSpec((1, 20, 20), torch.float32)
         ]
-        self._image = zero_tensor_from_nested_spec(
-            self._input_spec, batch_size=1)
+        self._image = zero_tensor_from_nested_spec(self._input_spec,
+                                                   batch_size=1)
         self._conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
         self._fc_layer_params = (100, )
         self._input_preprocessors = [torch.tanh, None]
@@ -46,10 +47,9 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
 
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
-            network_ctor = functools.partial(
-                ActorDistributionRNNNetwork,
-                lstm_hidden_size=lstm_hidden_size,
-                actor_fc_layer_params=(64, 32))
+            network_ctor = functools.partial(ActorDistributionRNNNetwork,
+                                             lstm_hidden_size=lstm_hidden_size,
+                                             actor_fc_layer_params=(64, 32))
             if isinstance(lstm_hidden_size, int):
                 lstm_hidden_size = [lstm_hidden_size]
             state = [()]
@@ -70,12 +70,11 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
         network_ctor, state = self._init(lstm_hidden_size)
 
         # action_spec is not bounded
-        self.assertRaises(
-            AssertionError,
-            network_ctor,
-            self._input_spec,
-            action_spec,
-            conv_layer_params=self._conv_layer_params)
+        self.assertRaises(AssertionError,
+                          network_ctor,
+                          self._input_spec,
+                          action_spec,
+                          conv_layer_params=self._conv_layer_params)
 
         action_spec = BoundedTensorSpec((), torch.int32)
         actor_dist_net = network_ctor(
@@ -129,9 +128,8 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters(((200, 100), ), (None, ))
     def test_mixed_actor_distributions(self, lstm_hidden_size):
-        action_spec = dict(
-            discrete=BoundedTensorSpec((), dtype="int64"),
-            continuous=BoundedTensorSpec((3, )))
+        action_spec = dict(discrete=BoundedTensorSpec((), dtype="int64"),
+                           continuous=BoundedTensorSpec((3, )))
 
         network_ctor, state = self._init(lstm_hidden_size)
 
@@ -152,14 +150,14 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
                        DistributionSpec))
 
         self.assertTrue(isinstance(act_dist["discrete"], td.Categorical))
-        self.assertTrue(
-            isinstance(act_dist["continuous"].base_dist, td.Normal))
+        self.assertTrue(isinstance(act_dist["continuous"].base_dist,
+                                   td.Normal))
 
         if lstm_hidden_size is None:
             self.assertEqual(state, ())
         else:
-            self.assertEqual(
-                len(alf.nest.flatten(state)), 2 * len(lstm_hidden_size))
+            self.assertEqual(len(alf.nest.flatten(state)),
+                             2 * len(lstm_hidden_size))
 
     def test_make_parallel(self):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)
@@ -195,12 +193,11 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
 
         action_spec = TensorSpec((), torch.int32)
         # action_spec is not bounded
-        self.assertRaises(
-            AttributeError,
-            network_ctor,
-            obs_spec,
-            action_spec,
-            conv_layer_params=self._conv_layer_params)
+        self.assertRaises(AttributeError,
+                          network_ctor,
+                          obs_spec,
+                          action_spec,
+                          conv_layer_params=self._conv_layer_params)
 
         action_spec = BoundedTensorSpec((), torch.int32)
         actor_dist_net = network_ctor(

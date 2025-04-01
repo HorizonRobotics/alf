@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import alf
+
 alf.import_config("sac_conf.py")
 from alf.environments import suite_gym
 from alf.utils.losses import element_wise_squared_loss
@@ -20,20 +21,18 @@ from alf.utils.losses import element_wise_squared_loss
 import alf.utils.math_ops
 
 # environment config
-alf.config(
-    'create_environment',
-    env_load_fn=suite_gym.load,
-    env_name="Pendulum-v0",
-    num_parallel_environments=1)
+alf.config('create_environment',
+           env_load_fn=suite_gym.load,
+           env_name="Pendulum-v0",
+           num_parallel_environments=1)
 
 # algorithm config
 alf.config("ActorDistributionNetwork", fc_layer_params=(100, 100))
 
-alf.config(
-    "NormalProjectionNetwork",
-    state_dependent_std=True,
-    scale_distribution=True,
-    std_transform=alf.utils.math_ops.clipped_exp)
+alf.config("NormalProjectionNetwork",
+           state_dependent_std=True,
+           scale_distribution=True,
+           std_transform=alf.utils.math_ops.clipped_exp)
 
 alf.config("CriticNetwork", joint_fc_layer_params=(100, 100))
 

@@ -85,9 +85,9 @@ class MapPolylinePerception(object):
         # Add the size of one hot type encoding
         self._feature_size += self._category_encoder.size
 
-        self._spec = TensorSpec(
-            shape=(self._polyline_limit, self._feature_size),
-            dtype=torch.float32)
+        self._spec = TensorSpec(shape=(self._polyline_limit,
+                                       self._feature_size),
+                                dtype=torch.float32)
 
         self._polylines = None
 

@@ -24,6 +24,7 @@ import alf.nest as nest
 
 
 def _array_to_tensor(data):
+
     def _array_to_tensor(obj):
         return torch.as_tensor(obj).unsqueeze(
             dim=0) if isinstance(obj, (np.ndarray, numbers.Number)) else obj

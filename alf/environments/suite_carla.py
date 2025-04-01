@@ -61,11 +61,12 @@ import alf
 import alf.data_structures as ds
 from alf.utils import common
 from .alf_environment import AlfEnvironment
-from .carla_sensors import (
-    BEVSensor, CameraSensor, CollisionSensor, GnssSensor, IMUSensor,
-    LaneInvasionSensor, NavigationSensor, RadarSensor, RedlightSensor,
-    DynamicObjectSensor, ObstacleDetectionSensor, World, get_scaled_image_size,
-    MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
+from .carla_sensors import (BEVSensor, CameraSensor, CollisionSensor,
+                            GnssSensor, IMUSensor, LaneInvasionSensor,
+                            NavigationSensor, RadarSensor, RedlightSensor,
+                            DynamicObjectSensor, ObstacleDetectionSensor,
+                            World, get_scaled_image_size, MINIMUM_RENDER_WIDTH,
+                            MINIMUM_RENDER_HEIGHT)
 
 from alf.environments.carla_env.carla_utils import (
     _calculate_relative_position, _calculate_relative_velocity, _get_self_pose,
@@ -444,13 +445,12 @@ class Player(object):
             'Relative positions of the future waypoints in the route')
         self._observation_desc[
             'velocity'] = "3D Velocity relative to self coordinate in m/s"
-        self._info_spec = OrderedDict(
-            success=alf.TensorSpec(()),
-            collision=alf.TensorSpec(()),
-            collision_front=alf.TensorSpec(()),
-            red_light_violated=alf.TensorSpec(()),
-            red_light_encountered=alf.TensorSpec(()),
-            overspeed=alf.TensorSpec(()))
+        self._info_spec = OrderedDict(success=alf.TensorSpec(()),
+                                      collision=alf.TensorSpec(()),
+                                      collision_front=alf.TensorSpec(()),
+                                      red_light_violated=alf.TensorSpec(()),
+                                      red_light_encountered=alf.TensorSpec(()),
+                                      overspeed=alf.TensorSpec(()))
 
         self._control = carla.VehicleControl()
         self._controller = None
@@ -485,8 +485,8 @@ class Player(object):
         for v in self._alf_world.get_actors():
             if v.id == self._actor.id:
                 continue
-            forbidden_locations.append(
-                self._alf_world.get_actor_location(v.id))
+            forbidden_locations.append(self._alf_world.get_actor_location(
+                v.id))
 
         # find a waypoint far enough from other vehicles
         ok = False
@@ -516,8 +516,8 @@ class Player(object):
         self._max_frame = None
         self._done = False
         self._prev_location = loc
-        self._prev_action = np.zeros(
-            self.action_spec().shape, dtype=np.float32)
+        self._prev_action = np.zeros(self.action_spec().shape,
+                                     dtype=np.float32)
         self._alf_world.update_actor_location(self._actor.id, loc)
 
         self._route_length = self._navigation.set_destination(goal_loc)
@@ -733,8 +733,8 @@ class Player(object):
                 info['collision_front'] = np.float32(
                     np.any(obs['collision'][:, 1, 0] > 0.5))
 
-            logging.info("actor=%d frame=%d COLLISION" % (self._actor.id,
-                                                          current_frame))
+            logging.info("actor=%d frame=%d COLLISION" %
+                         (self._actor.id, current_frame))
             self._collision_loc = curr_loc
             self._collision_frame = current_frame
             # We don't want the collision penalty to be too large if the player
@@ -766,8 +766,8 @@ class Player(object):
             if self._terminate_upon_infraction != "redlight":
                 reward -= min(
                     self._max_red_light_penalty,
-                    Player.PENALTY_RATE_RED_LIGHT * max(
-                        0., self._episode_reward))
+                    Player.PENALTY_RATE_RED_LIGHT *
+                    max(0., self._episode_reward))
             else:
                 # to encourage stop at red-light, can set max_red_light_penalty
                 # to a large value (e.g. 1000) and set terminate_upon_infraction
@@ -795,8 +795,8 @@ class Player(object):
             reward_vector[Player.REWARD_SUCCESS] = 1.
             discount = 0.0
             info['success'] = np.float32(1.0)
-            logging.info(
-                "actor=%d frame=%d SUCCESS" % (self._actor.id, current_frame))
+            logging.info("actor=%d frame=%d SUCCESS" %
+                         (self._actor.id, current_frame))
         elif current_frame >= self._max_frame:
             logging.info("actor=%d frame=%d FAILURE: out of time" %
                          (self._actor.id, current_frame))
@@ -822,10 +822,10 @@ class Player(object):
                          (self._actor.id, current_frame))
 
         elif (self._collision_loc is not None
-              and current_frame - self._collision_frame >
-              self._max_stuck_at_collision_frames
-              and np.linalg.norm(curr_loc - self._collision_loc) <
-              self._stuck_at_collision_distance):
+              and current_frame - self._collision_frame
+              > self._max_stuck_at_collision_frames
+              and np.linalg.norm(curr_loc - self._collision_loc)
+              < self._stuck_at_collision_distance):
             logging.info("actor=%d frame=%d FAILURE: stuck at collision" %
                          (self._actor.id, current_frame))
             step_type = ds.StepType.LAST
@@ -872,8 +872,8 @@ class Player(object):
 
         overspeed = self.get_overspeed_amount()
         if overspeed > 0 and self._overspeed_penalty_weight > 0:
-            logging.info("actor=%d frame=%d OVERSPEED" % (self._actor.id,
-                                                          current_frame))
+            logging.info("actor=%d frame=%d OVERSPEED" %
+                         (self._actor.id, current_frame))
             reward_vector[Player.REWARD_OVERSPEED] = 1.
             info['overspeed'] = np.float32(1.0)
             reward -= self._overspeed_penalty_weight * overspeed * self._delta_seconds
@@ -886,13 +886,12 @@ class Player(object):
 
         reward_vector[Player.REWARD_OVERALL] = reward
 
-        self._current_time_step = ds.TimeStep(
-            step_type=step_type,
-            reward=reward_vector,
-            discount=np.float32(discount),
-            observation=obs,
-            prev_action=self._prev_action,
-            env_info=info)
+        self._current_time_step = ds.TimeStep(step_type=step_type,
+                                              reward=reward_vector,
+                                              discount=np.float32(discount),
+                                              observation=obs,
+                                              prev_action=self._prev_action,
+                                              env_info=info)
         return self._current_time_step
 
     def act(self, action):
@@ -1088,8 +1087,9 @@ class Player(object):
         if interp_num >= ego_points.shape[1]:
             time_index = np.linspace(0, 1, ego_points.shape[1])
 
-            interp_func = scipy.interpolate.interp1d(
-                x=time_index, y=ego_points, axis=1)
+            interp_func = scipy.interpolate.interp1d(x=time_index,
+                                                     y=ego_points,
+                                                     axis=1)
             ego_interp = interp_func(
                 np.linspace(time_index[0], time_index[-1], 100))
         else:
@@ -1141,9 +1141,8 @@ class Player(object):
         # shift along forward axis
         ego_points[:, 0] = ego_points[:, 0] + forward_shift_delta
 
-        ego_points = (
-            np.matmul(ego_points, np.linalg.inv(rot)) + self_loc).astype(
-                np.float32)
+        ego_points = (np.matmul(ego_points, np.linalg.inv(rot)) +
+                      self_loc).astype(np.float32)
         if append_self:
             ego_points = np.concatenate([self_loc, ego_points], axis=0)
         return ego_points
@@ -1237,12 +1236,11 @@ class CarlaServer(object):
                 "-carla-streaming-port={streaming_port} "
                 "-quality-level={quality_level} {opengl}")
 
-        command = command.format(
-            rpc_port=rpc_port,
-            streaming_port=streaming_port,
-            quality_level=quality_level,
-            carla_root=carla_root,
-            opengl=opengl)
+        command = command.format(rpc_port=rpc_port,
+                                 streaming_port=streaming_port,
+                                 quality_level=quality_level,
+                                 carla_root=carla_root,
+                                 opengl=opengl)
 
         logging.info("Starting Carla server: %s" % command)
         self._container_id = None
@@ -1254,11 +1252,10 @@ class CarlaServer(object):
         else:
             new_env = os.environ.copy()
             new_env['SDL_VIDEODRIVER'] = 'offscreen'
-            self._process = subprocess.Popen(
-                command.split(),
-                stdout=sys.stdout,
-                stderr=sys.stderr,
-                env=new_env)
+            self._process = subprocess.Popen(command.split(),
+                                             stdout=sys.stdout,
+                                             stderr=sys.stderr,
+                                             env=new_env)
 
     def stop(self):
         """Stop the carla server."""
@@ -1371,8 +1368,8 @@ class CarlaEnvironment(AlfEnvironment):
         try:
             for i in range(20):
                 try:
-                    logging.info(
-                        "Waiting for server to start. Try %d" % (i + 1))
+                    logging.info("Waiting for server to start. Try %d" %
+                                 (i + 1))
                     self._client = carla.Client("localhost", rpc_port)
                     self._world = self._client.load_world(map_name)
                     break
@@ -1552,15 +1549,15 @@ class CarlaEnvironment(AlfEnvironment):
             prev_weather_parameter = extract_weather_parameters(weather)
 
             trans_steps = max(
-                1, self._actual_weather_length * self._weather_transition_ratio
-                / self._step_time)
-            self._dp = (
-                new_weather_parameter - prev_weather_parameter) / trans_steps
+                1, self._actual_weather_length *
+                self._weather_transition_ratio / self._step_time)
+            self._dp = (new_weather_parameter -
+                        prev_weather_parameter) / trans_steps
 
         # for the initial transition period, we smoothly transit between two
         # weather settings
-        if (self._weather_length_count <=
-                self._actual_weather_length * self._weather_transition_ratio):
+        if (self._weather_length_count <= self._actual_weather_length *
+                self._weather_transition_ratio):
             weather = self._world.get_weather()
             updated_weather = adjust_weather_parameters(weather, self._dp)
             self._world.set_weather(updated_weather)
@@ -1608,11 +1605,12 @@ class CarlaEnvironment(AlfEnvironment):
         responses = self._client.apply_batch_sync(commands, True)
         walker_speeds2 = []
         self._walkers = []
-        for response, walker_speed, spawn_point in zip(
-                responses, walker_speeds, spawn_points):
+        for response, walker_speed, spawn_point in zip(responses,
+                                                       walker_speeds,
+                                                       spawn_points):
             if response.error:
-                logging.error(
-                    "%s: %s" % (response.error, spawn_point.location))
+                logging.error("%s: %s" %
+                              (response.error, spawn_point.location))
                 continue
             walker = self._world.get_actor(response.actor_id)
             self._walkers.append({"walker": walker})

@@ -46,8 +46,8 @@ class Renderer(TopDownRenderer):
     """
 
     def __init__(self,
-                 observation_renderer: Optional[
-                     Callable[[pygame.Surface, Any], None]] = None):
+                 observation_renderer: Optional[Callable[[pygame.Surface, Any],
+                                                         None]] = None):
         """Construct a Renderer instance.
 
         Please refer to make_vectorized_observation_renderer nad
@@ -78,14 +78,13 @@ class Renderer(TopDownRenderer):
             if obj is ego:
                 color = EGO_COLOR
             frame_objects.append(
-                history_object(
-                    name=name,
-                    heading_theta=obj.heading_theta,
-                    WIDTH=obj.top_down_width,
-                    LENGTH=obj.top_down_length,
-                    position=obj.position,
-                    color=color,
-                    done=False))
+                history_object(name=name,
+                               heading_theta=obj.heading_theta,
+                               WIDTH=obj.top_down_width,
+                               LENGTH=obj.top_down_length,
+                               position=obj.position,
+                               color=color,
+                               done=False))
         return frame_objects
 
     def _draw_info(self):
@@ -188,8 +187,8 @@ def make_vectorized_observation_renderer(sensor: VectorizedObservation):
 
     # Helper function that draws polyline features from the map on the canvas.
     def draw_map(canvas, map_feature):
-        r = (map_feature[:, :(k * 2)].reshape(-1, k, 2) * np.expand_dims(
-            map_feature[:, (k * 4):(k * 5)], -1))
+        r = (map_feature[:, :(k * 2)].reshape(-1, k, 2) *
+             np.expand_dims(map_feature[:, (k * 4):(k * 5)], -1))
         ab = (map_feature[:, (k * 2):(k * 4)].reshape(-1, k, 2) *
               np.expand_dims(map_feature[:, (k * 5):(k * 6)], -1)) * 0.5
         points = np.zeros((map_feature.shape[0], k + 1, 2))

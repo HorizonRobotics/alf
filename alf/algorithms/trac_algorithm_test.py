@@ -33,26 +33,25 @@ def create_ac_algorithm(observation_spec, action_spec, debug_summaries):
 
     value_network = partial(ValueNetwork, fc_layer_params=(10, 8, 1))
 
-    return ActorCriticAlgorithm(
-        observation_spec=observation_spec,
-        action_spec=action_spec,
-        actor_network_ctor=actor_network,
-        value_network_ctor=value_network,
-        optimizer=alf.optimizers.Adam(lr=0.1),
-        debug_summaries=debug_summaries,
-        name="MyActorCritic")
+    return ActorCriticAlgorithm(observation_spec=observation_spec,
+                                action_spec=action_spec,
+                                actor_network_ctor=actor_network,
+                                value_network_ctor=value_network,
+                                optimizer=alf.optimizers.Adam(lr=0.1),
+                                debug_summaries=debug_summaries,
+                                name="MyActorCritic")
 
 
 class TracAlgorithmTest(alf.test.TestCase):
+
     def test_trac_algorithm(self):
         config = TrainerConfig(root_dir="dummy", unroll_length=5)
         env = MyEnv(batch_size=3)
-        alg = TracAlgorithm(
-            observation_spec=env.observation_spec(),
-            action_spec=env.action_spec(),
-            ac_algorithm_cls=create_ac_algorithm,
-            env=env,
-            config=config)
+        alg = TracAlgorithm(observation_spec=env.observation_spec(),
+                            action_spec=env.action_spec(),
+                            ac_algorithm_cls=create_ac_algorithm,
+                            env=env,
+                            config=config)
 
         for _ in range(50):
             alg.train_iter()

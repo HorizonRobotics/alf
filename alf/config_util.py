@@ -136,8 +136,8 @@ def config(prefix_or_dict,
                                   "'prefix_or_dict' is a dict")
         configs = prefix_or_dict
     else:
-        raise ValueError(
-            "Unsupported type for 'prefix_or_dict': %s" % type(prefix_or_dict))
+        raise ValueError("Unsupported type for 'prefix_or_dict': %s" %
+                         type(prefix_or_dict))
 
     # If ALF_SOLE_CONFIG is set to 1, sole_init is always True.
     sole_init = sole_init or GET_ALF_SOLE_CONFIG()
@@ -212,8 +212,8 @@ def _get_all_leaves(conf_dict):
         if not isinstance(v, dict):
             leaves.append((k, v))
         else:
-            leaves.extend(
-                [(name + '.' + k, node) for name, node in _get_all_leaves(v)])
+            leaves.extend([(name + '.' + k, node)
+                           for name, node in _get_all_leaves(v)])
     return leaves
 
 
@@ -409,14 +409,14 @@ def config1(config_name,
             logging.warning(
                 "The value of config '%s' (%s) is protected by sole_init. "
                 "It is now being overridden by the overide_all flag to a new value %s. "
-                "Use at your own risk." % (config_name,
-                                           config_node.get_value(), value))
+                "Use at your own risk." %
+                (config_name, config_node.get_value(), value))
         if not config_node.is_mutable():
             logging.warning(
                 "The value of config '%s' (%s) is immutable. "
                 "It is now being overridden by the overide_all flag to a new value %s. "
-                "Use at your own risk." % (config_name,
-                                           config_node.get_value(), value))
+                "Use at your own risk." %
+                (config_name, config_node.get_value(), value))
         config_node.set_value(value)
         return
     elif override_sole_init:
@@ -431,8 +431,8 @@ def config1(config_name,
                 logging.warning(
                     "The value of config '%s' (%s) is protected by sole_init. "
                     "It is now being overridden by the override flag to a new value %s. "
-                    "Use at your own risk." % (config_name,
-                                               config_node.get_value(), value))
+                    "Use at your own risk." %
+                    (config_name, config_node.get_value(), value))
     elif config_node.is_configured():
         if config_node.get_sole_init():
             raise RuntimeError(
@@ -483,6 +483,7 @@ def pre_config(configs):
 
 
 def _handle_pre_configs(path, node):
+
     def _handle1(item):
         name, value = item
         parts = name.split('.')
@@ -746,26 +747,26 @@ def _decorate(fn_or_cls, name, whitelist, blacklist, config_only_args):
         # _make_wrapper() returns a function. But we want to return a class.
         construction_fn = _find_class_construction_fn(fn_or_cls)
         has_self = construction_fn.__name__ != '__new__'
-        decorated_fn = _make_wrapper(
-            _ensure_wrappability(construction_fn), configs, signature,
-            has_self, config_only_args)
+        decorated_fn = _make_wrapper(_ensure_wrappability(construction_fn),
+                                     configs, signature, has_self,
+                                     config_only_args)
         if construction_fn.__name__ == '__new__':
             decorated_fn = staticmethod(decorated_fn)
         setattr(fn_or_cls, construction_fn.__name__, decorated_fn)
     else:
-        fn_or_cls = _make_wrapper(
-            fn_or_cls,
-            configs,
-            signature,
-            has_self=0,
-            config_only_args=config_only_args)
+        fn_or_cls = _make_wrapper(fn_or_cls,
+                                  configs,
+                                  signature,
+                                  has_self=0,
+                                  config_only_args=config_only_args)
 
     if fn_or_cls.__module__ != '<run_path>' and os.environ.get(
             'ALF_USE_GIN', "1") == "1":
         # If a file is executed using runpy.run_path(), the module name is
         # '<run_path>', which is not an acceptable name by gin.
-        return gin.configurable(
-            orig_name, whitelist=whitelist, blacklist=blacklist)(fn_or_cls)
+        return gin.configurable(orig_name,
+                                whitelist=whitelist,
+                                blacklist=blacklist)(fn_or_cls)
     else:
         return fn_or_cls
 

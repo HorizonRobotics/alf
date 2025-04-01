@@ -25,6 +25,7 @@ from alf.data_structures import StepType
 
 
 class GymWrapperOnProcgenTest(alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         env = ProcgenGym3Env(num=4, env_name='bossfight')
@@ -35,34 +36,34 @@ class GymWrapperOnProcgenTest(alf.test.TestCase):
         self.assertEqual(4, self._env.batch_size)
 
     def test_overriden_specs(self):
-        self.assertEqual({
-            'level_seed': TensorSpec(shape=(), dtype=torch.int32),
-            'prev_level_complete': TensorSpec(shape=(), dtype=torch.uint8),
-            'prev_level_seed': TensorSpec(shape=(), dtype=torch.int32)
-        }, self._env.env_info_spec())
-
-        self.assertEqual({
-            'rgb':
-                BoundedTensorSpec(
-                    shape=(3, 64, 64),
-                    dtype=torch.uint8,
-                    minimum=np.array(0),
-                    maximum=np.array(255))
-        }, self._env.observation_spec())
+        self.assertEqual(
+            {
+                'level_seed': TensorSpec(shape=(), dtype=torch.int32),
+                'prev_level_complete': TensorSpec(shape=(), dtype=torch.uint8),
+                'prev_level_seed': TensorSpec(shape=(), dtype=torch.int32)
+            }, self._env.env_info_spec())
 
         self.assertEqual(
-            BoundedTensorSpec(
-                shape=(),
-                dtype=torch.int32,
-                minimum=np.array(0),
-                maximum=np.array(14)), self._env.action_spec())
+            {
+                'rgb':
+                    BoundedTensorSpec(shape=(3, 64, 64),
+                                      dtype=torch.uint8,
+                                      minimum=np.array(0),
+                                      maximum=np.array(255))
+            }, self._env.observation_spec())
+
+        self.assertEqual(
+            BoundedTensorSpec(shape=(),
+                              dtype=torch.int32,
+                              minimum=np.array(0),
+                              maximum=np.array(14)), self._env.action_spec())
 
     def test_step(self):
         action = zero_tensor_from_nested_spec(self._env.action_spec(),
                                               self._env.batch_size)
         time_step = self._env.step(action)
-        self.assertEqual(
-            torch.tensor([StepType.FIRST] * 4), time_step.step_type)
+        self.assertEqual(torch.tensor([StepType.FIRST] * 4),
+                         time_step.step_type)
         self.assertEqual((4, 3, 64, 64), time_step.observation['rgb'].shape)
         time_step = self._env.step(action)
         self.assertEqual(torch.tensor([StepType.MID] * 4), time_step.step_type)

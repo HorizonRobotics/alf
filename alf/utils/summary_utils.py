@@ -123,11 +123,10 @@ def summarize_variables(name_and_params, with_histogram=True):
         if with_histogram and torch.all(torch.isfinite(var_values)):
             # Need to make sure all values are finite to avoid the histogram range
             # error
-            alf.summary.histogram(
-                name='summarize_vars/' + var_name + '_value', data=var_values)
-        alf.summary.scalar(
-            name='summarize_vars/' + var_name + '_value_norm',
-            data=var_values.norm())
+            alf.summary.histogram(name='summarize_vars/' + var_name + '_value',
+                                  data=var_values)
+        alf.summary.scalar(name='summarize_vars/' + var_name + '_value_norm',
+                           data=var_values.norm())
 
 
 @_summary_wrapper
@@ -146,12 +145,12 @@ def summarize_gradients(name_and_params, with_histogram=True):
         grad_values = var.grad
         if with_histogram:
             if torch.all(grad_values.isfinite()):
-                alf.summary.histogram(
-                    name='summarize_grads/' + var_name + '_gradient',
-                    data=grad_values)
-        alf.summary.scalar(
-            name='summarize_grads/' + var_name + '_gradient_norm',
-            data=grad_values.norm())
+                alf.summary.histogram(name='summarize_grads/' + var_name +
+                                      '_gradient',
+                                      data=grad_values)
+        alf.summary.scalar(name='summarize_grads/' + var_name +
+                           '_gradient_norm',
+                           data=grad_values.norm())
 
 
 alf.summary.histogram = _summary_wrapper(alf.summary.histogram)
@@ -214,9 +213,8 @@ def summarize_per_category_loss(loss_info: LossInfo,
             else:
                 label_str = label_names[label]
 
-            alf.summary.scalar(
-                'loss/loss_for_category_{}'.format(label_str),
-                data=subset_loss.mean())
+            alf.summary.scalar('loss/loss_for_category_{}'.format(label_str),
+                               data=subset_loss.mean())
             if summarize_count:
                 alf.summary.scalar(
                     'loss/sample_count_for_category_{}'.format(label_str),
@@ -245,6 +243,7 @@ def summarize_loss(loss_info: LossInfo):
 
 @_summary_wrapper
 def summarize_nest(prefix, nest):
+
     def _summarize(path, tensor):
         add_mean_hist_summary(prefix + "/" + path, tensor)
 
@@ -268,11 +267,10 @@ def summarize_action(actions, action_specs, name="action"):
             return
 
         if action_spec.is_discrete:
-            histogram_discrete(
-                name="%s/%s" % (name, path),
-                data=action,
-                bucket_min=int(action_spec.minimum),
-                bucket_max=int(action_spec.maximum))
+            histogram_discrete(name="%s/%s" % (name, path),
+                               data=action,
+                               bucket_min=int(action_spec.minimum),
+                               bucket_max=int(action_spec.maximum))
         else:
             if len(action_spec.shape) == 0:
                 action_dim = 1
@@ -564,6 +562,8 @@ def summarize_distribution_gradient(name,
         spec = dist_utils.extract_spec(distribution)
         dist_params = map_structure(torch.clone, dist_params)
         distribution = dist_utils.params_to_distributions(dist_params, spec)
-    summarize_tensor_gradients(
-        name, dist_params, batch_dims=batch_dims, clone=False)
+    summarize_tensor_gradients(name,
+                               dist_params,
+                               batch_dims=batch_dims,
+                               clone=False)
     return distribution

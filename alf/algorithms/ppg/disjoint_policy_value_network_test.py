@@ -32,6 +32,7 @@ from alf.utils.dist_utils import DistributionSpec
 
 class TestDisjointPolicyValueNetwork(parameterized.TestCase,
                                      alf.test.TestCase):
+
     def setUp(self):
         self._batch_size = 3
 

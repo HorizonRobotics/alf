@@ -82,14 +82,13 @@ def load(environment_name,
 
     gym_env = BabyAIWrapper(gym_env, max_instruction_length, mode)
 
-    return wrap_env(
-        gym_env,
-        env_id=env_id,
-        discount=discount,
-        max_episode_steps=max_episode_steps,
-        gym_env_wrappers=gym_env_wrappers,
-        alf_env_wrappers=alf_env_wrappers,
-        image_channel_first=False)
+    return wrap_env(gym_env,
+                    env_id=env_id,
+                    discount=discount,
+                    max_episode_steps=max_episode_steps,
+                    gym_env_wrappers=gym_env_wrappers,
+                    alf_env_wrappers=alf_env_wrappers,
+                    image_channel_first=False)
 
 
 class BabyAIWrapper(gym.Wrapper):
@@ -194,9 +193,9 @@ class BabyAIWrapper(gym.Wrapper):
         if self._mode == 'char':
             tokens = np.array([ord(c) for c in instruction])
             if np.amax(tokens) > 127:
-                raise ValueError(
-                    "Character out of range. The unicode of "
-                    "character should be in [0, 127]: %s" % instruction)
+                raise ValueError("Character out of range. The unicode of "
+                                 "character should be in [0, 127]: %s" %
+                                 instruction)
             return tokens
 
         tokens = self._word_pattern.findall(instruction.lower())
@@ -204,9 +203,9 @@ class BabyAIWrapper(gym.Wrapper):
         if np.amin(instr) == 0:
             for token in tokens:
                 if token not in self._vocab:
-                    raise ValueError(
-                        "The instruction '%s' contains word "
-                        " out of vocabulary: %s" % (instruction, token))
+                    raise ValueError("The instruction '%s' contains word "
+                                     " out of vocabulary: %s" %
+                                     (instruction, token))
         return instr
 
     def _vectorize(self, instruction):

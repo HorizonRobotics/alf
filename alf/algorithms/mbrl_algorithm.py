@@ -36,8 +36,8 @@ from alf.algorithms.predictive_representation_learner import \
                                     PredictiveRepresentationLearner
 
 MbrlState = namedtuple("MbrlState", ["dynamics", "reward", "planner"])
-MbrlInfo = namedtuple(
-    "MbrlInfo", ["dynamics", "reward", "planner"], default_value=())
+MbrlInfo = namedtuple("MbrlInfo", ["dynamics", "reward", "planner"],
+                      default_value=())
 
 
 @alf.configurable
@@ -51,8 +51,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                  reward_module: RewardEstimationAlgorithm,
                  planner_module_ctor: Callable[[Any, Any], PlanAlgorithm],
                  feature_spec: Optional[TensorSpec] = None,
-                 dynamics_module_ctor: Optional[
-                     Callable[[Any, Any], DynamicsLearningAlgorithm]] = None,
+                 dynamics_module_ctor: Optional[Callable[
+                     [Any, Any], DynamicsLearningAlgorithm]] = None,
                  reward_spec=TensorSpec(()),
                  particles_per_replica=1,
                  epsilon_greedy=None,
@@ -113,31 +113,29 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             feature_spec = observation_spec
         dynamics_module = None
         if dynamics_module_ctor is not None:
-            dynamics_module = dynamics_module_ctor(
-                feature_spec=feature_spec, action_spec=action_spec)
-        planner_module = planner_module_ctor(
-            feature_spec=feature_spec, action_spec=action_spec)
-        train_state_spec = MbrlState(
-            dynamics=dynamics_module.train_state_spec
-            if dynamics_module is not None else (),
-            reward=reward_module.train_state_spec
-            if reward_module is not None else (),
-            planner=planner_module.train_state_spec
-            if planner_module is not None else ())
+            dynamics_module = dynamics_module_ctor(feature_spec=feature_spec,
+                                                   action_spec=action_spec)
+        planner_module = planner_module_ctor(feature_spec=feature_spec,
+                                             action_spec=action_spec)
+        train_state_spec = MbrlState(dynamics=dynamics_module.train_state_spec
+                                     if dynamics_module is not None else (),
+                                     reward=reward_module.train_state_spec
+                                     if reward_module is not None else (),
+                                     planner=planner_module.train_state_spec
+                                     if planner_module is not None else ())
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
 
-        super().__init__(
-            feature_spec,
-            action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=train_state_spec,
-            env=env,
-            config=config,
-            checkpoint=checkpoint,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(feature_spec,
+                         action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=train_state_spec,
+                         env=env,
+                         config=config,
+                         checkpoint=checkpoint,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         flat_action_spec = nest.flatten(action_spec)
         action_spec = flat_action_spec[0]
@@ -211,12 +209,14 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             and p is the number of particles per replica.
         """
         # [B, ...] -> [B*p, ...]
-        inputs = torch.repeat_interleave(
-            inputs, self._particles_per_replica, dim=0)
+        inputs = torch.repeat_interleave(inputs,
+                                         self._particles_per_replica,
+                                         dim=0)
         if self._num_dynamics_replicas > 1:
             # [B*p, ...] -> [B*p, n, ...]
-            inputs = inputs.unsqueeze(1).expand(
-                -1, self._num_dynamics_replicas, *inputs.shape[1:])
+            inputs = inputs.unsqueeze(1).expand(-1,
+                                                self._num_dynamics_replicas,
+                                                *inputs.shape[1:])
 
         return inputs
 
@@ -239,9 +239,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         time_step = TimeStep()
         dyn_state = state.dynamics._replace(feature=observation)
         dyn_state = nest.map_structure(
-            partial(
-                self._expand_to_population, population_size=population_size),
-            dyn_state)
+            partial(self._expand_to_population,
+                    population_size=population_size), dyn_state)
 
         # expand to particles
         dyn_state = nest.map_structure(self._expand_to_particles, dyn_state)
@@ -296,36 +295,37 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         dynamics_state = self._dynamics_module.update_state(
             time_step, state.dynamics)
 
-        return AlgStep(
-            output=action,
-            state=state._replace(
-                dynamics=dynamics_state, planner=planner_state),
-            info=MbrlInfo())
+        return AlgStep(output=action,
+                       state=state._replace(dynamics=dynamics_state,
+                                            planner=planner_state),
+                       info=MbrlInfo())
 
     def predict_step(self, time_step: TimeStep, state):
-        return self._predict_with_planning(
-            time_step, state, epsilon_greedy=self._epsilon_greedy)
+        return self._predict_with_planning(time_step,
+                                           state,
+                                           epsilon_greedy=self._epsilon_greedy)
 
     def rollout_step(self, time_step: TimeStep, state):
         # note epsilon_greedy
         # 0.1 for random exploration
-        return self._predict_with_planning(
-            time_step, state, epsilon_greedy=0.0)
+        return self._predict_with_planning(time_step,
+                                           state,
+                                           epsilon_greedy=0.0)
 
-    def train_step(self, inputs: TimeStep, state: MbrlState,
+    def train_step(self,
+                   inputs: TimeStep,
+                   state: MbrlState,
                    rollout_info=None):
         dynamics_step = self._dynamics_module.train_step(
             inputs, state.dynamics)
         reward_step = self._reward_module.train_step(inputs, state.reward)
         plan_step = self._planner_module.train_step(inputs, state.planner)
-        state = MbrlState(
-            dynamics=dynamics_step.state,
-            reward=reward_step.state,
-            planner=plan_step.state)
-        info = MbrlInfo(
-            dynamics=dynamics_step.info,
-            reward=reward_step.info,
-            planner=plan_step.info)
+        state = MbrlState(dynamics=dynamics_step.state,
+                          reward=reward_step.state,
+                          planner=plan_step.state)
+        info = MbrlInfo(dynamics=dynamics_step.info,
+                        reward=reward_step.info,
+                        planner=plan_step.info)
         return AlgStep((), state, info)
 
     def calc_loss(self, training_info):
@@ -390,19 +390,18 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
 
         """
 
-        super().__init__(
-            observation_spec,
-            feature_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            dynamics_module_ctor=None,
-            reward_module=None,
-            planner_module_ctor=planner_module_ctor,
-            planner_optimizer=planner_optimizer,
-            env=env,
-            config=config,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec,
+                         feature_spec=observation_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         dynamics_module_ctor=None,
+                         reward_module=None,
+                         planner_module_ctor=planner_module_ctor,
+                         planner_optimizer=planner_optimizer,
+                         env=env,
+                         config=config,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         flat_action_spec = nest.flatten(action_spec)
         action_spec = flat_action_spec[0]
@@ -467,10 +466,9 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
         action, planner_state = self._planner_module.predict_plan(
             time_step, state.planner, epsilon_greedy)
 
-        return AlgStep(
-            output=action,
-            state=state._replace(planner=planner_state),
-            info=MbrlInfo())
+        return AlgStep(output=action,
+                       state=state._replace(planner=planner_state),
+                       info=MbrlInfo())
 
     def train_step(self, exp: Experience, state: MbrlState, rollout_info=None):
         # overwrite the behavior of base class ``train_step``

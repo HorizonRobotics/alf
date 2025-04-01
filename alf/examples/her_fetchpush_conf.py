@@ -23,18 +23,16 @@ from alf.examples import ddpg_fetchpush_conf
 
 alf.config('suite_robotics.load', concat_desired_goal=False)
 alf.config('ActorNetwork', preprocessing_combiner=NestConcat())
-alf.config(
-    'CriticNetwork',
-    observation_preprocessing_combiner=NestConcat(),
-    action_preprocessing_combiner=NestConcat())
+alf.config('CriticNetwork',
+           observation_preprocessing_combiner=NestConcat(),
+           action_preprocessing_combiner=NestConcat())
 
 alf.config('ReplayBuffer', keep_episodic_info=True)
 alf.config('HindsightExperienceTransformer', her_proportion=0.8)
-alf.config(
-    'TrainerConfig',
-    data_transformer_ctor=[
-        HindsightExperienceTransformer, ObservationNormalizer
-    ])
+alf.config('TrainerConfig',
+           data_transformer_ctor=[
+               HindsightExperienceTransformer, ObservationNormalizer
+           ])
 
 alf.config('DdpgAlgorithm', action_l2=0.05)
 

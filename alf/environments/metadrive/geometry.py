@@ -73,9 +73,9 @@ class FieldOfView(object):
 
         """
         assert points.shape[-1] == 2
-        return np.all(
-            np.logical_and(points >= self._bbox[0], points <= self._bbox[2]),
-            axis=-1)
+        return np.all(np.logical_and(points >= self._bbox[0], points
+                                     <= self._bbox[2]),
+                      axis=-1)
 
 
 class CategoryEncoder(object):
@@ -216,10 +216,11 @@ class Polyline(NamedTuple):
         num_polylines = int(np.ceil(lane.length / polyline_length))
         seg_len = lane.length / (num_polylines * polyline_size)
 
-        result = Polyline(
-            point=np.zeros((num_polylines, polyline_size + 1, 2),
-                           dtype=np.float32),
-            category=np.full((num_polylines, ), category, dtype=np.int32))
+        result = Polyline(point=np.zeros((num_polylines, polyline_size + 1, 2),
+                                         dtype=np.float32),
+                          category=np.full((num_polylines, ),
+                                           category,
+                                           dtype=np.int32))
 
         # Here is the distance of the sampled point along the curve, from the
         # starting point of the curve.
@@ -288,9 +289,8 @@ class Polyline(NamedTuple):
         within_bbox = fov.within(transformed.point)  # Shape is [B, S]
         within_bbox = np.any(within_bbox, axis=1)  # Shape is now [B,]
 
-        return Polyline(
-            point=transformed.point[within_bbox],
-            category=self.category[within_bbox])
+        return Polyline(point=transformed.point[within_bbox],
+                        category=self.category[within_bbox])
 
     def keep_closest_n(self, n: int) -> Polyline:
         """Filter the polylines so that only the closest ``n`` polylines are kept. The
@@ -300,8 +300,8 @@ class Polyline(NamedTuple):
         if self.point.shape[0] > n:
             distances = np.min(np.linalg.norm(self.point, axis=-1), axis=-1)
             closest = np.argpartition(distances, n)[:n]
-            return Polyline(
-                point=self.point[closest], category=self.category[closest])
+            return Polyline(point=self.point[closest],
+                            category=self.category[closest])
         return self
 
     def to_feature(
@@ -371,8 +371,8 @@ class Polyline(NamedTuple):
             feature[:size, (S * 4):(S * 5)] = r.squeeze(axis=-1)
             feature[:size, (S * 5):(S * 6)] = d.squeeze(axis=-1)
             if category_encoder is not None and self.category is not None:
-                feature[:size, (S * 6):] = category_encoder.get_codes(
-                    self.category)
+                feature[:size,
+                        (S * 6):] = category_encoder.get_codes(self.category)
         else:
             feature = np.zeros(6 * S, dtype=np.float32)
             feature[:(S * 2)] = mid_points.reshape(S * 2)

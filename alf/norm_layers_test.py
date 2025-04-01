@@ -18,6 +18,7 @@ import alf
 
 
 class BatchNormTest(alf.test.TestCase):
+
     def test_torch_batch_norm(self):
         # Verify that BN also correctly calculate the gradient for its input
         # when using running stats for normalization

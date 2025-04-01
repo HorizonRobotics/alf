@@ -172,8 +172,8 @@ def _train(root_dir, local_rank=-1, rank=0, world_size=1):
             interpreted as "non distributed mode".
     """
     conf_file = common.get_conf_file()
-    trainer_conf = policy_trainer.TrainerConfig(
-        root_dir=root_dir, conf_file=conf_file)
+    trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir,
+                                                conf_file=conf_file)
 
     if trainer_conf.ddp_paras_check_interval > 0 and world_size > 1 and local_rank >= 0:
         # world_size > 1 means ddp mode, local_rank >= 0 means multi-node multi-gpu
@@ -241,8 +241,9 @@ def training_worker(rank: int,
                 world_size=world_size,
                 timeout=datetime.timedelta(minutes=FLAGS.nccl_timeout))
             # Set the rank and total number of processes for distributed training.
-            PerProcessContext().set_distributed(
-                rank=rank, local_rank=-1, num_processes=world_size)
+            PerProcessContext().set_distributed(rank=rank,
+                                                local_rank=-1,
+                                                num_processes=world_size)
             assert paras_queue is not None
             PerProcessContext().set_paras_queue(paras_queue)
 
@@ -301,8 +302,9 @@ def training_worker_multi_node(local_rank: int,
         FLAGS(sys.argv, known_only=True)
         FLAGS.mark_as_parsed()
         # Set the rank and total number of processes for distributed training.
-        PerProcessContext().set_distributed(
-            rank=rank, local_rank=local_rank, num_processes=world_size)
+        PerProcessContext().set_distributed(rank=rank,
+                                            local_rank=local_rank,
+                                            num_processes=world_size)
         assert paras_queue is not None
         PerProcessContext().set_paras_queue(paras_queue)
 
@@ -311,11 +313,10 @@ def training_worker_multi_node(local_rank: int,
 
         # Parse the configuration file, which will also implicitly bring up the environments.
         common.parse_conf_file(conf_file)
-        _train(
-            root_dir=root_dir,
-            local_rank=local_rank,
-            rank=rank,
-            world_size=world_size)
+        _train(root_dir=root_dir,
+               local_rank=local_rank,
+               rank=rank,
+               world_size=world_size)
     except KeyboardInterrupt:
         pass
     except Exception as e:
@@ -348,16 +349,20 @@ def main(_):
 
     # FLAGS.distributed is guaranteed to be one of the possible values.
     if FLAGS.distributed == 'none':
-        training_worker(
-            rank=0, world_size=1, conf_file=conf_file, root_dir=root_dir)
+        training_worker(rank=0,
+                        world_size=1,
+                        conf_file=conf_file,
+                        root_dir=root_dir)
     elif FLAGS.distributed == 'multi-gpu':
         world_size = torch.cuda.device_count()
 
         if world_size == 1:
             logging.warn(
                 'Fallback to single GPU mode as there is only one GPU')
-            training_worker(
-                rank=0, world_size=1, conf_file=conf_file, root_dir=root_dir)
+            training_worker(rank=0,
+                            world_size=1,
+                            conf_file=conf_file,
+                            root_dir=root_dir)
             return
 
         os.environ['MASTER_ADDR'] = 'localhost'
@@ -393,10 +398,10 @@ def main(_):
                     # only use the first GPU. If multiple GPUs are visible to the
                     # process, all the processes will compete for the first GPU.
                     os.environ['CUDA_VISIBLE_DEVICES'] = str(devices[i])
-                    process = mp_ctx.Process(
-                        target=training_worker,
-                        args=(i, world_size, conf_file, root_dir, paras_queue),
-                        name=f"DDP_worker-{i}")
+                    process = mp_ctx.Process(target=training_worker,
+                                             args=(i, world_size, conf_file,
+                                                   root_dir, paras_queue),
+                                             name=f"DDP_worker-{i}")
                     process.start()
                     processes.append(process)
 
@@ -437,13 +442,12 @@ def main(_):
                 devices = [int(d) for d in devices]
             assert local_rank < len(devices)
             os.environ['CUDA_VISIBLE_DEVICES'] = str(devices[local_rank])
-            training_worker_multi_node(
-                local_rank=local_rank,
-                rank=rank,
-                world_size=world_size,
-                conf_file=conf_file,
-                root_dir=root_dir,
-                paras_queue=paras_queue)
+            training_worker_multi_node(local_rank=local_rank,
+                                       rank=rank,
+                                       world_size=world_size,
+                                       conf_file=conf_file,
+                                       root_dir=root_dir,
+                                       paras_queue=paras_queue)
             # Restore the original CUDA_VISIBLE_DEVICES
             if CUDA_VISIBLE_DEVICES is not None:
                 os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES

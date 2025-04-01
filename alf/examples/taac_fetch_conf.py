@@ -21,19 +21,19 @@ from alf.utils import dist_utils
 from alf.examples import sac_conf
 from alf.examples.benchmarks.fetch import fetch_conf
 
-alf.config(
-    'TaacAlgorithmBase',
-    actor_network_cls=fetch_conf.actor_distribution_network_cls,
-    critic_network_cls=fetch_conf.critic_network_cls,
-    target_update_tau=0.05,
-    target_update_period=40,
-    target_entropy=(partial(
-        dist_utils.calc_default_target_entropy, min_prob=0.05),
-                    partial(
-                        dist_utils.calc_default_target_entropy, min_prob=0.2)))
+alf.config('TaacAlgorithmBase',
+           actor_network_cls=fetch_conf.actor_distribution_network_cls,
+           critic_network_cls=fetch_conf.critic_network_cls,
+           target_update_tau=0.05,
+           target_update_period=40,
+           target_entropy=(partial(dist_utils.calc_default_target_entropy,
+                                   min_prob=0.05),
+                           partial(dist_utils.calc_default_target_entropy,
+                                   min_prob=0.2)))
 
-alf.config(
-    'Agent', rl_algorithm_cls=TaacAlgorithm, optimizer=fetch_conf.optimizer)
+alf.config('Agent',
+           rl_algorithm_cls=TaacAlgorithm,
+           optimizer=fetch_conf.optimizer)
 
 alf.config('TAACTDLoss', gamma=0.98)
 

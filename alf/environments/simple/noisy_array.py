@@ -65,8 +65,10 @@ class NoisyArray(gym.Env):
                 at every step, and FIRE becomes "no-operation".
         """
         super().__init__()
-        self.observation_space = spaces.Box(
-            low=0, high=1, shape=(K + M, ), dtype=np.float32)
+        self.observation_space = spaces.Box(low=0,
+                                            high=1,
+                                            shape=(K + M, ),
+                                            dtype=np.float32)
         self.action_space = spaces.Discrete(3)
         self._K = K
         self._M = M
@@ -98,10 +100,9 @@ class NoisyArray(gym.Env):
         grid_size = 16
         length = obs.shape[0]
         rgb_array = np.expand_dims(obs, axis=0)
-        rgb_array = cv2.resize(
-            rgb_array,
-            dsize=(length * grid_size, grid_size),
-            interpolation=cv2.INTER_NEAREST)
+        rgb_array = cv2.resize(rgb_array,
+                               dsize=(length * grid_size, grid_size),
+                               interpolation=cv2.INTER_NEAREST)
         rgb_array = cv2.cvtColor(rgb_array, cv2.COLOR_GRAY2RGB)
 
         if mode == "rgb_array":
@@ -129,6 +130,6 @@ class NoisyArray(gym.Env):
         position_array = np.zeros(self._K, dtype=np.float32)
         position_array[self._position] = 1
 
-        observation = np.concatenate((position_array,
-                                      self._noise_vector.astype(np.float32)))
+        observation = np.concatenate(
+            (position_array, self._noise_vector.astype(np.float32)))
         return observation, reward

@@ -29,6 +29,7 @@ from alf.pretrained_models.model_adapters.lora import (LinearAdapter,
 
 
 class Net(nn.Module):
+
     def __init__(self, size=5):
         super().__init__()
         self.conv1 = nn.Conv2d(3, 6, 3, padding=1)
@@ -43,6 +44,7 @@ class Net(nn.Module):
 
 
 class PretrainedModelTest(alf.test.TestCase):
+
     def test_pretrained_model_ckpt(self):
         with tempfile.TemporaryDirectory() as ckpt_dir:
             net = Net()

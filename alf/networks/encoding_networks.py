@@ -99,10 +99,9 @@ class ImageEncodingNetwork(_Sequential):
 
         if use_batch_ensemble:
             assert ensemble_size > 1
-            conv_layer_ctor = functools.partial(
-                layers.Conv2DBatchEnsemble,
-                ensemble_size=ensemble_size,
-                output_ensemble_ids=True)
+            conv_layer_ctor = functools.partial(layers.Conv2DBatchEnsemble,
+                                                ensemble_size=ensemble_size,
+                                                output_ensemble_ids=True)
         else:
             conv_layer_ctor = layers.Conv2D
 
@@ -115,14 +114,13 @@ class ImageEncodingNetwork(_Sequential):
                 padding = ((kernel_size[0] - 1) // 2,
                            (kernel_size[1] - 1) // 2)
             nets.append(
-                conv_layer_ctor(
-                    input_channels,
-                    filters,
-                    kernel_size,
-                    activation=activation,
-                    kernel_initializer=kernel_initializer,
-                    strides=strides,
-                    padding=padding))
+                conv_layer_ctor(input_channels,
+                                filters,
+                                kernel_size,
+                                activation=activation,
+                                kernel_initializer=kernel_initializer,
+                                strides=strides,
+                                padding=padding))
             input_channels = filters
         if flatten_output:
             if use_batch_ensemble:
@@ -211,11 +209,10 @@ class ImageDecodingNetwork(_Sequential):
         if preprocess_fc_layer_params is not None:
             for size in preprocess_fc_layer_params:
                 nets.append(
-                    layers.FC(
-                        input_size,
-                        size,
-                        activation=activation,
-                        kernel_initializer=kernel_initializer))
+                    layers.FC(input_size,
+                              size,
+                              activation=activation,
+                              kernel_initializer=kernel_initializer))
                 input_size = size
 
         start_decoding_size = common.tuplify2d(start_decoding_size)
@@ -225,11 +222,10 @@ class ImageDecodingNetwork(_Sequential):
             start_decoding_size[1]
         ]
         nets.append(
-            layers.FC(
-                input_size,
-                np.prod(start_decoding_shape),
-                activation=activation,
-                kernel_initializer=kernel_initializer))
+            layers.FC(input_size,
+                      np.prod(start_decoding_shape),
+                      activation=activation,
+                      kernel_initializer=kernel_initializer))
 
         nets.append(alf.layers.Reshape(start_decoding_shape))
 
@@ -245,14 +241,13 @@ class ImageDecodingNetwork(_Sequential):
             if i == len(transconv_layer_params) - 1:
                 act = output_activation
             nets.append(
-                layers.ConvTranspose2D(
-                    in_channels,
-                    filters,
-                    kernel_size,
-                    activation=act,
-                    kernel_initializer=kernel_initializer,
-                    strides=strides,
-                    padding=padding))
+                layers.ConvTranspose2D(in_channels,
+                                       filters,
+                                       kernel_size,
+                                       activation=act,
+                                       kernel_initializer=kernel_initializer,
+                                       strides=strides,
+                                       padding=padding))
             in_channels = filters
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
@@ -351,19 +346,17 @@ class ImageDecodingNetworkV2(_Sequential):
         if preprocess_fc_layer_params is not None:
             for size in preprocess_fc_layer_params:
                 nets.append(
-                    layers.FC(
-                        input_size,
-                        size,
-                        activation=activation,
-                        kernel_initializer=kernel_initializer))
+                    layers.FC(input_size,
+                              size,
+                              activation=activation,
+                              kernel_initializer=kernel_initializer))
                 input_size = size
 
         nets.extend([
-            layers.FC(
-                input_size,
-                np.prod(start_decoding_shape),
-                activation=activation,
-                kernel_initializer=kernel_initializer),
+            layers.FC(input_size,
+                      np.prod(start_decoding_shape),
+                      activation=activation,
+                      kernel_initializer=kernel_initializer),
             alf.layers.Reshape(start_decoding_shape)
         ])
 
@@ -371,8 +364,8 @@ class ImageDecodingNetworkV2(_Sequential):
         for i, paras in enumerate(upsample_conv_layer_params):
             if isinstance(paras, int):
                 nets.append(
-                    torch.nn.Upsample(
-                        scale_factor=paras, mode=upsampling_mode))
+                    torch.nn.Upsample(scale_factor=paras,
+                                      mode=upsampling_mode))
             else:
                 filters, kernel_size, strides = paras[:3]
                 padding = paras[3] if len(paras) > 3 else 0
@@ -384,14 +377,13 @@ class ImageDecodingNetworkV2(_Sequential):
                 if i == len(upsample_conv_layer_params) - 1:
                     act = output_activation
                 nets.append(
-                    layers.Conv2D(
-                        in_channels,
-                        filters,
-                        kernel_size,
-                        activation=act,
-                        kernel_initializer=kernel_initializer,
-                        strides=strides,
-                        padding=padding))
+                    layers.Conv2D(in_channels,
+                                  filters,
+                                  kernel_size,
+                                  activation=act,
+                                  kernel_initializer=kernel_initializer,
+                                  strides=strides,
+                                  padding=padding))
                 in_channels = filters
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
@@ -430,19 +422,17 @@ def SpatialBroadcastDecodingNetwork(
     input_tensor_spec = TensorSpec((input_size, ))
     proj = alf.math.identity
     if fc_layer_params is not None:
-        proj = EncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
-            fc_layer_params=fc_layer_params,
-            activation=activation)
+        proj = EncodingNetwork(input_tensor_spec=input_tensor_spec,
+                               fc_layer_params=fc_layer_params,
+                               activation=activation)
 
     if output_width is None:
         output_width = output_height
 
     preproc_net = alf.nn.Sequential(
         proj,
-        functools.partial(
-            alf.utils.tensor_utils.spatial_broadcast,
-            im_shape=(output_height, output_width)),
+        functools.partial(alf.utils.tensor_utils.spatial_broadcast,
+                          im_shape=(output_height, output_width)),
         alf.utils.tensor_utils.append_coordinate,
         input_tensor_spec=input_tensor_spec)
 
@@ -544,22 +534,20 @@ class AutoShapeImageDeconvNetwork(_Sequential):
         if preprocess_fc_layer_params is not None:
             for size in preprocess_fc_layer_params:
                 nets.append(
-                    layers.FC(
-                        input_size,
-                        size,
-                        activation=activation,
-                        kernel_initializer=kernel_initializer))
+                    layers.FC(input_size,
+                              size,
+                              activation=activation,
+                              kernel_initializer=kernel_initializer))
                 input_size = size
 
         start_decoding_shape = [
             start_decoding_channels, conv_shape[0], conv_shape[1]
         ]
         nets.append(
-            layers.FC(
-                input_size,
-                np.prod(start_decoding_shape),
-                activation=activation,
-                kernel_initializer=kernel_initializer))
+            layers.FC(input_size,
+                      np.prod(start_decoding_shape),
+                      activation=activation,
+                      kernel_initializer=kernel_initializer))
 
         nets.append(alf.layers.Reshape(start_decoding_shape))
 
@@ -576,15 +564,14 @@ class AutoShapeImageDeconvNetwork(_Sequential):
                 act = output_activation
 
             nets.append(
-                layers.ConvTranspose2D(
-                    in_channels,
-                    filters,
-                    kernel_size,
-                    activation=act,
-                    kernel_initializer=kernel_initializer,
-                    strides=strides,
-                    padding=padding,
-                    output_padding=output_padding))
+                layers.ConvTranspose2D(in_channels,
+                                       filters,
+                                       kernel_size,
+                                       activation=act,
+                                       kernel_initializer=kernel_initializer,
+                                       strides=strides,
+                                       padding=padding,
+                                       output_padding=output_padding))
             in_channels = filters
 
         super().__init__(nets, input_tensor_spec=input_tensor_spec, name=name)
@@ -611,8 +598,8 @@ class AutoShapeImageDeconvNetwork(_Sequential):
 
         def _output_padding_1d(input_size, conv_out, padding, kernel_size,
                                stride):
-            return input_size - (
-                conv_out - 1) * stride + 2 * padding - kernel_size
+            return input_size - (conv_out -
+                                 1) * stride + 2 * padding - kernel_size
 
         return tuple(_output_padding_1d(x, c, p, k, stride) for x, c, p, k in \
                         zip(input_size, conv_out, padding, kernel_size))
@@ -724,8 +711,8 @@ class EncodingNetwork(_Sequential):
             input_preprocessors = input_preprocessors_ctor(input_tensor_spec)
         if input_preprocessors:
             input_preprocessors = alf.nest.map_structure(
-                lambda p: alf.layers.Identity() if p is None else p,
-                input_preprocessors)
+                lambda p: alf.layers.Identity()
+                if p is None else p, input_preprocessors)
             net = alf.nn.Parallel(input_preprocessors, input_tensor_spec)
             spec = net.output_spec
             nets.append(net)
@@ -754,14 +741,13 @@ class EncodingNetwork(_Sequential):
             assert len(spec.shape) == 3, \
                 "The input shape {} should be like (C,H,W)!".format(spec.shape)
             input_channels, height, width = spec.shape
-            net = ImageEncodingNetwork(
-                input_channels, (height, width),
-                conv_layer_params,
-                use_batch_ensemble=use_batch_ensemble,
-                ensemble_size=ensemble_size,
-                activation=activation,
-                kernel_initializer=kernel_initializer,
-                flatten_output=True)
+            net = ImageEncodingNetwork(input_channels, (height, width),
+                                       conv_layer_params,
+                                       use_batch_ensemble=use_batch_ensemble,
+                                       ensemble_size=ensemble_size,
+                                       activation=activation,
+                                       kernel_initializer=kernel_initializer,
+                                       flatten_output=True)
             spec = net.output_spec
             if use_batch_ensemble:
                 spec = spec[0]
@@ -788,22 +774,20 @@ class EncodingNetwork(_Sequential):
 
         if use_batch_ensemble:
             assert ensemble_size > 1
-            fc_layer_ctor = functools.partial(
-                layers.FCBatchEnsemble,
-                ensemble_size=ensemble_size,
-                output_ensemble_ids=True)
+            fc_layer_ctor = functools.partial(layers.FCBatchEnsemble,
+                                              ensemble_size=ensemble_size,
+                                              output_ensemble_ids=True)
         else:
             fc_layer_ctor = layers.FC
 
         for size in fc_layer_params:
             nets.append(
-                fc_layer_ctor(
-                    input_size,
-                    size,
-                    activation=activation,
-                    use_bn=use_fc_bn,
-                    use_ln=use_fc_ln,
-                    kernel_initializer=kernel_initializer))
+                fc_layer_ctor(input_size,
+                              size,
+                              activation=activation,
+                              use_bn=use_fc_bn,
+                              use_ln=use_fc_ln,
+                              kernel_initializer=kernel_initializer))
             input_size = size
 
         if last_layer_size is not None or last_activation is not None:
@@ -817,13 +801,12 @@ class EncodingNetwork(_Sequential):
                 last_kernel_initializer = kernel_initializer
 
             nets.append(
-                fc_layer_ctor(
-                    input_size,
-                    last_layer_size,
-                    activation=last_activation,
-                    use_bn=last_use_fc_bn,
-                    use_ln=last_use_fc_ln,
-                    kernel_initializer=last_kernel_initializer))
+                fc_layer_ctor(input_size,
+                              last_layer_size,
+                              activation=last_activation,
+                              use_bn=last_use_fc_bn,
+                              use_ln=last_use_fc_ln,
+                              kernel_initializer=last_kernel_initializer))
             input_size = last_layer_size
 
         if output_tensor_spec is not None:
@@ -831,15 +814,15 @@ class EncodingNetwork(_Sequential):
                 assert output_tensor_spec.numel == input_size, (
                     "network output "
                     "size {a} is inconsistent with specified out_tensor_spec "
-                    "of size {b}".format(
-                        a=input_size, b=output_tensor_spec.numel))
+                    "of size {b}".format(a=input_size,
+                                         b=output_tensor_spec.numel))
             elif spec.numel == 2:
                 assert output_tensor_spec.numel % input_size == 0
             if use_batch_ensemble:
                 nets.append(
                     Parallel(
-                        (alf.layers.Reshape(output_tensor_spec.shape),
-                         alf.layers.Identity()),
+                        (alf.layers.Reshape(
+                            output_tensor_spec.shape), alf.layers.Identity()),
                         (output_tensor_spec, TensorSpec(
                             (), dtype=torch.int64))))
             else:
@@ -870,16 +853,20 @@ class EncodingNetwork(_Sequential):
         """
         pnet = super().make_parallel(n)
         if allow_non_parallel_input:
-            return _ReplicateInputForParallel(
-                self.input_tensor_spec, n, pnet, name=pnet.name)
+            return _ReplicateInputForParallel(self.input_tensor_spec,
+                                              n,
+                                              pnet,
+                                              name=pnet.name)
         else:
             return pnet
 
 
 class _ReplicateInputForParallel(Network):
+
     def __init__(self, input_tensor_spec, n, pnet, name):
-        super().__init__(
-            input_tensor_spec, state_spec=pnet.state_spec, name=name)
+        super().__init__(input_tensor_spec,
+                         state_spec=pnet.state_spec,
+                         name=name)
         self._input_tensor_spec = input_tensor_spec
         self._n = n
         self._pnet = pnet
@@ -966,21 +953,20 @@ def ParallelEncodingNetwork(input_tensor_spec,
     Returns:
         the parallelized network
     """
-    net = EncodingNetwork(
-        input_tensor_spec=input_tensor_spec,
-        output_tensor_spec=output_tensor_spec,
-        input_preprocessors=input_preprocessors,
-        preprocessing_combiner=preprocessing_combiner,
-        conv_layer_params=conv_layer_params,
-        fc_layer_params=fc_layer_params,
-        activation=activation,
-        kernel_initializer=kernel_initializer,
-        use_fc_bn=use_fc_bn,
-        last_layer_size=last_layer_size,
-        last_activation=last_activation,
-        last_kernel_initializer=last_kernel_initializer,
-        last_use_fc_bn=last_use_fc_bn,
-        name=name)
+    net = EncodingNetwork(input_tensor_spec=input_tensor_spec,
+                          output_tensor_spec=output_tensor_spec,
+                          input_preprocessors=input_preprocessors,
+                          preprocessing_combiner=preprocessing_combiner,
+                          conv_layer_params=conv_layer_params,
+                          fc_layer_params=fc_layer_params,
+                          activation=activation,
+                          kernel_initializer=kernel_initializer,
+                          use_fc_bn=use_fc_bn,
+                          last_layer_size=last_layer_size,
+                          last_activation=last_activation,
+                          last_kernel_initializer=last_kernel_initializer,
+                          last_use_fc_bn=last_use_fc_bn,
+                          name=name)
     return net.make_parallel(n, True)
 
 
@@ -1086,8 +1072,8 @@ class LSTMEncodingNetwork(_Sequential):
 
         cells = []
         for hs in hidden_size:
-            cells.append(
-                alf.nn.LSTMCell(input_size=input_size, hidden_size=hs))
+            cells.append(alf.nn.LSTMCell(input_size=input_size,
+                                         hidden_size=hs))
             input_size = hs
 
         if lstm_output_layers is None:
@@ -1152,7 +1138,9 @@ class LSTMEncodingNetwork(_Sequential):
         """
         pnet = super().make_parallel(n)
         if allow_non_parallel_input:
-            return _ReplicateInputForParallel(
-                self.input_tensor_spec, n, pnet, name=pnet.name)
+            return _ReplicateInputForParallel(self.input_tensor_spec,
+                                              n,
+                                              pnet,
+                                              name=pnet.name)
         else:
             return pnet

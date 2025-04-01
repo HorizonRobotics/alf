@@ -89,6 +89,7 @@ def _dtype_conversions(nest: alf.nest.NestedTensor) -> alf.nest.NestedTensor:
 
 
 class _OnnxWrapper(torch.nn.Module):
+
     def __init__(self,
                  module: torch.nn.Module,
                  method: Callable,
@@ -223,6 +224,7 @@ class _OnnxWrapper(torch.nn.Module):
 
 @alf.configurable(whitelist=['device'])
 class OnnxRuntimeEngine(object):
+
     def __init__(self,
                  module: torch.nn.Module,
                  method: Callable,
@@ -312,6 +314,7 @@ class OnnxRuntimeEngine(object):
 
 
 class TensorRTEngine(object):
+
     def __init__(self,
                  module: torch.nn.Module,
                  method: Callable,
@@ -493,8 +496,8 @@ class TensorRTEngine(object):
         bindings = list(map(int, self._input_mem)) + list(
             map(int, self._output_mem))
         for i in range(engine.num_io_tensors):
-            self._context.set_tensor_address(
-                engine.get_tensor_name(i), bindings[i])
+            self._context.set_tensor_address(engine.get_tensor_name(i),
+                                             bindings[i])
         # create stream
         self._stream = cuda.Stream()
 
@@ -596,8 +599,8 @@ class TensorRT8Engine(TensorRTEngine):
         # executing the engine. Otherwise the inference will be much slower sometimes.
         # Probably a pycuda bug because in theory this synchronization is not needed.
         self._stream.synchronize()
-        self._context.execute_async_v2(
-            bindings=self._bindings, stream_handle=self._stream.handle)
+        self._context.execute_async_v2(bindings=self._bindings,
+                                       stream_handle=self._stream.handle)
 
         outputs = [
             torch.empty_like(o, memory_format=torch.contiguous_format)
@@ -653,11 +656,10 @@ def compile_for_inference_if(cond: bool = True,
 
             engine = module_to_wrap._inference_engine_map.get(engine_key, None)
             if engine is None:
-                engine = engine_class(
-                    module_to_wrap,
-                    method,
-                    example_args=args,
-                    example_kwargs=kwargs)
+                engine = engine_class(module_to_wrap,
+                                      method,
+                                      example_args=args,
+                                      example_kwargs=kwargs)
                 module_to_wrap._inference_engine_map[engine_key] = engine
                 alf.utils.common.info(
                     f"Created a new {engine_class} inference engine for "
@@ -709,13 +711,12 @@ def get_tensorrt_engine_class(memory_limit_gb: float = 1.,
     else:
         assert trt_major_ver == '10'
         cls = TensorRTEngine
-    return functools.partial(
-        cls,
-        memory_limit_gb=memory_limit_gb,
-        fp16=fp16,
-        engine_file=engine_file,
-        force_build_engine=force_build_engine,
-        validate_args=validate_args)
+    return functools.partial(cls,
+                             memory_limit_gb=memory_limit_gb,
+                             fp16=fp16,
+                             engine_file=engine_file,
+                             force_build_engine=force_build_engine,
+                             validate_args=validate_args)
 
 
 def compile_method(module, method_name, engine_class: Callable = None):

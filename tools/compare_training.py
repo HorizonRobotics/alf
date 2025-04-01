@@ -39,8 +39,10 @@ from alf.utils.common import alf_root
 from alf.utils.git_utils import get_revision, get_diff, _exec
 from alf.bin.train_play_test import run_cmd
 
-flags.DEFINE_string(
-    "conf", None, help="The config file for training", required=True)
+flags.DEFINE_string("conf",
+                    None,
+                    help="The config file for training",
+                    required=True)
 flags.DEFINE_string("rev1", None, help="The first revision.", required=True)
 flags.DEFINE_string(
     "rev2",
@@ -48,17 +50,22 @@ flags.DEFINE_string(
     help=
     "The second revision. If not provided, the current revision will be used",
     required=False)
-flags.DEFINE_integer(
-    "iterations", 5, help="The number of iterations to run", required=False)
-flags.DEFINE_integer(
-    "num_envs", 10, help="The number of environments to run", required=False)
-flags.DEFINE_integer(
-    "mini_batch_size", 256, help="Minibatch size", required=False)
-flags.DEFINE_integer(
-    "initial_collect_steps",
-    10,
-    help="The number of steps to collect before training",
-    required=False)
+flags.DEFINE_integer("iterations",
+                     5,
+                     help="The number of iterations to run",
+                     required=False)
+flags.DEFINE_integer("num_envs",
+                     10,
+                     help="The number of environments to run",
+                     required=False)
+flags.DEFINE_integer("mini_batch_size",
+                     256,
+                     help="Minibatch size",
+                     required=False)
+flags.DEFINE_integer("initial_collect_steps",
+                     10,
+                     help="The number of steps to collect before training",
+                     required=False)
 flags.DEFINE_integer(
     "unroll_length",
     10,

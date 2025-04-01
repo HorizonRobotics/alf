@@ -17,8 +17,7 @@
 import alf
 from alf.algorithms.ddpg_algorithm import DdpgAlgorithm
 
-alf.config(
-    'TrainerConfig',
-    whole_replay_buffer_training=False,
-    clear_replay_buffer=False,
-    algorithm_ctor=DdpgAlgorithm)
+alf.config('TrainerConfig',
+           whole_replay_buffer_training=False,
+           clear_replay_buffer=False,
+           algorithm_ctor=DdpgAlgorithm)

@@ -26,12 +26,11 @@ from alf.tensor_specs import TensorSpec
 from alf.utils.data_buffer import RingBuffer, DataBuffer
 from alf.utils.checkpoint_utils import Checkpointer
 
-DataItem = alf.data_structures.namedtuple(
-    "DataItem", [
-        "env_id", "x", "o", "reward", "step_type", "batch_info",
-        "replay_buffer", "rollout_info_field"
-    ],
-    default_value=())
+DataItem = alf.data_structures.namedtuple("DataItem", [
+    "env_id", "x", "o", "reward", "step_type", "batch_info", "replay_buffer",
+    "rollout_info_field"
+],
+                                          default_value=())
 
 
 # Using cpu tensors are needed for running on cuda enabled devices,
@@ -52,15 +51,17 @@ def get_batch(env_ids, dim, t, x):
         torch.abs(a - g) < .05,
         torch.zeros(batch_size, dtype=torch.float32, device="cpu"),
         -torch.ones(batch_size, dtype=torch.float32, device="cpu"))
-    return DataItem(
-        env_id=torch.tensor(env_ids, dtype=torch.int64, device="cpu"),
-        x=ox,
-        step_type=t * torch.ones(batch_size, dtype=torch.int32, device="cpu"),
-        o=dict({
-            "a": a,
-            "g": g
-        }),
-        reward=r)
+    return DataItem(env_id=torch.tensor(env_ids,
+                                        dtype=torch.int64,
+                                        device="cpu"),
+                    x=ox,
+                    step_type=t *
+                    torch.ones(batch_size, dtype=torch.int32, device="cpu"),
+                    o=dict({
+                        "a": a,
+                        "g": g
+                    }),
+                    reward=r)
 
 
 class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
@@ -86,21 +87,19 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         ('test_async', True),
     ])
     def test_ring_buffer(self, allow_multiprocess):
-        ring_buffer = RingBuffer(
-            data_spec=self.data_spec,
-            num_environments=self.num_envs,
-            max_length=self.max_length,
-            allow_multiprocess=allow_multiprocess)
+        ring_buffer = RingBuffer(data_spec=self.data_spec,
+                                 num_environments=self.num_envs,
+                                 max_length=self.max_length,
+                                 allow_multiprocess=allow_multiprocess)
 
         batch1 = get_batch([1, 2, 3, 5, 6], self.dim, t=1, x=0.4)
         if not allow_multiprocess:
             # enqueue: blocking mode only available under allow_multiprocess
-            self.assertRaises(
-                AssertionError,
-                ring_buffer.enqueue,
-                batch1,
-                env_ids=batch1.env_id,
-                blocking=True)
+            self.assertRaises(AssertionError,
+                              ring_buffer.enqueue,
+                              batch1,
+                              env_ids=batch1.env_id,
+                              blocking=True)
 
         # Test dequeque()
         for t in range(2, 10):
@@ -110,11 +109,10 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
             ring_buffer.enqueue(batch1, batch1.env_id)
         if not allow_multiprocess:
             # dequeue: blocking mode only available under allow_multiprocess
-            self.assertRaises(
-                AssertionError,
-                ring_buffer.dequeue,
-                env_ids=batch1.env_id,
-                blocking=True)
+            self.assertRaises(AssertionError,
+                              ring_buffer.dequeue,
+                              env_ids=batch1.env_id,
+                              blocking=True)
         # Exception because some environments do not have data
         self.assertRaises(AssertionError, ring_buffer.dequeue)
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
@@ -129,8 +127,9 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(batch.step_type,
                          torch.tensor([[9], [9], [8], [8], [8]]))
         # Exception because some environments do not have data
-        self.assertRaises(
-            AssertionError, ring_buffer.dequeue, env_ids=batch1.env_id)
+        self.assertRaises(AssertionError,
+                          ring_buffer.dequeue,
+                          env_ids=batch1.env_id)
 
         # Test dequeue multiple
         ring_buffer.clear()
@@ -167,10 +166,10 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                 sleep(0.04)
                 ring_buffer.enqueue(batch, batch.env_id)
 
-            p = mp.Process(
-                target=delayed_enqueue,
-                args=(ring_buffer,
-                      alf.nest.map_structure(lambda x: x.cpu(), batch1)))
+            p = mp.Process(target=delayed_enqueue,
+                           args=(ring_buffer,
+                                 alf.nest.map_structure(
+                                     lambda x: x.cpu(), batch1)))
             p.start()
             batch = ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True)
             self.assertEqual(batch.step_type, torch.tensor([[9]] * 5))
@@ -213,14 +212,15 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
             ring_buffer.revive()
             for t in range(6, 10):
                 batch2 = get_batch(range(0, 8), self.dim, t=t, x=0.4)
-                self.assertEqual(
-                    ring_buffer.enqueue(batch2, blocking=True), True)
+                self.assertEqual(ring_buffer.enqueue(batch2, blocking=True),
+                                 True)
 
             ring_buffer.stop()
             self.assertEqual(ring_buffer.enqueue(batch2, blocking=True), False)
 
 
 class DataBufferTest(alf.test.TestCase):
+
     def test_data_buffer(self):
         dim = 20
         capacity = 256
@@ -259,12 +259,12 @@ class DataBufferTest(alf.test.TestCase):
 
         # Test checkpoint working
         with tempfile.TemporaryDirectory() as checkpoint_directory:
-            checkpoint = Checkpointer(
-                checkpoint_directory, data_buffer=data_buffer)
+            checkpoint = Checkpointer(checkpoint_directory,
+                                      data_buffer=data_buffer)
             checkpoint.save(10)
             data_buffer = DataBuffer(data_spec=data_spec, capacity=capacity)
-            checkpoint = Checkpointer(
-                checkpoint_directory, data_buffer=data_buffer)
+            checkpoint = Checkpointer(checkpoint_directory,
+                                      data_buffer=data_buffer)
             global_step = checkpoint.load()
             self.assertEqual(global_step, 10)
 

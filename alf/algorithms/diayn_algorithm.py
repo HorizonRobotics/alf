@@ -142,8 +142,8 @@ class DIAYNAlgorithm(Algorithm):
             # nn.MSELoss doesn't support reducing along a dim
             loss = torch.sum(math_ops.square(skill_pred - prev_skill), dim=-1)
 
-        valid_masks = (step_type != to_tensor(StepType.FIRST)).to(
-            torch.float32)
+        valid_masks = (step_type
+                       != to_tensor(StepType.FIRST)).to(torch.float32)
         loss *= valid_masks
 
         intrinsic_reward = ()
@@ -152,8 +152,9 @@ class DIAYNAlgorithm(Algorithm):
             intrinsic_reward = self._reward_normalizer.normalize(
                 intrinsic_reward)
 
-        return AlgStep(
-            output=intrinsic_reward, state=skill, info=DIAYNInfo(loss=loss))
+        return AlgStep(output=intrinsic_reward,
+                       state=skill,
+                       info=DIAYNInfo(loss=loss))
 
     def rollout_step(self, inputs, state):
         return self._step(inputs, state)
@@ -163,5 +164,5 @@ class DIAYNAlgorithm(Algorithm):
 
     def calc_loss(self, info: DIAYNInfo):
         loss = torch.mean(info.loss)
-        return LossInfo(
-            scalar_loss=loss, extra=dict(skill_discriminate_loss=info.loss))
+        return LossInfo(scalar_loss=loss,
+                        extra=dict(skill_discriminate_loss=info.loss))

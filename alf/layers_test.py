@@ -23,20 +23,20 @@ from alf.utils import math_ops
 
 
 class LayersTest(parameterized.TestCase, alf.test.TestCase):
+
     def _test_make_parallel(
-            self,
-            net,
-            spec,
-            tolerance=1e-6,
-            get_pnet_parameters=lambda pnet: pnet.parameters()):
+        self,
+        net,
+        spec,
+        tolerance=1e-6,
+        get_pnet_parameters=lambda pnet: pnet.parameters()):
         batch_size = 10
         for n in (1, 2, 5):
             pnet = net.make_parallel(n)
             nnet = alf.layers.NaiveParallelLayer(net, n)
             for i in range(n):
-                for pp, np in zip(
-                        get_pnet_parameters(pnet),
-                        nnet._networks[i].parameters()):
+                for pp, np in zip(get_pnet_parameters(pnet),
+                                  nnet._networks[i].parameters()):
                     self.assertEqual(pp.shape, (n, ) + np.shape)
                     np.data.copy_(pp[i])
             pspec = alf.layers.make_parallel_spec(spec, n)
@@ -57,10 +57,10 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=False),
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=True),
         dict(n=2, act=torch.relu, use_bias=False, parallel_x=True),
-        dict(
-            n=2, act=torch.relu, use_bias=False, use_bn=True, parallel_x=True),
-        dict(
-            n=2, act=torch.relu, use_bias=False, use_ln=True, parallel_x=True),
+        dict(n=2, act=torch.relu, use_bias=False, use_bn=True,
+             parallel_x=True),
+        dict(n=2, act=torch.relu, use_bias=False, use_ln=True,
+             parallel_x=True),
     )
     def test_parallel_fc(self,
                          n=2,
@@ -71,21 +71,19 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                          parallel_x=True):
         batch_size = 3
         x_dim = 4
-        pfc = alf.layers.ParallelFC(
-            x_dim,
-            6,
-            n=n,
-            activation=act,
-            use_bias=use_bias,
-            use_bn=use_bn,
-            use_ln=use_ln)
-        fc = alf.layers.FC(
-            x_dim,
-            6,
-            activation=act,
-            use_bias=use_bias,
-            use_bn=use_bn,
-            use_ln=use_ln)
+        pfc = alf.layers.ParallelFC(x_dim,
+                                    6,
+                                    n=n,
+                                    activation=act,
+                                    use_bias=use_bias,
+                                    use_bn=use_bn,
+                                    use_ln=use_ln)
+        fc = alf.layers.FC(x_dim,
+                           6,
+                           activation=act,
+                           use_bias=use_bias,
+                           use_bn=use_bn,
+                           use_ln=use_ln)
 
         if parallel_x:
             px = torch.randn((batch_size, n, x_dim))
@@ -105,33 +103,29 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             self.assertLess((y - py[:, i, :]).abs().max(), 1e-5)
 
     @parameterized.parameters(
-        dict(
-            n=1,
-            act=math_ops.identity,
-            use_bias=False,
-            specify_comp_weight=True),
+        dict(n=1,
+             act=math_ops.identity,
+             use_bias=False,
+             specify_comp_weight=True),
         dict(n=1, act=torch.relu, use_bias=False, specify_comp_weight=True),
-        dict(
-            n=1,
-            act=math_ops.identity,
-            use_bias=True,
-            specify_comp_weight=False),
+        dict(n=1,
+             act=math_ops.identity,
+             use_bias=True,
+             specify_comp_weight=False),
         dict(n=1, act=torch.relu, use_bias=True, specify_comp_weight=False),
         dict(n=2, act=torch.relu, use_bias=True, specify_comp_weight=True),
         dict(n=5, act=torch.relu, use_bias=True, specify_comp_weight=True),
         dict(n=5, act=torch.relu, use_bias=True, specify_comp_weight=False),
-        dict(
-            n=5,
-            act=torch.relu,
-            use_bias=True,
-            use_bn=True,
-            specify_comp_weight=False),
-        dict(
-            n=5,
-            act=torch.relu,
-            use_bias=True,
-            use_ln=True,
-            specify_comp_weight=False))
+        dict(n=5,
+             act=torch.relu,
+             use_bias=True,
+             use_bn=True,
+             specify_comp_weight=False),
+        dict(n=5,
+             act=torch.relu,
+             use_bias=True,
+             use_ln=True,
+             specify_comp_weight=False))
     def test_compositional_fc(self,
                               n=2,
                               act=math_ops.identity,
@@ -141,31 +135,28 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                               specify_comp_weight=True):
         batch_size = 3
         x_dim = 4
-        cfc = alf.layers.CompositionalFC(
-            x_dim,
-            6,
-            n=n,
-            activation=act,
-            use_bias=use_bias,
-            use_bn=use_bn,
-            use_ln=use_ln)
+        cfc = alf.layers.CompositionalFC(x_dim,
+                                         6,
+                                         n=n,
+                                         activation=act,
+                                         use_bias=use_bias,
+                                         use_bn=use_bn,
+                                         use_ln=use_ln)
 
-        fc = alf.layers.FC(
-            x_dim,
-            6,
-            activation=math_ops.identity,
-            use_bias=use_bias,
-            use_bn=False,
-            use_ln=False)
+        fc = alf.layers.FC(x_dim,
+                           6,
+                           activation=math_ops.identity,
+                           use_bias=use_bias,
+                           use_bn=False,
+                           use_ln=False)
 
         # only used for constructing proper bn/ln
-        fc_bn_ln = alf.layers.FC(
-            x_dim,
-            6,
-            activation=math_ops.identity,
-            use_bias=use_bias,
-            use_bn=True,
-            use_ln=True)
+        fc_bn_ln = alf.layers.FC(x_dim,
+                                 6,
+                                 activation=math_ops.identity,
+                                 use_bias=use_bias,
+                                 use_bn=True,
+                                 use_ln=True)
 
         x = torch.randn((batch_size, x_dim))
 
@@ -211,23 +202,21 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                                        specify_comp_weight=True):
         batch_size = 3
         x_dim = 4
-        cfc1 = alf.layers.CompositionalFC(
-            x_dim,
-            8,
-            n=n,
-            activation=act,
-            use_bias=use_bias,
-            use_bn=use_bn,
-            use_ln=use_ln)
+        cfc1 = alf.layers.CompositionalFC(x_dim,
+                                          8,
+                                          n=n,
+                                          activation=act,
+                                          use_bias=use_bias,
+                                          use_bn=use_bn,
+                                          use_ln=use_ln)
 
-        cfc2 = alf.layers.CompositionalFC(
-            8,
-            6,
-            n=n,
-            activation=act,
-            use_bias=use_bias,
-            use_bn=use_bn,
-            use_ln=use_ln)
+        cfc2 = alf.layers.CompositionalFC(8,
+                                          6,
+                                          n=n,
+                                          activation=act,
+                                          use_bias=use_bias,
+                                          use_bn=use_bn,
+                                          use_ln=use_ln)
 
         x = torch.randn((batch_size, x_dim))
 
@@ -238,36 +227,32 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
         cy, _ = cfc2(cfc1(inputs=(x, comp_weight)))
 
-        fc1 = alf.layers.FC(
-            x_dim,
-            8,
-            activation=math_ops.identity,
-            use_bias=use_bias,
-            use_bn=False,
-            use_ln=False)
-        fc2 = alf.layers.FC(
-            8,
-            6,
-            activation=math_ops.identity,
-            use_bias=use_bias,
-            use_bn=False,
-            use_ln=False)
+        fc1 = alf.layers.FC(x_dim,
+                            8,
+                            activation=math_ops.identity,
+                            use_bias=use_bias,
+                            use_bn=False,
+                            use_ln=False)
+        fc2 = alf.layers.FC(8,
+                            6,
+                            activation=math_ops.identity,
+                            use_bias=use_bias,
+                            use_bn=False,
+                            use_ln=False)
 
         # only used for constructing proper bn/ln
-        fc1_bn_ln = alf.layers.FC(
-            x_dim,
-            8,
-            activation=math_ops.identity,
-            use_bias=use_bias,
-            use_bn=True,
-            use_ln=True)
-        fc2_bn_ln = alf.layers.FC(
-            8,
-            6,
-            activation=math_ops.identity,
-            use_bias=use_bias,
-            use_bn=True,
-            use_ln=True)
+        fc1_bn_ln = alf.layers.FC(x_dim,
+                                  8,
+                                  activation=math_ops.identity,
+                                  use_bias=use_bias,
+                                  use_bn=True,
+                                  use_ln=True)
+        fc2_bn_ln = alf.layers.FC(8,
+                                  6,
+                                  activation=math_ops.identity,
+                                  use_bias=use_bias,
+                                  use_bn=True,
+                                  use_ln=True)
 
         cfcs = [cfc1, cfc2]
         fcs = [fc1, fc2]
@@ -300,8 +285,8 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=False),
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=True),
         dict(n=2, act=torch.relu, use_bias=False, parallel_x=True),
-        dict(
-            n=2, act=torch.relu, use_bias=False, use_bn=True, parallel_x=True),
+        dict(n=2, act=torch.relu, use_bias=False, use_bn=True,
+             parallel_x=True),
     )
     def test_parallel_conv(self,
                            n=2,
@@ -314,22 +299,20 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         out_channels = 3
         height = 11
         width = 11
-        pconv = alf.layers.ParallelConv2D(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            n=n,
-            activation=act,
-            use_bn=use_bn,
-            use_bias=use_bias)
+        pconv = alf.layers.ParallelConv2D(in_channels=in_channels,
+                                          out_channels=out_channels,
+                                          kernel_size=3,
+                                          n=n,
+                                          activation=act,
+                                          use_bn=use_bn,
+                                          use_bias=use_bias)
 
-        conv = alf.layers.Conv2D(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            activation=act,
-            use_bn=use_bn,
-            use_bias=use_bias)
+        conv = alf.layers.Conv2D(in_channels=in_channels,
+                                 out_channels=out_channels,
+                                 kernel_size=3,
+                                 activation=act,
+                                 use_bn=use_bn,
+                                 use_bias=use_bias)
         if parallel_x:
             px = torch.randn((batch_size, n, in_channels, height, width))
         else:
@@ -353,8 +336,8 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=False),
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=True),
         dict(n=2, act=torch.relu, use_bias=False, parallel_x=True),
-        dict(
-            n=2, act=torch.relu, use_bias=False, use_bn=True, parallel_x=True),
+        dict(n=2, act=torch.relu, use_bias=False, use_bn=True,
+             parallel_x=True),
     )
     def test_parallel_conv_transpose(self,
                                      n=2,
@@ -367,22 +350,20 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         out_channels = 3
         height = 11
         width = 11
-        pconvt = alf.layers.ParallelConvTranspose2D(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            n=n,
-            activation=act,
-            use_bn=use_bn,
-            use_bias=use_bias)
+        pconvt = alf.layers.ParallelConvTranspose2D(in_channels=in_channels,
+                                                    out_channels=out_channels,
+                                                    kernel_size=3,
+                                                    n=n,
+                                                    activation=act,
+                                                    use_bn=use_bn,
+                                                    use_bias=use_bias)
 
-        convt = alf.layers.ConvTranspose2D(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=3,
-            activation=act,
-            use_bn=use_bn,
-            use_bias=use_bias)
+        convt = alf.layers.ConvTranspose2D(in_channels=in_channels,
+                                           out_channels=out_channels,
+                                           kernel_size=3,
+                                           activation=act,
+                                           use_bn=use_bn,
+                                           use_bias=use_bias)
         if parallel_x:
             px = torch.randn((batch_size, n, in_channels, height, width))
         else:
@@ -413,19 +394,17 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                       use_ln=False):
         input_size = 4
         output_size = 5
-        pfc = alf.layers.ParamFC(
-            input_size,
-            output_size,
-            activation=act,
-            use_bias=use_bias,
-            use_ln=use_ln,
-            n_groups=n)
-        fc = alf.layers.FC(
-            input_size,
-            output_size,
-            activation=act,
-            use_ln=use_ln,
-            use_bias=use_bias)
+        pfc = alf.layers.ParamFC(input_size,
+                                 output_size,
+                                 activation=act,
+                                 use_bias=use_bias,
+                                 use_ln=use_ln,
+                                 n_groups=n)
+        fc = alf.layers.FC(input_size,
+                           output_size,
+                           activation=act,
+                           use_ln=use_ln,
+                           use_bias=use_bias)
 
         # test param length
         self.assertEqual(pfc.weight_length, fc.weight.nelement())
@@ -476,21 +455,19 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         kernel_size = 3
         height = 11
         width = 11
-        pconv = alf.layers.ParamConv2D(
-            in_channels,
-            out_channels,
-            kernel_size,
-            activation=act,
-            use_bias=use_bias,
-            use_ln=use_ln,
-            n_groups=n)
-        conv = alf.layers.Conv2D(
-            in_channels,
-            out_channels,
-            kernel_size,
-            activation=act,
-            use_bias=use_bias,
-            use_ln=use_ln)
+        pconv = alf.layers.ParamConv2D(in_channels,
+                                       out_channels,
+                                       kernel_size,
+                                       activation=act,
+                                       use_bias=use_bias,
+                                       use_ln=use_ln,
+                                       n_groups=n)
+        conv = alf.layers.Conv2D(in_channels,
+                                 out_channels,
+                                 kernel_size,
+                                 activation=act,
+                                 use_bias=use_bias,
+                                 use_ln=use_ln)
 
         # test param length
         self.assertEqual(pconv.weight_length, conv.weight.nelement())
@@ -541,21 +518,19 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         if (basis_type == "rbf" and input_size != output_size) or \
            (basis_type == "haar" and (input_size & (input_size - 1)) != 0) or \
            basis_type == "unimplemented":
-            self.assertRaises(
-                AssertionError,
-                alf.layers.FixedDecodingLayer,
-                input_size,
-                output_size,
-                basis_type=basis_type,
-                sigma=sigma)
+            self.assertRaises(AssertionError,
+                              alf.layers.FixedDecodingLayer,
+                              input_size,
+                              output_size,
+                              basis_type=basis_type,
+                              sigma=sigma)
         else:
             basis_weight_tau = 0.5
-            dec = alf.layers.FixedDecodingLayer(
-                input_size,
-                output_size,
-                basis_type=basis_type,
-                sigma=sigma,
-                tau=basis_weight_tau)
+            dec = alf.layers.FixedDecodingLayer(input_size,
+                                                output_size,
+                                                basis_type=basis_type,
+                                                sigma=sigma,
+                                                tau=basis_weight_tau)
 
             self.assertTrue(dec.weight.shape == (output_size, input_size))
 
@@ -587,8 +562,10 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
     def test_harr_basis_correctness(self, input_size, output_size):
         basis_weight_tau = 1.0
 
-        dec = alf.layers.FixedDecodingLayer(
-            input_size, output_size, basis_type="haar", tau=basis_weight_tau)
+        dec = alf.layers.FixedDecodingLayer(input_size,
+                                            output_size,
+                                            basis_type="haar",
+                                            tau=basis_weight_tau)
 
         if input_size <= 8:
             # expected Haar matrix are constructed following the reference
@@ -597,13 +574,14 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             if input_size == 2:
                 # H2^T
                 expected_haar_basis = torch.as_tensor(
-                    1. / np.sqrt(2) * np.array([[1, 1], [1, -1]]).transpose(
-                        1, 0))
+                    1. / np.sqrt(2) *
+                    np.array([[1, 1], [1, -1]]).transpose(1, 0))
             elif input_size == 4:
                 # H4^T
-                expected_haar_basis = torch.as_tensor(1. / 2 * np.array(
-                    [[1, 1, 1, 1], [1, 1, -1, -1], [st, -st, 0, 0],
-                     [0, 0, st, -st]]).transpose(1, 0))
+                expected_haar_basis = torch.as_tensor(
+                    1. / 2 *
+                    np.array([[1, 1, 1, 1], [1, 1, -1, -1], [st, -st, 0, 0],
+                              [0, 0, st, -st]]).transpose(1, 0))
             elif input_size == 8:
                 # H8^T
                 expected_haar_basis = torch.as_tensor(
@@ -616,14 +594,15 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                     ]).transpose(1, 0))
 
             # test constructed basis against ground-truth reference
-            self.assertTensorClose(
-                dec.weight, expected_haar_basis, epsilon=1e-6)
+            self.assertTensorClose(dec.weight,
+                                   expected_haar_basis,
+                                   epsilon=1e-6)
 
         # test constructed basis are orthogonal
-        self.assertTensorClose(
-            torch.mm(dec.weight, dec.weight.transpose(1, 0)),
-            torch.eye(dec.weight.shape[0]),
-            epsilon=1e-6)
+        self.assertTensorClose(torch.mm(dec.weight, dec.weight.transpose(1,
+                                                                         0)),
+                               torch.eye(dec.weight.shape[0]),
+                               epsilon=1e-6)
 
     def test_transformer_block_shift(self):
         n = 32
@@ -662,15 +641,14 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         mask = torch.ones(batch_size, max_len, dtype=torch.bool)
         mask[B] = False
 
-        tf = alf.layers.TransformerBlock(
-            d_model=d_model,
-            d_k=d_model,
-            d_v=d_model,
-            d_ff=d_model,
-            num_heads=3,
-            memory_size=max_len,
-            scale_attention_score=False,
-            positional_encoding='none')
+        tf = alf.layers.TransformerBlock(d_model=d_model,
+                                         d_k=d_model,
+                                         d_v=d_model,
+                                         d_ff=d_model,
+                                         num_heads=3,
+                                         memory_size=max_len,
+                                         scale_attention_score=False,
+                                         positional_encoding='none')
 
         # The following tests that feeding the full x with the mask is
         # equivalent to feeding the masked x to the transformer block up to
@@ -805,10 +783,10 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             x, y = get_batch(batch_size)
             pred = model(x).squeeze(-1)
             loss = torch.mean((pred - y)**2)
-            logging.log_every_n(
-                logging.INFO,
-                "%s loss=%s" % (i, loss.detach().cpu().numpy()),
-                n=100)
+            logging.log_every_n(logging.INFO,
+                                "%s loss=%s" %
+                                (i, loss.detach().cpu().numpy()),
+                                n=100)
             loss.backward()
             optimizer.step()
 
@@ -823,10 +801,15 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
         batch_size = 256
         x = torch.randn((batch_size, 16))
-        layer1 = alf.layers.FCBatchEnsemble(
-            16, 24, ensemble_size=8, use_bias=True)
-        layer2 = alf.layers.FCBatchEnsemble(
-            24, 1, ensemble_size=8, use_bias=False, output_ensemble_ids=False)
+        layer1 = alf.layers.FCBatchEnsemble(16,
+                                            24,
+                                            ensemble_size=8,
+                                            use_bias=True)
+        layer2 = alf.layers.FCBatchEnsemble(24,
+                                            1,
+                                            ensemble_size=8,
+                                            use_bias=False,
+                                            output_ensemble_ids=False)
         y = layer1(x)
         # Test correct output type and shape
         self.assertEqual(type(y), tuple)
@@ -865,15 +848,17 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
         batch_size = 256
         x = torch.randn((batch_size, 3, 10, 10))
-        layer1 = alf.layers.Conv2DBatchEnsemble(
-            3, 16, 5, ensemble_size=8, use_bias=True)
-        layer2 = alf.layers.Conv2DBatchEnsemble(
-            16,
-            1,
-            3,
-            ensemble_size=8,
-            use_bias=False,
-            output_ensemble_ids=False)
+        layer1 = alf.layers.Conv2DBatchEnsemble(3,
+                                                16,
+                                                5,
+                                                ensemble_size=8,
+                                                use_bias=True)
+        layer2 = alf.layers.Conv2DBatchEnsemble(16,
+                                                1,
+                                                3,
+                                                ensemble_size=8,
+                                                use_bias=False,
+                                                output_ensemble_ids=False)
         y = layer1(x)
         # Test correct output type and shape
         self.assertEqual(type(y), tuple)
@@ -920,13 +905,12 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         # create a batched multi-channel 1d signal
         signal = torch.randn(batch_size, in_channels, signal_length)
 
-        causal_conv = alf.layers.CausalConv1D(
-            in_channels,
-            out_channels,
-            kernel_size,
-            dilation,
-            activation=act,
-            use_bias=use_bias)
+        causal_conv = alf.layers.CausalConv1D(in_channels,
+                                              out_channels,
+                                              kernel_size,
+                                              dilation,
+                                              activation=act,
+                                              use_bias=use_bias)
 
         out = causal_conv(signal)
 
@@ -942,14 +926,13 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         # create a batched multi-channel 1d signal
         signal = torch.randn(batch_size, in_channels, signal_length)
 
-        causal_conv = alf.layers.CausalConv1D(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=1,
-            dilation=1,
-            hide_current=True,
-            activation=math_ops.identity,
-            use_bias=False)
+        causal_conv = alf.layers.CausalConv1D(in_channels=in_channels,
+                                              out_channels=out_channels,
+                                              kernel_size=1,
+                                              dilation=1,
+                                              hide_current=True,
+                                              activation=math_ops.identity,
+                                              use_bias=False)
 
         # here we create a 1x1 identity filter
         causal_conv.weight.data = torch.full_like(causal_conv.weight.data, 1.0)
@@ -961,11 +944,11 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTensorClose(out[..., 1:], signal[..., :-1], epsilon=1e-6)
 
     def test_sequential1(self):
-        net = alf.layers.Sequential(
-            alf.layers.FC(4, 6),
-            a=alf.layers.FC(6, 8),
-            b=alf.layers.FC(8, 12),
-            c=(('a', 'b', 'input'), alf.layers.NestConcat()))
+        net = alf.layers.Sequential(alf.layers.FC(4, 6),
+                                    a=alf.layers.FC(6, 8),
+                                    b=alf.layers.FC(8, 12),
+                                    c=(('a', 'b', 'input'),
+                                       alf.layers.NestConcat()))
 
         batch_size = 24
         x = torch.randn((batch_size, 4))
@@ -982,11 +965,11 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
     def test_sequential2(self):
         # test wrong field name
-        net = alf.layers.Sequential(
-            alf.layers.FC(4, 6),
-            a=alf.layers.FC(6, 8),
-            c=(('a', 'b', 'input'), alf.layers.NestConcat()),
-            b=alf.layers.FC(8, 12))
+        net = alf.layers.Sequential(alf.layers.FC(4, 6),
+                                    a=alf.layers.FC(6, 8),
+                                    c=(('a', 'b', 'input'),
+                                       alf.layers.NestConcat()),
+                                    b=alf.layers.FC(8, 12))
 
         batch_size = 24
         x = torch.randn((batch_size, 4))
@@ -994,12 +977,11 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
     def test_sequential3(self):
         # test output
-        net = alf.layers.Sequential(
-            alf.layers.FC(4, 6),
-            a=alf.layers.FC(6, 8),
-            b=alf.layers.FC(8, 12),
-            c=(('a', 'b'), alf.layers.NestConcat()),
-            output=dict(a='a', b='b', c='c'))
+        net = alf.layers.Sequential(alf.layers.FC(4, 6),
+                                    a=alf.layers.FC(6, 8),
+                                    b=alf.layers.FC(8, 12),
+                                    c=(('a', 'b'), alf.layers.NestConcat()),
+                                    output=dict(a='a', b='b', c='c'))
 
         batch_size = 24
         x = torch.randn((batch_size, 4))
@@ -1018,11 +1000,10 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
     def test_sequential4(self):
         # test output
-        net = alf.layers.Sequential(
-            alf.layers.FC(4, 6),
-            a=alf.layers.FC(6, 8),
-            b=alf.layers.FC(8, 8),
-            c=(('a', 'b'), lambda x: x[0] + x[1]))
+        net = alf.layers.Sequential(alf.layers.FC(4, 6),
+                                    a=alf.layers.FC(6, 8),
+                                    b=alf.layers.FC(8, 8),
+                                    c=(('a', 'b'), lambda x: x[0] + x[1]))
 
         batch_size = 24
         x = torch.randn((batch_size, 4))
@@ -1050,18 +1031,18 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
     def test_conv2d(self):
         input_spec = alf.BoundedTensorSpec((3, 10, 10))
         layer = alf.layers.Conv2D(3, 5, 3)
-        self._test_make_parallel(
-            layer,
-            input_spec,
-            get_pnet_parameters=lambda pnet: (pnet.weight, pnet.bias))
+        self._test_make_parallel(layer,
+                                 input_spec,
+                                 get_pnet_parameters=lambda pnet:
+                                 (pnet.weight, pnet.bias))
 
     def test_conv_transpose_2d(self):
         input_spec = alf.BoundedTensorSpec((3, 10, 10))
         layer = alf.layers.ConvTranspose2D(3, 5, 3)
-        self._test_make_parallel(
-            layer,
-            input_spec,
-            get_pnet_parameters=lambda pnet: (pnet.weight, pnet.bias))
+        self._test_make_parallel(layer,
+                                 input_spec,
+                                 get_pnet_parameters=lambda pnet:
+                                 (pnet.weight, pnet.bias))
 
     def test_cast(self):
         input_spec = alf.BoundedTensorSpec((8, ), dtype=torch.uint8)
@@ -1096,10 +1077,9 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self._test_make_parallel(layer, input_spec)
 
     def test_get_fields(self):
-        input_spec = dict(
-            a=alf.BoundedTensorSpec((8, 4, 10)),
-            b=alf.BoundedTensorSpec((4, )),
-            c=alf.BoundedTensorSpec((3, )))
+        input_spec = dict(a=alf.BoundedTensorSpec((8, 4, 10)),
+                          b=alf.BoundedTensorSpec((4, )),
+                          c=alf.BoundedTensorSpec((3, )))
         layer = alf.layers.GetFields(('a', 'c'))
         self._test_make_parallel(layer, input_spec)
 
@@ -1118,26 +1098,27 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTensorEqual(y[:, :, 3:7, 1:6], x)
 
         self.assertTensorEqual(
-            y[:, :, :3, 1:6], torch.repeat_interleave(
-                x[:, :, :1, :], 3, dim=2))
+            y[:, :, :3, 1:6], torch.repeat_interleave(x[:, :, :1, :], 3,
+                                                      dim=2))
         self.assertTensorEqual(
-            y[:, :, 7:, 1:6], torch.repeat_interleave(
-                x[:, :, 3:, :], 4, dim=2))
+            y[:, :, 7:, 1:6], torch.repeat_interleave(x[:, :, 3:, :], 4,
+                                                      dim=2))
 
         self.assertTensorEqual(y[:, :, 3:7, :1], x[:, :, :, :1])
         self.assertTensorEqual(
-            y[:, :, 3:7, 6:], torch.repeat_interleave(
-                x[:, :, :, 4:], 2, dim=-1))
+            y[:, :, 3:7, 6:], torch.repeat_interleave(x[:, :, :, 4:],
+                                                      2,
+                                                      dim=-1))
 
         self.assertTensorEqual(
-            y[:, :, :3, :1], torch.repeat_interleave(
-                x[:, :, :1, :1], 3, dim=2))
+            y[:, :, :3, :1], torch.repeat_interleave(x[:, :, :1, :1], 3,
+                                                     dim=2))
         self.assertTensorEqual(
             y[:, :, :3, 6:],
             torch.einsum('ijkl, kl->ijkl', x[:, :, :1, 4:], torch.ones(3, 2)))
         self.assertTensorEqual(
-            y[:, :, 7:, :1], torch.repeat_interleave(
-                x[:, :, 3:, :1], 4, dim=2))
+            y[:, :, 7:, :1], torch.repeat_interleave(x[:, :, 3:, :1], 4,
+                                                     dim=2))
         self.assertTensorEqual(
             y[:, :, 7:, 6:],
             torch.einsum('ijkl, kl->ijkl', x[:, :, 3:, 4:], torch.ones(4, 2)))
@@ -1154,26 +1135,27 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTensorEqual(y[:, :, 3:7, 1:6], x)
 
         self.assertTensorEqual(
-            y[:, :, :3, 1:6], torch.repeat_interleave(
-                x[:, :, :1, :], 3, dim=2))
+            y[:, :, :3, 1:6], torch.repeat_interleave(x[:, :, :1, :], 3,
+                                                      dim=2))
         self.assertTensorEqual(
-            y[:, :, 7:, 1:6], torch.repeat_interleave(
-                x[:, :, 3:, :], 4, dim=2))
+            y[:, :, 7:, 1:6], torch.repeat_interleave(x[:, :, 3:, :], 4,
+                                                      dim=2))
 
         self.assertTensorEqual(y[:, :, 3:7, :1], x[:, :, :, :1])
         self.assertTensorEqual(
-            y[:, :, 3:7, 6:], torch.repeat_interleave(
-                x[:, :, :, 4:], 2, dim=-1))
+            y[:, :, 3:7, 6:], torch.repeat_interleave(x[:, :, :, 4:],
+                                                      2,
+                                                      dim=-1))
 
         self.assertTensorEqual(
-            y[:, :, :3, :1], torch.repeat_interleave(
-                x[:, :, :1, :1], 3, dim=2))
+            y[:, :, :3, :1], torch.repeat_interleave(x[:, :, :1, :1], 3,
+                                                     dim=2))
         self.assertTensorEqual(
             y[:, :, :3, 6:],
             torch.einsum('ijkl, kl->ijkl', x[:, :, :1, 4:], torch.ones(3, 2)))
         self.assertTensorEqual(
-            y[:, :, 7:, :1], torch.repeat_interleave(
-                x[:, :, 3:, :1], 4, dim=2))
+            y[:, :, 7:, :1], torch.repeat_interleave(x[:, :, 3:, :1], 4,
+                                                     dim=2))
         self.assertTensorEqual(
             y[:, :, 7:, 6:],
             torch.einsum('ijkl, kl->ijkl', x[:, :, 3:, 4:], torch.ones(4, 2)))

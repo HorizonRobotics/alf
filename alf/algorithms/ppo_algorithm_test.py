@@ -24,9 +24,10 @@ from alf.algorithms.ppo_algorithm import PPOAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import ActionType
-from alf.networks import (
-    ActorDistributionNetwork, ActorDistributionRNNNetwork,
-    StableNormalProjectionNetwork, ValueNetwork, ValueRNNNetwork)
+from alf.networks import (ActorDistributionNetwork,
+                          ActorDistributionRNNNetwork,
+                          StableNormalProjectionNetwork, ValueNetwork,
+                          ValueRNNNetwork)
 from alf.utils import common
 
 DEBUGGING = True
@@ -37,16 +38,14 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
     action_spec = env.action_spec()
 
     if use_rnn:
-        actor_net = partial(
-            ActorDistributionRNNNetwork,
-            fc_layer_params=(),
-            lstm_hidden_size=(4, ),
-            actor_fc_layer_params=())
-        value_net = partial(
-            ValueRNNNetwork,
-            fc_layer_params=(),
-            lstm_hidden_size=(4, ),
-            value_fc_layer_params=())
+        actor_net = partial(ActorDistributionRNNNetwork,
+                            fc_layer_params=(),
+                            lstm_hidden_size=(4, ),
+                            actor_fc_layer_params=())
+        value_net = partial(ValueRNNNetwork,
+                            fc_layer_params=(),
+                            lstm_hidden_size=(4, ),
+                            value_fc_layer_params=())
     else:
         actor_net = partial(
             ActorDistributionNetwork,
@@ -56,30 +55,28 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
 
     optimizer = alf.optimizers.Adam(lr=learning_rate)
 
-    config = TrainerConfig(
-        root_dir="dummy",
-        unroll_length=13,
-        num_updates_per_train_iter=4,
-        mini_batch_size=25,
-        summarize_grads_and_vars=DEBUGGING)
+    config = TrainerConfig(root_dir="dummy",
+                           unroll_length=13,
+                           num_updates_per_train_iter=4,
+                           mini_batch_size=25,
+                           summarize_grads_and_vars=DEBUGGING)
 
-    return PPOAlgorithm(
-        observation_spec=observation_spec,
-        action_spec=action_spec,
-        reward_spec=env.reward_spec(),
-        env=env,
-        config=config,
-        actor_network_ctor=actor_net,
-        value_network_ctor=value_net,
-        loss=PPOLoss(
-            reward_dim=env.reward_spec().numel,
-            gamma=1.0,
-            debug_summaries=DEBUGGING),
-        optimizer=optimizer,
-        debug_summaries=DEBUGGING)
+    return PPOAlgorithm(observation_spec=observation_spec,
+                        action_spec=action_spec,
+                        reward_spec=env.reward_spec(),
+                        env=env,
+                        config=config,
+                        actor_network_ctor=actor_net,
+                        value_network_ctor=value_net,
+                        loss=PPOLoss(reward_dim=env.reward_spec().numel,
+                                     gamma=1.0,
+                                     debug_summaries=DEBUGGING),
+                        optimizer=optimizer,
+                        debug_summaries=DEBUGGING)
 
 
 class PpoTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((1, ), (3, ))
     def test_ppo(self, reward_dim):
         env_class = PolicyUnittestEnv
@@ -89,8 +86,9 @@ class PpoTest(parameterized.TestCase, alf.test.TestCase):
         steps_per_episode = 13
         env = env_class(batch_size, steps_per_episode, reward_dim=reward_dim)
 
-        eval_env = env_class(
-            batch_size, steps_per_episode, reward_dim=reward_dim)
+        eval_env = env_class(batch_size,
+                             steps_per_episode,
+                             reward_dim=reward_dim)
 
         algorithm = create_algorithm(env, learning_rate=learning_rate)
 
@@ -104,8 +102,9 @@ class PpoTest(parameterized.TestCase, alf.test.TestCase):
             logging.info("%d reward=%f", i,
                          float(eval_time_step.reward.mean()))
 
-        self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=1e-1)
+        self.assertAlmostEqual(1.0,
+                               float(eval_time_step.reward.mean()),
+                               delta=1e-1)
 
 
 def unroll(env, algorithm, steps):

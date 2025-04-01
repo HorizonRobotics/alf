@@ -101,8 +101,8 @@ def action_importance_ratio(action_distribution,
     if debug_summaries and alf.summary.should_record_summaries():
         with scope:
             if importance_ratio_clipping > 0.0:
-                clip_fraction = (torch.abs(importance_ratio - 1.0) >
-                                 importance_ratio_clipping).to(
+                clip_fraction = (torch.abs(importance_ratio - 1.0)
+                                 > importance_ratio_clipping).to(
                                      torch.float32).mean()
                 alf.summary.scalar('clip_fraction', clip_fraction)
 

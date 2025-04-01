@@ -53,6 +53,7 @@ def _make_cond_vae_dataset(train_size, input_spec, prior_input_spec):
 
 
 class VaeTest(alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         self._input_spec = TensorSpec((1, ))
@@ -67,9 +68,9 @@ class VaeTest(alf.test.TestCase):
             self._latent_dim, input_tensor_spec=self._input_spec)
         decoding_layers = FC(self._latent_dim, 1)
 
-        optimizer = torch.optim.Adam(
-            list(encoder.parameters()) + list(decoding_layers.parameters()),
-            lr=0.1)
+        optimizer = torch.optim.Adam(list(encoder.parameters()) +
+                                     list(decoding_layers.parameters()),
+                                     lr=0.1)
 
         x_train = self._input_spec.randn(outer_dims=(10000, ))
         x_test = self._input_spec.randn(outer_dims=(10, ))
@@ -96,12 +97,11 @@ class VaeTest(alf.test.TestCase):
         """
         prior_input_spec = BoundedTensorSpec((), 'int64')
 
-        z_prior_network = EncodingNetwork(
-            TensorSpec(
-                (prior_input_spec.maximum - prior_input_spec.minimum + 1, )),
-            fc_layer_params=(10, ) * 2,
-            last_layer_size=2 * self._latent_dim,
-            last_activation=math_ops.identity)
+        z_prior_network = EncodingNetwork(TensorSpec(
+            (prior_input_spec.maximum - prior_input_spec.minimum + 1, )),
+                                          fc_layer_params=(10, ) * 2,
+                                          last_layer_size=2 * self._latent_dim,
+                                          last_activation=math_ops.identity)
         preprocess_network = EncodingNetwork(
             input_tensor_spec=(
                 z_prior_network.input_tensor_spec,
@@ -119,13 +119,13 @@ class VaeTest(alf.test.TestCase):
             z_prior_network=z_prior_network)
         decoding_layers = FC(self._latent_dim, 1)
 
-        optimizer = torch.optim.Adam(
-            list(encoder.parameters()) + list(decoding_layers.parameters()),
-            lr=0.1)
+        optimizer = torch.optim.Adam(list(encoder.parameters()) +
+                                     list(decoding_layers.parameters()),
+                                     lr=0.1)
 
-        (x_train, y_train, pr_train,
-         x_test, y_test, pr_test) = _make_cond_vae_dataset(
-             10000, self._input_spec, prior_input_spec)
+        (x_train, y_train, pr_train, x_test, y_test,
+         pr_test) = _make_cond_vae_dataset(10000, self._input_spec,
+                                           prior_input_spec)
 
         for _ in range(self._epochs):
             idx = torch.randperm(x_train.shape[0])
@@ -156,23 +156,22 @@ class VaeTest(alf.test.TestCase):
 
 
 class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         self._input_spec = TensorSpec((1, ))
         self._epochs = 10
         self._batch_size = 200
         self._loss_f = math_ops.square
-        self._encoder_cls = partial(
-            alf.networks.EncodingNetwork,
-            preprocessing_combiner=NestConcat(),
-            activation=torch.tanh,
-            fc_layer_params=(256, ) * 3)
-        self._decoder_cls = partial(
-            alf.networks.EncodingNetwork,
-            fc_layer_params=(256, ) * 3,
-            activation=torch.tanh,
-            last_layer_size=1,
-            last_activation=alf.math.identity)
+        self._encoder_cls = partial(alf.networks.EncodingNetwork,
+                                    preprocessing_combiner=NestConcat(),
+                                    activation=torch.tanh,
+                                    fc_layer_params=(256, ) * 3)
+        self._decoder_cls = partial(alf.networks.EncodingNetwork,
+                                    fc_layer_params=(256, ) * 3,
+                                    activation=torch.tanh,
+                                    last_layer_size=1,
+                                    last_activation=alf.math.identity)
 
     @parameterized.parameters(
         dict(z_shape=(20, ), n_categories=2, mode='st'),
@@ -183,17 +182,15 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
     )
     def test_discrete_vae(self, z_shape, n_categories, mode):
         """Test for multiple categoricals."""
-        z_spec = BoundedTensorSpec(
-            shape=z_shape,
-            minimum=0,
-            maximum=n_categories - 1,
-            dtype=torch.int64)
-        encoder = vae.DiscreteVAE(
-            z_spec=z_spec,
-            beta=0.001,
-            mode=mode,
-            input_tensor_spec=self._input_spec,
-            z_network_cls=self._encoder_cls)
+        z_spec = BoundedTensorSpec(shape=z_shape,
+                                   minimum=0,
+                                   maximum=n_categories - 1,
+                                   dtype=torch.int64)
+        encoder = vae.DiscreteVAE(z_spec=z_spec,
+                                  beta=0.001,
+                                  mode=mode,
+                                  input_tensor_spec=self._input_spec,
+                                  z_network_cls=self._encoder_cls)
 
         self.assertEqual(encoder.output_spec.shape,
                          (z_spec.numel, ) + (n_categories, ))
@@ -201,8 +198,9 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
         decoder = self._decoder_cls(
             input_tensor_spec=TensorSpec((encoder.output_spec.numel, )))
 
-        optimizer = torch.optim.Adam(
-            list(encoder.parameters()) + list(decoder.parameters()), lr=1e-3)
+        optimizer = torch.optim.Adam(list(encoder.parameters()) +
+                                     list(decoder.parameters()),
+                                     lr=1e-3)
 
         x_train = self._input_spec.randn(outer_dims=(40000, ))
         x_test = self._input_spec.randn(outer_dims=(100, ))
@@ -237,25 +235,27 @@ class DiscreteVAETest(parameterized.TestCase, alf.test.TestCase):
         """
         prior_input_spec = BoundedTensorSpec((), 'int64')
 
-        z_spec = BoundedTensorSpec(
-            shape=(20, ), minimum=0, maximum=1, dtype=torch.int64)
-        encoder = vae.DiscreteVAE(
-            z_spec=z_spec,
-            beta=0.0001,
-            input_tensor_spec=self._input_spec,
-            mode=mode,
-            prior_z_network_cls=self._encoder_cls,
-            prior_input_tensor_spec=TensorSpec((2, )),
-            z_network_cls=self._encoder_cls)
+        z_spec = BoundedTensorSpec(shape=(20, ),
+                                   minimum=0,
+                                   maximum=1,
+                                   dtype=torch.int64)
+        encoder = vae.DiscreteVAE(z_spec=z_spec,
+                                  beta=0.0001,
+                                  input_tensor_spec=self._input_spec,
+                                  mode=mode,
+                                  prior_z_network_cls=self._encoder_cls,
+                                  prior_input_tensor_spec=TensorSpec((2, )),
+                                  z_network_cls=self._encoder_cls)
         decoder = self._decoder_cls(
             input_tensor_spec=TensorSpec((encoder.output_spec.numel, )))
 
-        optimizer = torch.optim.Adam(
-            list(encoder.parameters()) + list(decoder.parameters()), lr=1e-3)
+        optimizer = torch.optim.Adam(list(encoder.parameters()) +
+                                     list(decoder.parameters()),
+                                     lr=1e-3)
 
-        (x_train, y_train, pr_train,
-         x_test, y_test, pr_test) = _make_cond_vae_dataset(
-             40000, self._input_spec, prior_input_spec)
+        (x_train, y_train, pr_train, x_test, y_test,
+         pr_test) = _make_cond_vae_dataset(40000, self._input_spec,
+                                           prior_input_spec)
 
         for _ in range(self._epochs * 2):
             idx = torch.randperm(x_train.shape[0])

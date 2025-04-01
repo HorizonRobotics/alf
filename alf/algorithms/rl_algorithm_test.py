@@ -26,6 +26,7 @@ from alf.tensor_specs import TensorSpec
 
 
 class MyAlg(RLAlgorithm):
+
     def __init__(self,
                  observation_spec,
                  action_spec,
@@ -35,17 +36,16 @@ class MyAlg(RLAlgorithm):
                  on_policy=True,
                  debug_summaries=False):
         self._on_policy = on_policy
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=observation_spec,
-            env=env,
-            is_on_policy=on_policy,
-            config=config,
-            optimizer=alf.optimizers.Adam(lr=1e-1),
-            debug_summaries=debug_summaries,
-            name="MyAlg")
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=observation_spec,
+                         env=env,
+                         is_on_policy=on_policy,
+                         config=config,
+                         optimizer=alf.optimizers.Adam(lr=1e-1),
+                         debug_summaries=debug_summaries,
+                         name="MyAlg")
 
         self._proj_net = alf.networks.CategoricalProjectionNetwork(
             input_size=2, action_spec=action_spec)
@@ -57,20 +57,19 @@ class MyAlg(RLAlgorithm):
     def rollout_step(self, time_step: TimeStep, state):
         dist, _ = self._proj_net(time_step.observation)
         action = dist.sample()
-        return AlgStep(
-            output=action,
-            state=time_step.observation,
-            info=dict(dist=dist, action=action, reward=time_step.reward))
+        return AlgStep(output=action,
+                       state=time_step.observation,
+                       info=dict(dist=dist,
+                                 action=action,
+                                 reward=time_step.reward))
 
     def train_step(self, time_step: TimeStep, state, rollout_info):
         dist, _ = self._proj_net(time_step.observation)
-        return AlgStep(
-            output=dist.sample(),
-            state=time_step.observation,
-            info=dict(
-                dist=dist,
-                action=rollout_info['action'],
-                reward=time_step.reward))
+        return AlgStep(output=dist.sample(),
+                       state=time_step.observation,
+                       info=dict(dist=dist,
+                                 action=rollout_info['action'],
+                                 reward=time_step.reward))
 
     def calc_loss(self, info):
         dist: td.Distribution = info['dist']
@@ -98,8 +97,10 @@ class MyEnv(object):
             self._rewards = self._rewards.unsqueeze(-1).expand(
                 (-1, self._reward_dim))
         self._observation_spec = alf.TensorSpec(obs_shape, dtype='float32')
-        self._action_spec = alf.BoundedTensorSpec(
-            shape=(), dtype='int64', minimum=0, maximum=2)
+        self._action_spec = alf.BoundedTensorSpec(shape=(),
+                                                  dtype='int64',
+                                                  minimum=0,
+                                                  maximum=2)
         self.reset()
 
     @property
@@ -172,19 +173,19 @@ class MyEnv(object):
 
 
 class RLAlgorithmTest(unittest.TestCase):
+
     def test_on_policy_algorithm(self):
         # root_dir is not used. We have to give it a value because
         # it is a required argument of TrainerConfig.
-        config = TrainerConfig(
-            root_dir='/tmp/rl_algorithm_test', unroll_length=5)
+        config = TrainerConfig(root_dir='/tmp/rl_algorithm_test',
+                               unroll_length=5)
         env = MyEnv(batch_size=3)
-        alg = MyAlg(
-            observation_spec=env.observation_spec(),
-            action_spec=env.action_spec(),
-            env=env,
-            config=config,
-            on_policy=True,
-            debug_summaries=True)
+        alg = MyAlg(observation_spec=env.observation_spec(),
+                    action_spec=env.action_spec(),
+                    env=env,
+                    config=config,
+                    on_policy=True,
+                    debug_summaries=True)
         for _ in range(100):
             alg.train_iter()
 
@@ -207,23 +208,21 @@ class RLAlgorithmTest(unittest.TestCase):
 
     def _test_off_policy_algorithm(self, root_dir):
         alf.summary.enable_summary()
-        config = TrainerConfig(
-            root_dir=root_dir,
-            unroll_length=5,
-            num_updates_per_train_iter=1,
-            mini_batch_length=5,
-            mini_batch_size=3,
-            use_rollout_state=True,
-            summarize_grads_and_vars=True,
-            summarize_action_distributions=True,
-            whole_replay_buffer_training=True)
+        config = TrainerConfig(root_dir=root_dir,
+                               unroll_length=5,
+                               num_updates_per_train_iter=1,
+                               mini_batch_length=5,
+                               mini_batch_size=3,
+                               use_rollout_state=True,
+                               summarize_grads_and_vars=True,
+                               summarize_action_distributions=True,
+                               whole_replay_buffer_training=True)
         env = MyEnv(batch_size=3)
-        alg = MyAlg(
-            observation_spec=env.observation_spec(),
-            action_spec=env.action_spec(),
-            env=env,
-            on_policy=False,
-            config=config)
+        alg = MyAlg(observation_spec=env.observation_spec(),
+                    action_spec=env.action_spec(),
+                    env=env,
+                    on_policy=False,
+                    config=config)
         for _ in range(100):
             alg.train_iter()
 

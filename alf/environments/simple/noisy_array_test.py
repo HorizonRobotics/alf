@@ -18,6 +18,7 @@ from alf.environments.simple.noisy_array import NoisyArray
 
 
 class NoisyArrayTest(parameterized.TestCase, unittest.TestCase):
+
     @parameterized.parameters((5, 3), (201, 100))
     def test_noisy_array_environment(self, K, M):
         array = NoisyArray(K, M)

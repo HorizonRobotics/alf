@@ -29,13 +29,14 @@ from alf.nest.utils import NestSum
 
 
 class TestQNetworks(parameterized.TestCase, unittest.TestCase):
+
     def _init(self, lstm_hidden_size):
         self._action_spec = BoundedTensorSpec((), torch.int64, 0, 2)
         self._num_actions = self._action_spec.maximum - self._action_spec.minimum + 1
 
         if lstm_hidden_size is not None:
-            network_ctor = functools.partial(
-                QRNNNetwork, lstm_hidden_size=lstm_hidden_size)
+            network_ctor = functools.partial(QRNNNetwork,
+                                             lstm_hidden_size=lstm_hidden_size)
             if isinstance(lstm_hidden_size, int):
                 lstm_hidden_size = [lstm_hidden_size]
             state = [()]
@@ -57,12 +58,11 @@ class TestQNetworks(parameterized.TestCase, unittest.TestCase):
 
         network_ctor, state = self._init(lstm_hidden_size)
 
-        q_net = network_ctor(
-            input_spec,
-            self._action_spec,
-            input_preprocessors=[torch.relu],
-            preprocessing_combiner=NestSum(),
-            conv_layer_params=conv_layer_params)
+        q_net = network_ctor(input_spec,
+                             self._action_spec,
+                             input_preprocessors=[torch.relu],
+                             preprocessing_combiner=NestSum(),
+                             conv_layer_params=conv_layer_params)
         q_value, state = q_net(image, state)
 
         # (batch_size, num_actions)
@@ -92,8 +92,9 @@ class TestQNetworks(parameterized.TestCase, unittest.TestCase):
         network_ctor, state = self._init(100)
         state = alf.layers.make_parallel_input(state, replicas)
 
-        q_net = network_ctor(
-            input_spec, self._action_spec, input_preprocessors=torch.relu)
+        q_net = network_ctor(input_spec,
+                             self._action_spec,
+                             input_preprocessors=torch.relu)
         pnet = q_net.make_parallel(replicas)
 
         self.assertTrue(isinstance(pnet, ParallelQNetwork))

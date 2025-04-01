@@ -20,13 +20,14 @@ from alf.networks import CategoricalProjectionNetwork
 
 
 def _encode_action(action, height, width):
-    action = F.one_hot(
-        action, num_classes=height * width + 1).to(torch.float32)
+    action = F.one_hot(action,
+                       num_classes=height * width + 1).to(torch.float32)
     return action[..., :-1].reshape(action.shape[0], 1, height, width)
 
 
 @alf.configurable
 class RepresentationNet(alf.networks.Network):
+
     def __init__(self, input_tensor_spec, num_blocks=16, filters=256):
         super().__init__(input_tensor_spec, name="RepresentationNet")
         board_spec = input_tensor_spec['board']
@@ -35,11 +36,11 @@ class RepresentationNet(alf.networks.Network):
         shape = in_channels, board_spec.shape[1], board_spec.shape[2]
         enc_layers = []
         for _ in range(num_blocks):
-            res_block = alf.layers.BottleneckBlock(
-                in_channels=in_channels,
-                kernel_size=3,
-                filters=(filters, filters, filters),
-                stride=1)
+            res_block = alf.layers.BottleneckBlock(in_channels=in_channels,
+                                                   kernel_size=3,
+                                                   filters=(filters, filters,
+                                                            filters),
+                                                   stride=1)
             shape = res_block.calc_output_shape(shape)
             enc_layers.append(res_block)
             in_channels = filters
@@ -75,6 +76,7 @@ class RepresentationNet(alf.networks.Network):
 
 @alf.configurable
 class DynamicsNet(alf.networks.Network):
+
     def __init__(self, input_tensor_spec, num_blocks=16, filters=256):
         super().__init__(input_tensor_spec, name="DynamicsNet")
         state_spec, action_spec = input_tensor_spec
@@ -84,11 +86,11 @@ class DynamicsNet(alf.networks.Network):
         shape = in_channels, state_spec.shape[1], state_spec.shape[2]
         enc_layers = []
         for _ in range(num_blocks):
-            res_block = alf.layers.BottleneckBlock(
-                in_channels=in_channels,
-                kernel_size=3,
-                filters=(filters, filters, filters),
-                stride=1)
+            res_block = alf.layers.BottleneckBlock(in_channels=in_channels,
+                                                   kernel_size=3,
+                                                   filters=(filters, filters,
+                                                            filters),
+                                                   stride=1)
             shape = res_block.calc_output_shape(shape)
             enc_layers.append(res_block)
             in_channels = filters
@@ -104,6 +106,7 @@ class DynamicsNet(alf.networks.Network):
 
 @alf.configurable
 class PredictionNet(alf.networks.Network):
+
     def __init__(self,
                  observation_spec,
                  action_spec,
@@ -118,46 +121,40 @@ class PredictionNet(alf.networks.Network):
         self._value_head = nn.Sequential(
             alf.layers.Conv2D(in_channels, 1, kernel_size=1),
             alf.layers.Reshape([-1]),
-            alf.layers.FC(
-                input_size=h * w,
-                output_size=hidden_size,
-                activation=torch.relu_,
-                use_bn=False),
-            alf.layers.FC(
-                input_size=hidden_size,
-                output_size=1,
-                activation=torch.tanh,
-                kernel_initializer=output_weight_initializer),
+            alf.layers.FC(input_size=h * w,
+                          output_size=hidden_size,
+                          activation=torch.relu_,
+                          use_bn=False),
+            alf.layers.FC(input_size=hidden_size,
+                          output_size=1,
+                          activation=torch.tanh,
+                          kernel_initializer=output_weight_initializer),
             alf.layers.Reshape(()))
 
         self._reward_head = nn.Sequential(
             alf.layers.Conv2D(in_channels, 1, kernel_size=1),
             alf.layers.Reshape([-1]),
-            alf.layers.FC(
-                input_size=h * w,
-                output_size=hidden_size,
-                activation=torch.relu_,
-                use_bn=False),
-            alf.layers.FC(
-                input_size=hidden_size,
-                output_size=1,
-                activation=torch.tanh,
-                kernel_initializer=output_weight_initializer),
+            alf.layers.FC(input_size=h * w,
+                          output_size=hidden_size,
+                          activation=torch.relu_,
+                          use_bn=False),
+            alf.layers.FC(input_size=hidden_size,
+                          output_size=1,
+                          activation=torch.tanh,
+                          kernel_initializer=output_weight_initializer),
             alf.layers.Reshape(()))
 
         self._game_over_head = nn.Sequential(
             alf.layers.Conv2D(in_channels, 1, kernel_size=1),
             alf.layers.Reshape([-1]),
-            alf.layers.FC(
-                input_size=h * w,
-                output_size=hidden_size,
-                activation=torch.relu_,
-                use_bn=False),
-            alf.layers.FC(
-                input_size=hidden_size,
-                output_size=1,
-                bias_init_value=initial_game_over_bias,
-                kernel_initializer=output_weight_initializer),
+            alf.layers.FC(input_size=h * w,
+                          output_size=hidden_size,
+                          activation=torch.relu_,
+                          use_bn=False),
+            alf.layers.FC(input_size=hidden_size,
+                          output_size=1,
+                          bias_init_value=initial_game_over_bias,
+                          kernel_initializer=output_weight_initializer),
             alf.layers.Reshape(()))
 
         self._action_head = nn.Sequential(

@@ -21,40 +21,34 @@ from alf.environments.metadrive.extra_rewards import squared_brake_cost, squared
 from alf.utils import summary_utils
 
 # Environment Configuration
-alf.config(
-    'create_environment',
-    env_load_fn=suite_metadrive.load,
-    num_parallel_environments=12)
+alf.config('create_environment',
+           env_load_fn=suite_metadrive.load,
+           num_parallel_environments=12)
 
-alf.config(
-    'suite_metadrive.load',
-    scenario_num=5000,
-    crash_penalty=50.0,
-    success_reward=200.0,
-    traffic_density=0.25,
-    speed_reward_weight=0.15)
+alf.config('suite_metadrive.load',
+           scenario_num=5000,
+           crash_penalty=50.0,
+           success_reward=200.0,
+           traffic_density=0.25,
+           speed_reward_weight=0.15)
 
 # Configure the extra rewards
-alf.config(
-    "metadrive.extra_rewards.EgoKinematicReward",
-    harsh_brake_cost_func=partial(
-        squared_brake_cost,
-        harsh_brake_limit=-1.2,
-        speed_deadband=1.5,
-        scale=2.0,
-        cap=1.0),
-    lon_jerk_cost_func=partial(
-        squared_jerk_cost,
-        jerk_deadband=4.0,
-        speed_deadband=1.5,
-        scale=1e-3,
-        cap=0.8),
-    lat_jerk_cost_func=partial(
-        squared_jerk_cost,
-        jerk_deadband=4.0,
-        speed_deadband=1.5,
-        scale=1e-3,
-        cap=0.8))
+alf.config("metadrive.extra_rewards.EgoKinematicReward",
+           harsh_brake_cost_func=partial(squared_brake_cost,
+                                         harsh_brake_limit=-1.2,
+                                         speed_deadband=1.5,
+                                         scale=2.0,
+                                         cap=1.0),
+           lon_jerk_cost_func=partial(squared_jerk_cost,
+                                      jerk_deadband=4.0,
+                                      speed_deadband=1.5,
+                                      scale=1e-3,
+                                      cap=0.8),
+           lat_jerk_cost_func=partial(squared_jerk_cost,
+                                      jerk_deadband=4.0,
+                                      speed_deadband=1.5,
+                                      scale=1e-3,
+                                      cap=0.8))
 alf.config("metadrive.extra_rewards.LaneKeepingReward", broken_line_cost=0.05)
 alf.config("metadrive.extra_rewards.CrashVehicleReward", cost=20.0)
 
@@ -93,7 +87,6 @@ def summarize_metadrive(experience: Experience):
                 "lat_jerk", env_info["MetaDrive/costs/lat_jerk"])
 
 
-alf.config(
-    "alf.metrics.metrics.AverageEnvInfoMetric",
-    fields=["reach_goal", "MetaDrive/crash_vehicle"])
+alf.config("alf.metrics.metrics.AverageEnvInfoMetric",
+           fields=["reach_goal", "MetaDrive/crash_vehicle"])
 alf.config("RLAlgorithm.summarize_rollout", custom_summary=summarize_metadrive)

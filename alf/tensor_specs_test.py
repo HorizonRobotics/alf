@@ -28,6 +28,7 @@ TYPE_PARAMETERS = ((torch.int32, ), (torch.int64, ), (torch.float32, ),
 
 
 class TensorSpecTest(parameterized.TestCase, alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         self._shape = (20, 30)
@@ -85,18 +86,16 @@ class TensorSpecTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(TensorSpec(shape=(4, 5), dtype=torch.float32), spec3)
 
     def testBoundedTensorSpecReplace(self):
-        spec = BoundedTensorSpec(
-            shape=(3, 4),
-            dtype=torch.int32,
-            minimum=np.zeros(4),
-            maximum=np.ones(4))
+        spec = BoundedTensorSpec(shape=(3, 4),
+                                 dtype=torch.int32,
+                                 minimum=np.zeros(4),
+                                 maximum=np.ones(4))
         new_spec = spec.replace(shape=(8, 4), minimum=np.full((4, ), -1))
         self.assertEqual(
-            BoundedTensorSpec(
-                shape=(8, 4),
-                dtype=torch.int32,
-                minimum=np.array([-1, -1, -1, -1]),
-                maximum=np.array([1, 1, 1, 1])), new_spec)
+            BoundedTensorSpec(shape=(8, 4),
+                              dtype=torch.int32,
+                              minimum=np.array([-1, -1, -1, -1]),
+                              maximum=np.array([1, 1, 1, 1])), new_spec)
 
     def test_concat_specs1(self):
         """Concat TensorSpecs"""
@@ -113,13 +112,14 @@ class TensorSpecTest(parameterized.TestCase, alf.test.TestCase):
     def test_concat_specs2(self):
         """Concat BoundedTensorSpecs"""
         spec1 = TensorSpec(shape=(2, 3), dtype=torch.int64)
-        spec2 = BoundedTensorSpec(
-            shape=(2, 3), minimum=1, maximum=3, dtype=torch.int64)
-        spec3 = BoundedTensorSpec(
-            shape=(4, ),
-            minimum=[1, 2, 3, 4],
-            maximum=[5, 6, 7, 8],
-            dtype=torch.int64)
+        spec2 = BoundedTensorSpec(shape=(2, 3),
+                                  minimum=1,
+                                  maximum=3,
+                                  dtype=torch.int64)
+        spec3 = BoundedTensorSpec(shape=(4, ),
+                                  minimum=[1, 2, 3, 4],
+                                  maximum=[5, 6, 7, 8],
+                                  dtype=torch.int64)
         self.assertRaises(AssertionError, concat_specs, [spec1, spec2, spec3])
         spec = concat_specs([spec2, spec3])
         self.assertEqual(spec.shape, (10, ))

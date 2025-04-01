@@ -143,8 +143,9 @@ class DqnAlgorithm(SacAlgorithm):
             nets = self._critic_networks
         else:
             nets = self._target_critic_networks
-        q_values, critic_state = self._compute_critics(
-            nets, *critic_network_inputs, state.critic)
+        q_values, critic_state = self._compute_critics(nets,
+                                                       *critic_network_inputs,
+                                                       state.critic)
         new_state = new_state._replace(critic=critic_state)
 
         # NOTE: This block departs from SAC:
@@ -187,30 +188,33 @@ class DqnAlgorithm(SacAlgorithm):
             eps_greedy_sampling=True)
 
         if self.need_full_rollout_state():
-            _, critics_state = self._compute_critics(
-                self._critic_networks, inputs.observation, action,
-                state.critic.critics)
+            _, critics_state = self._compute_critics(self._critic_networks,
+                                                     inputs.observation,
+                                                     action,
+                                                     state.critic.critics)
             _, target_critics_state = self._compute_critics(
                 self._target_critic_networks, inputs.observation, action,
                 state.critic.target_critics)
-            critic_state = DqnCriticState(
-                critics=critics_state, target_critics=target_critics_state)
+            critic_state = DqnCriticState(critics=critics_state,
+                                          target_critics=target_critics_state)
             actor_state = ()
         else:
             actor_state = state.actor
             critic_state = state.critic
 
-        new_state = DqnState(
-            action=action_state, actor=actor_state, critic=critic_state)
-        return AlgStep(
-            output=action,
-            state=new_state,
-            info=DqnInfo(action=action, action_distribution=action_dist))
+        new_state = DqnState(action=action_state,
+                             actor=actor_state,
+                             critic=critic_state)
+        return AlgStep(output=action,
+                       state=new_state,
+                       info=DqnInfo(action=action,
+                                    action_distribution=action_dist))
 
     def calc_loss(self, info: DqnInfo):
         # Adapted from SAC: Removes irrelevant losses and logging.
         critic_loss = self._calc_critic_loss(info)
-        return LossInfo(
-            loss=critic_loss.loss,
-            priority=critic_loss.priority,
-            extra=DqnLossInfo(critic=critic_loss.extra, actor=(), alpha=()))
+        return LossInfo(loss=critic_loss.loss,
+                        priority=critic_loss.priority,
+                        extra=DqnLossInfo(critic=critic_loss.extra,
+                                          actor=(),
+                                          alpha=()))

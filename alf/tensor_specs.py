@@ -327,20 +327,21 @@ class BoundedTensorSpec(TensorSpec):
                 "minimum or maximum is not compatible with shape. "
                 "Message: {!r}.".format(exception))
 
-        self._minimum = np.array(
-            minimum, dtype=torch_dtype_to_str(self._dtype))
+        self._minimum = np.array(minimum,
+                                 dtype=torch_dtype_to_str(self._dtype))
         self._minimum.setflags(write=False)
 
-        self._maximum = np.array(
-            maximum, dtype=torch_dtype_to_str(self._dtype))
+        self._maximum = np.array(maximum,
+                                 dtype=torch_dtype_to_str(self._dtype))
         self._maximum.setflags(write=False)
 
-    def replace(self,
-                shape: Union[None, tuple, torch.Size] = None,
-                dtype: Optional[torch.dtype] = None,
-                minimum: Union[None, float, np.ndarray] = None,
-                maximum: Union[None, float, np.ndarray] = None
-                ) -> BoundedTensorSpec:
+    def replace(
+            self,
+            shape: Union[None, tuple, torch.Size] = None,
+            dtype: Optional[torch.dtype] = None,
+            minimum: Union[None, float, np.ndarray] = None,
+            maximum: Union[None, float,
+                           np.ndarray] = None) -> BoundedTensorSpec:
         """Create a new BoundedTensorSpec with part of the properties replaced.
 
         For example, if we have a BoundedTensorSpec like
@@ -360,11 +361,10 @@ class BoundedTensorSpec(TensorSpec):
         new_dtype = dtype or self.dtype
         new_minimum = minimum if minimum is not None else self.minimum
         new_maximum = maximum if maximum is not None else self.maximum
-        return BoundedTensorSpec(
-            shape=new_shape,
-            dtype=new_dtype,
-            minimum=new_minimum,
-            maximum=new_maximum)
+        return BoundedTensorSpec(shape=new_shape,
+                                 dtype=new_dtype,
+                                 minimum=new_minimum,
+                                 maximum=new_maximum)
 
     @classmethod
     def is_bounded(cls):
@@ -425,11 +425,10 @@ class BoundedTensorSpec(TensorSpec):
             # support a scalar minimum and maximum
             assert (np.shape(self._minimum) == ()
                     and np.shape(self._maximum) == ())
-            return torch.randint(
-                low=self._minimum.item(),
-                high=self._maximum.item() + 1,
-                size=shape,
-                dtype=self._dtype)
+            return torch.randint(low=self._minimum.item(),
+                                 high=self._maximum.item() + 1,
+                                 size=shape,
+                                 dtype=self._dtype)
 
     def numpy_sample(self, outer_dims=None, rng=np.random):
         """Sample numpy arrays uniformly given the min/max bounds.
@@ -450,11 +449,10 @@ class BoundedTensorSpec(TensorSpec):
             uniform = rng.rand(*shape).astype(self.dtype_str)
             return (1 - uniform) * self._minimum + self._maximum * uniform
         else:
-            return rng.randint(
-                low=self._minimum,
-                high=self._maximum + 1,
-                size=shape,
-                dtype=self.dtype_str)
+            return rng.randint(low=self._minimum,
+                               high=self._maximum + 1,
+                               size=shape,
+                               dtype=self.dtype_str)
 
 
 # yapf: disable
@@ -508,11 +506,11 @@ def concat_specs(specs: Union[NestedTensorSpec, NestedBoundedTensorSpec]):
             for spec in specs
         ],
                                  axis=0)
-        return alf.BoundedTensorSpec(
-            shape=(sum(spec.numel for spec in specs), ),
-            minimum=minimum,
-            maximum=maximum,
-            dtype=dtype)
+        return alf.BoundedTensorSpec(shape=(sum(spec.numel
+                                                for spec in specs), ),
+                                     minimum=minimum,
+                                     maximum=maximum,
+                                     dtype=dtype)
     else:
-        return alf.TensorSpec(
-            shape=(sum(spec.numel for spec in specs), ), dtype=dtype)
+        return alf.TensorSpec(shape=(sum(spec.numel for spec in specs), ),
+                              dtype=dtype)

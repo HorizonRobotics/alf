@@ -75,10 +75,10 @@ class AsyncUnroller(object):
         self._done_queue = ctx.Queue()
         self._result_queue = ctx.Queue(config.unroll_queue_size)
         pre_configs = dict(alf.get_handled_pre_configs())
-        self._worker = ctx.Process(
-            target=_worker,
-            args=(self._job_queue, self._done_queue, self._result_queue,
-                  config.conf_file, pre_configs, config.root_dir))
+        self._worker = ctx.Process(target=_worker,
+                                   args=(self._job_queue, self._done_queue,
+                                         self._result_queue, config.conf_file,
+                                         pre_configs, config.root_dir))
         self._worker.start()
         self.update_parameter(algorithm)
         self._closed = False
@@ -117,11 +117,10 @@ class AsyncUnroller(object):
         """
         step_metrics = algorithm.get_step_metrics()
         step_metrics = dict((m.name, int(m.result())) for m in step_metrics)
-        job = UnrollJob(
-            type="update_parameter",
-            step_metrics=step_metrics,
-            global_counter=int(alf.summary.get_global_counter()),
-            state_dict=algorithm.state_dict())
+        job = UnrollJob(type="update_parameter",
+                        step_metrics=step_metrics,
+                        global_counter=int(alf.summary.get_global_counter()),
+                        state_dict=algorithm.state_dict())
         self._job_queue.put(job)
         self._done_queue.get()
 
@@ -188,11 +187,10 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
         observation_spec = data_transformer.transformed_observation_spec
 
         algorithm_ctor = config.algorithm_ctor
-        algorithm = algorithm_ctor(
-            observation_spec=observation_spec,
-            action_spec=env.action_spec(),
-            reward_spec=env.reward_spec(),
-            config=config)
+        algorithm = algorithm_ctor(observation_spec=observation_spec,
+                                   action_spec=env.action_spec(),
+                                   reward_spec=env.reward_spec(),
+                                   config=config)
         algorithm.set_path('')
         policy_trainer.Trainer.get_trainer_progress(
         ).set_termination_criterion(config.num_iterations,
@@ -230,12 +228,11 @@ def _worker(job_queue: mp.Queue, done_queue: mp.Queue, result_queue: mp.Queue,
             # step. It is used for informational purpose. When unroll_step_interval
             # is specified, it is important to monitor the actual step_time to
             # make sure it is around unroll_step_interval.
-            unroll_result = UnrollResult(
-                time_step=time_step,
-                policy_step=policy_step,
-                policy_state=policy_state,
-                env_step_time=env_step_time,
-                step_time=step_time)
+            unroll_result = UnrollResult(time_step=time_step,
+                                         policy_step=policy_step,
+                                         policy_state=policy_state,
+                                         env_step_time=env_step_time,
+                                         step_time=step_time)
 
             stopped = False
             # If result_queue is full, result_queue.put() will block, which can

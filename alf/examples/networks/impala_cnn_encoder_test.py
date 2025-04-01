@@ -20,6 +20,7 @@ from alf.examples.networks import impala_cnn_encoder
 
 
 class TestImpalaCnnEncoder(alf.test.TestCase):
+
     def test_residual_cnn_block_shape(self):
         # Such a residual CNN block does not change the shape of the input
         input_tensor_spec = TensorSpec((3, 20, 20), torch.float32)
@@ -37,9 +38,8 @@ class TestImpalaCnnEncoder(alf.test.TestCase):
 
     def test_impala_cnn_encoder_shape(self):
         observation_spec = TensorSpec((3, 64, 64), torch.float32)
-        encoder = impala_cnn_encoder.create(
-            input_tensor_spec=observation_spec,
-            cnn_channel_list=(16, 32, 32),
-            num_blocks_per_stack=2,
-            flatten_output_size=256)
+        encoder = impala_cnn_encoder.create(input_tensor_spec=observation_spec,
+                                            cnn_channel_list=(16, 32, 32),
+                                            num_blocks_per_stack=2,
+                                            flatten_output_size=256)
         self.assertEqual((256, ), encoder.output_spec.shape)

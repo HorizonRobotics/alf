@@ -24,15 +24,14 @@ from alf.utils import common, dist_utils, tensor_utils
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
-ActorCriticState = namedtuple(
-    "ActorCriticState", ["actor", "value"], default_value=())
+ActorCriticState = namedtuple("ActorCriticState", ["actor", "value"],
+                              default_value=())
 
-ActorCriticInfo = namedtuple(
-    "ActorCriticInfo", [
-        "step_type", "discount", "reward", "action", "log_prob",
-        "action_distribution", "value", "reward_weights"
-    ],
-    default_value=())
+ActorCriticInfo = namedtuple("ActorCriticInfo", [
+    "step_type", "discount", "reward", "action", "log_prob",
+    "action_distribution", "value", "reward_weights"
+],
+                             default_value=())
 
 
 @alf.configurable
@@ -106,8 +105,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         if epsilon_greedy is None:
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
-        actor_network = actor_network_ctor(
-            input_tensor_spec=observation_spec, action_spec=action_spec)
+        actor_network = actor_network_ctor(input_tensor_spec=observation_spec,
+                                           action_spec=action_spec)
         value_network = None
         if value_network_ctor is not None:
             value_network = value_network_ctor(
@@ -137,8 +136,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         self._actor_network = actor_network
         self._value_network = value_network
         if loss is None:
-            loss = loss_class(
-                reward_dim=reward_spec.numel, debug_summaries=debug_summaries)
+            loss = loss_class(reward_dim=reward_spec.numel,
+                              debug_summaries=debug_summaries)
         self._loss = loss
 
         # The following checkpoint loading hook handles the case when value
@@ -164,20 +163,19 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def predict_step(self, inputs: TimeStep, state: ActorCriticState):
         """Predict for one step."""
-        action_dist, actor_state = self._actor_network(
-            inputs.observation, state=state.actor)
+        action_dist, actor_state = self._actor_network(inputs.observation,
+                                                       state=state.actor)
 
         action = dist_utils.epsilon_greedy_sample(action_dist,
                                                   self._epsilon_greedy)
-        return AlgStep(
-            output=action,
-            state=ActorCriticState(actor=actor_state),
-            info=ActorCriticInfo(action_distribution=action_dist))
+        return AlgStep(output=action,
+                       state=ActorCriticState(actor=actor_state),
+                       info=ActorCriticInfo(action_distribution=action_dist))
 
     def rollout_step(self, inputs: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
-        value, value_state = self._value_network(
-            inputs.observation, state=state.value)
+        value, value_state = self._value_network(inputs.observation,
+                                                 state=state.value)
 
         action_distribution, actor_state = self._actor_network(
             inputs.observation, state=state.actor)
@@ -190,18 +188,18 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 self.reward_weights, dim=0, n=value.shape[0])
         else:
             reward_weights = ()
-        return AlgStep(
-            output=action,
-            state=ActorCriticState(actor=actor_state, value=value_state),
-            info=ActorCriticInfo(
-                action=common.detach(action),
-                log_prob=common.detach(log_prob),
-                value=value,
-                step_type=inputs.step_type,
-                reward=inputs.reward,
-                discount=inputs.discount,
-                action_distribution=action_distribution,
-                reward_weights=reward_weights))
+        return AlgStep(output=action,
+                       state=ActorCriticState(actor=actor_state,
+                                              value=value_state),
+                       info=ActorCriticInfo(
+                           action=common.detach(action),
+                           log_prob=common.detach(log_prob),
+                           value=value,
+                           step_type=inputs.step_type,
+                           reward=inputs.reward,
+                           discount=inputs.discount,
+                           action_distribution=action_distribution,
+                           reward_weights=reward_weights))
 
     def calc_loss(self, info: ActorCriticInfo):
         """Calculate loss."""

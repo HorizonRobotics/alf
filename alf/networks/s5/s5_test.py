@@ -22,6 +22,7 @@ from alf.networks.s5.utils import diag_ssm_forward_slow, diag_ssm_forward_triton
 
 
 class S5SSMTest(parameterized.TestCase, alf.test.TestCase):
+
     def test_as_real_to_complex_matrix(self):
         complex = torch.view_as_complex(torch.randn(3, 4, 2))
         real = s5._as_real_to_complex_matrix(complex)
@@ -42,8 +43,8 @@ class S5SSMTest(parameterized.TestCase, alf.test.TestCase):
         batch_size = 50
         state_dim = 64
         length = 100
-        x = torch.view_as_complex(
-            torch.randn(length, batch_size, state_dim, 2))
+        x = torch.view_as_complex(torch.randn(length, batch_size, state_dim,
+                                              2))
         s = torch.zeros((batch_size, state_dim), dtype=x.dtype)
         Lambda = torch.view_as_complex(torch.randn(state_dim, 2))
         Lambda = Lambda / Lambda.abs()
@@ -104,8 +105,8 @@ class S5SSMTest(parameterized.TestCase, alf.test.TestCase):
         batch_size = 50
         state_dim = 64
         length = 1000
-        x = torch.view_as_complex(
-            torch.randn(length, batch_size, state_dim, 2))
+        x = torch.view_as_complex(torch.randn(length, batch_size, state_dim,
+                                              2))
         s = torch.zeros((batch_size, state_dim), dtype=x.dtype)
         Lambda = torch.view_as_complex(torch.randn(state_dim, 2))
         Lambda = Lambda / Lambda.abs()

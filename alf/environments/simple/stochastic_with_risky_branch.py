@@ -54,8 +54,10 @@ class StochasticWithRiskyBranch(gym.Env):
             seed (int): random seed for the environment.
         """
         super().__init__()
-        self.observation_space = spaces.Box(
-            low=0, high=4, shape=(1, ), dtype=np.float32)
+        self.observation_space = spaces.Box(low=0,
+                                            high=4,
+                                            shape=(1, ),
+                                            dtype=np.float32)
         self.action_space = spaces.Discrete(2)
         self._deterministic_transitions = {
             _k(S0, A1): (S2, 0.),

@@ -25,12 +25,11 @@ class DiscountedReturnTest(unittest.TestCase):
 
     def _check(self, rewards, values, step_types, discounts, expected):
         np.testing.assert_array_almost_equal(
-            value_ops.discounted_return(
-                rewards=rewards,
-                values=values,
-                step_types=step_types,
-                discounts=discounts,
-                time_major=False), expected)
+            value_ops.discounted_return(rewards=rewards,
+                                        values=values,
+                                        step_types=step_types,
+                                        discounts=discounts,
+                                        time_major=False), expected)
 
         np.testing.assert_array_almost_equal(
             value_ops.discounted_return(
@@ -51,12 +50,11 @@ class DiscountedReturnTest(unittest.TestCase):
               ((1 * 0.9 + 2) * 0.9 + 2) * 0.9 + 2,
               (1 * 0.9 + 2) * 0.9 + 2, 1 * 0.9 + 2]],
             dtype=torch.float32)
-        self._check(
-            rewards=rewards,
-            values=values,
-            step_types=step_types,
-            discounts=discounts,
-            expected=expected)
+        self._check(rewards=rewards,
+                    values=values,
+                    step_types=step_types,
+                    discounts=discounts,
+                    expected=expected)
 
         # two episodes, and exceed by time limit (discount=1)
         step_types = torch.tensor([[
@@ -67,12 +65,11 @@ class DiscountedReturnTest(unittest.TestCase):
         expected = torch.tensor(
             [[(1 * 0.9 + 2) * 0.9 + 2, 1 * 0.9 + 2, 1, 1 * 0.9 + 2]],
             dtype=torch.float32)
-        self._check(
-            rewards=rewards,
-            values=values,
-            step_types=step_types,
-            discounts=discounts,
-            expected=expected)
+        self._check(rewards=rewards,
+                    values=values,
+                    step_types=step_types,
+                    discounts=discounts,
+                    expected=expected)
 
         # tow episodes, and end normal (discount=0)
         step_types = torch.tensor([[
@@ -84,12 +81,11 @@ class DiscountedReturnTest(unittest.TestCase):
         expected = torch.tensor([[(0 * 0.9 + 2) * 0.9 + 2, 2, 1, 1 * 0.9 + 2]],
                                 dtype=torch.float32)
 
-        self._check(
-            rewards=rewards,
-            values=values,
-            step_types=step_types,
-            discounts=discounts,
-            expected=expected)
+        self._check(rewards=rewards,
+                    values=values,
+                    step_types=step_types,
+                    discounts=discounts,
+                    expected=expected)
 
 
 class GeneralizedAdvantageTest(unittest.TestCase):
@@ -99,13 +95,13 @@ class GeneralizedAdvantageTest(unittest.TestCase):
     def _check(self, rewards, values, step_types, discounts, td_lambda,
                expected):
         np.testing.assert_array_almost_equal(
-            value_ops.generalized_advantage_estimation(
-                rewards=rewards,
-                values=values,
-                step_types=step_types,
-                discounts=discounts,
-                td_lambda=td_lambda,
-                time_major=False), expected)
+            value_ops.generalized_advantage_estimation(rewards=rewards,
+                                                       values=values,
+                                                       step_types=step_types,
+                                                       discounts=discounts,
+                                                       td_lambda=td_lambda,
+                                                       time_major=False),
+            expected)
 
         np.testing.assert_array_almost_equal(
             value_ops.generalized_advantage_estimation(
@@ -129,13 +125,12 @@ class GeneralizedAdvantageTest(unittest.TestCase):
         expected = torch.tensor([[((d * 0.6 + d) * 0.6 + d) * 0.6 + d,
                                   (d * 0.6 + d) * 0.6 + d, d * 0.6 + d, d]],
                                 dtype=torch.float32)
-        self._check(
-            rewards=rewards,
-            values=values,
-            step_types=step_types,
-            discounts=discounts,
-            td_lambda=td_lambda,
-            expected=expected)
+        self._check(rewards=rewards,
+                    values=values,
+                    step_types=step_types,
+                    discounts=discounts,
+                    td_lambda=td_lambda,
+                    expected=expected)
 
         # two episodes, and exceed by time limit (discount=1)
 
@@ -145,13 +140,12 @@ class GeneralizedAdvantageTest(unittest.TestCase):
         ]],
                                   dtype=torch.int32)
         expected = torch.tensor([[d * 0.6 + d, d, 0, d]], dtype=torch.float32)
-        self._check(
-            rewards=rewards,
-            values=values,
-            step_types=step_types,
-            discounts=discounts,
-            td_lambda=td_lambda,
-            expected=expected)
+        self._check(rewards=rewards,
+                    values=values,
+                    step_types=step_types,
+                    discounts=discounts,
+                    td_lambda=td_lambda,
+                    expected=expected)
 
         # tow episodes, and end normal (discount=0)
         step_types = torch.tensor([[
@@ -163,13 +157,12 @@ class GeneralizedAdvantageTest(unittest.TestCase):
                                  dtype=torch.float32)
         expected = torch.tensor([[1 * 0.6 + d, 1, 0, d]], dtype=torch.float32)
 
-        self._check(
-            rewards=rewards,
-            values=values,
-            step_types=step_types,
-            discounts=discounts,
-            td_lambda=td_lambda,
-            expected=expected)
+        self._check(rewards=rewards,
+                    values=values,
+                    step_types=step_types,
+                    discounts=discounts,
+                    td_lambda=td_lambda,
+                    expected=expected)
 
 
 if __name__ == '__main__':

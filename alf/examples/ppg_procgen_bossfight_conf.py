@@ -20,17 +20,17 @@ from alf.utils.losses import element_wise_squared_loss
 from alf.algorithms.ppg_algorithm import PPGAuxOptions
 
 # Environment Configuration
-alf.config(
-    'create_environment', env_name='bossfight', num_parallel_environments=96)
+alf.config('create_environment',
+           env_name='bossfight',
+           num_parallel_environments=96)
 
 
 def encoding_network_ctor(input_tensor_spec):
     encoder_output_size = 256
-    return impala_cnn_encoder.create(
-        input_tensor_spec=input_tensor_spec,
-        cnn_channel_list=(16, 32, 32),
-        num_blocks_per_stack=2,
-        flatten_output_size=encoder_output_size)
+    return impala_cnn_encoder.create(input_tensor_spec=input_tensor_spec,
+                                     cnn_channel_list=(16, 32, 32),
+                                     num_blocks_per_stack=2,
+                                     flatten_output_size=encoder_output_size)
 
 
 # The PPG auxiliary replay buffer is typically large and does not fit in the GPU
@@ -60,25 +60,23 @@ alf.config(
         num_updates_per_train_iter=6,
     ))
 
-alf.config(
-    'PPOLoss',
-    compute_advantages_internally=True,
-    entropy_regularization=0.01,
-    gamma=0.999,
-    td_lambda=0.95,
-    td_loss_weight=0.5)
+alf.config('PPOLoss',
+           compute_advantages_internally=True,
+           entropy_regularization=0.01,
+           gamma=0.999,
+           td_lambda=0.95,
+           td_loss_weight=0.5)
 
 # Sample loss components from OpenAI's training:
 #
 # aux loss component: [pol_distance], weight: 1.0, unscaled: 0.0007583469850942492
 # aux loss component: [vf_aux], weight: 1, unscaled: 0.44967320561408997
 # aux loss component: [vf_true], weight: 1.0, unscaled: 0.46082180738449097
-alf.config(
-    'PPGAuxPhaseLoss',
-    td_error_loss_fn=element_wise_squared_loss,
-    policy_kl_loss_weight=1.0,
-    gamma=0.999,
-    td_lambda=0.95)
+alf.config('PPGAuxPhaseLoss',
+           td_error_loss_fn=element_wise_squared_loss,
+           policy_kl_loss_weight=1.0,
+           gamma=0.999,
+           td_lambda=0.95)
 
 # training config
 alf.config(

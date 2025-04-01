@@ -146,10 +146,9 @@ class VectorReward(gym.Wrapper):
                 binary value indicating a success.
         """
         super().__init__(env)
-        self._reward_space = gym.spaces.Box(
-            low=-float('inf'),
-            high=float('inf'),
-            shape=[self.REWARD_DIMENSION])
+        self._reward_space = gym.spaces.Box(low=-float('inf'),
+                                            high=float('inf'),
+                                            shape=[self.REWARD_DIMENSION])
         self._sparse_reward = sparse_reward
 
     def step(self, action):
@@ -305,10 +304,9 @@ def load(environment_name: str,
         max_episode_steps = env.num_steps - 1
         max_episode_steps = min(env.num_steps - 1, max_episode_steps)
 
-    return suite_gym.wrap_env(
-        env,
-        env_id=env_id,
-        discount=discount,
-        max_episode_steps=max_episode_steps,
-        gym_env_wrappers=gym_env_wrappers,
-        alf_env_wrappers=alf_env_wrappers)
+    return suite_gym.wrap_env(env,
+                              env_id=env_id,
+                              discount=discount,
+                              max_episode_steps=max_episode_steps,
+                              gym_env_wrappers=gym_env_wrappers,
+                              alf_env_wrappers=alf_env_wrappers)

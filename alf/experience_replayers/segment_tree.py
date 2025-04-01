@@ -150,8 +150,11 @@ class SumSegmentTree(SegmentTree):
                  dtype=torch.float32,
                  device="cpu",
                  name="SumSegmentTree"):
-        super().__init__(
-            capacity, torch.add, dtype=dtype, device=device, name=name)
+        super().__init__(capacity,
+                         torch.add,
+                         dtype=dtype,
+                         device=device,
+                         name=name)
         self._nnz = 0
 
     def __setitem__(self, indices, values):

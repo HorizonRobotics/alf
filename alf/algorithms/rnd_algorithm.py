@@ -79,8 +79,9 @@ class RNDAlgorithm(Algorithm):
                 how many channels an observation has at each time step.
             name (str):
         """
-        super(RNDAlgorithm, self).__init__(
-            train_state_spec=(), optimizer=optimizer, name=name)
+        super(RNDAlgorithm, self).__init__(train_state_spec=(),
+                                           optimizer=optimizer,
+                                           name=name)
         self._encoder_net = encoder_net
         self._target_net = target_net  # fixed
         self._predictor_net = predictor_net  # trainable
@@ -97,8 +98,8 @@ class RNDAlgorithm(Algorithm):
             shape = observation_spec.shape
             assert keep_stacked_frames <= shape[0]
             new_shape = (keep_stacked_frames, ) + tuple(shape[1:])
-            observation_spec = TensorSpec(
-                shape=new_shape, dtype=observation_spec.dtype)
+            observation_spec = TensorSpec(shape=new_shape,
+                                          dtype=observation_spec.dtype)
 
         # The paper suggests to also normalize observations, because the
         # original observation subspace might be small and the target network will
@@ -140,8 +141,8 @@ class RNDAlgorithm(Algorithm):
         with torch.no_grad():
             target_embedding, _ = self._target_net(observation)
 
-        loss = torch.sum(
-            math_ops.square(pred_embedding - target_embedding), dim=-1)
+        loss = torch.sum(math_ops.square(pred_embedding - target_embedding),
+                         dim=-1)
 
         intrinsic_reward = ()
         if calc_rewards:

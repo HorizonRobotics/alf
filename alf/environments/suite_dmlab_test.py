@@ -21,6 +21,7 @@ from alf.environments import parallel_environment, thread_environment
 
 
 class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         if not suite_dmlab.is_available():
@@ -31,18 +32,16 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
         self._env.close()
 
     @parameterized.parameters(
-        dict(
-            scene='nav_maze_random_goal_03',
-            action_config={'action_discretize.jump': ()},
-            action_length=9),
-        dict(
-            scene='lt_chasm',
-            action_config={
-                'action_discretize.look_down_up_pixels_per_frame':
-                    range(-90, 90, 5),
-                'action_discretize.crouch': ()
-            },
-            action_length=42),
+        dict(scene='nav_maze_random_goal_03',
+             action_config={'action_discretize.jump': ()},
+             action_length=9),
+        dict(scene='lt_chasm',
+             action_config={
+                 'action_discretize.look_down_up_pixels_per_frame':
+                     range(-90, 90, 5),
+                 'action_discretize.crouch': ()
+             },
+             action_length=42),
     )
     def test_action_discretize(self, scene, action_config, action_length):
         alf.reset_configs()
@@ -52,13 +51,13 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
 
     def test_process_env(self):
         scene = 'lt_chasm'
-        self._env = suite_dmlab.load(
-            scene=scene,
-            gym_env_wrappers=[
-                gym_wrappers.FrameGrayScale, gym_wrappers.FrameResize,
-                gym_wrappers.FrameStack
-            ],
-            wrap_with_process=True)
+        self._env = suite_dmlab.load(scene=scene,
+                                     gym_env_wrappers=[
+                                         gym_wrappers.FrameGrayScale,
+                                         gym_wrappers.FrameResize,
+                                         gym_wrappers.FrameStack
+                                     ],
+                                     wrap_with_process=True)
         self.assertIsInstance(self._env, alf_environment.AlfEnvironment)
         self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
 
@@ -88,18 +87,18 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
         env_num = 8
 
         def ctor(scene, env_id=None):
-            return suite_dmlab.load(
-                scene=scene,
-                gym_env_wrappers=[
-                    gym_wrappers.FrameGrayScale, gym_wrappers.FrameResize,
-                    gym_wrappers.FrameStack
-                ],
-                wrap_with_process=False)
+            return suite_dmlab.load(scene=scene,
+                                    gym_env_wrappers=[
+                                        gym_wrappers.FrameGrayScale,
+                                        gym_wrappers.FrameResize,
+                                        gym_wrappers.FrameStack
+                                    ],
+                                    wrap_with_process=False)
 
         constructor = functools.partial(ctor, scene)
 
-        self._env = parallel_environment.ParallelAlfEnvironment(
-            [constructor] * env_num)
+        self._env = parallel_environment.ParallelAlfEnvironment([constructor] *
+                                                                env_num)
         self.assertTrue(self._env.batched)
         self.assertEqual(self._env.batch_size, env_num)
         self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
@@ -109,6 +108,7 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
         'contributed/psychlab/arbitrary_visuomotor_mapping'
     ])
     def test_dmlab_env_run(self, scene):
+
         def ctor(scene, env_id=None):
             return suite_dmlab.load(
                 scene=scene,
@@ -117,8 +117,8 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
 
         constructor = functools.partial(ctor, scene)
 
-        self._env = parallel_environment.ParallelAlfEnvironment(
-            [constructor] * 5)
+        self._env = parallel_environment.ParallelAlfEnvironment([constructor] *
+                                                                5)
         self.assertEqual((3, 84, 84), self._env.observation_spec().shape)
 
         for _ in range(10):

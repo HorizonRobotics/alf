@@ -98,6 +98,7 @@ def create_zmq_socket(type: int, ip: str, port: int, id: str = None):
 
 
 class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
+
     def __init__(self,
                  core_alg_ctor: Callable,
                  *args,
@@ -123,12 +124,11 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
         """
         # Need to pass ``config`` to core alg following the standard algorithm interface.
         #``env`` is set to None to avoid the creation of replay buffer in the ``core_alg``.
-        core_alg = core_alg_ctor(
-            *args,
-            config=config,
-            env=None,
-            debug_summaries=debug_summaries,
-            **kwargs)
+        core_alg = core_alg_ctor(*args,
+                                 config=config,
+                                 env=None,
+                                 debug_summaries=debug_summaries,
+                                 **kwargs)
         assert not core_alg.on_policy, (
             "The core algorithm must be off-policy!")
         assert env.batch_size == 1, (
@@ -306,6 +306,7 @@ def pull_params_from_trainer(memory_name: str, memory_lock: mp.Lock,
     'max_utd_ratio', 'push_params_every_n_grad_updates', 'name', 'optimizer'
 ])
 class DistributedTrainer(DistributedOffPolicyAlgorithm):
+
     def __init__(self,
                  core_alg_ctor: Callable,
                  *args,
@@ -336,16 +337,15 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             *args: additional args to pass to ``core_alg_ctor``.
             **kwargs: additional kwargs to pass to ``core_alg_ctor``.
         """
-        super().__init__(
-            core_alg_ctor,
-            *args,
-            port=_trainer_addr_config.port,
-            env=env,
-            config=config,
-            optimizer=optimizer,
-            debug_summaries=debug_summaries,
-            name=name,
-            **kwargs)
+        super().__init__(core_alg_ctor,
+                         *args,
+                         port=_trainer_addr_config.port,
+                         env=env,
+                         config=config,
+                         optimizer=optimizer,
+                         debug_summaries=debug_summaries,
+                         name=name,
+                         **kwargs)
 
         self._push_params_every_n_grad_updates = push_params_every_n_grad_updates
 
@@ -455,8 +455,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                         '-')
                     # Store the new unroller ip and port so that later each rank
                     # can connect to it for experience data.
-                    self._new_unroller_ips_and_ports.put((unroller_ip,
-                                                          int(unroller_port)))
+                    self._new_unroller_ips_and_ports.put(
+                        (unroller_ip, int(unroller_port)))
                     registered_unrollers.add(unroller_id)
                     logging.info(
                         f"Rank {self._ddp_rank} registered {unroller_ip} {unroller_port}"
@@ -479,8 +479,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                     if total_unrollers % self._num_ranks == self._ddp_rank:
                         self._unrollers_to_update_params.add(unroller_id)
                         # Always first sync the params with a new unroller.
-                        assert self._send_params_to_unroller(
-                            unroller_id, first_time=True)
+                        assert self._send_params_to_unroller(unroller_id,
+                                                             first_time=True)
 
                     total_unrollers += 1
 
@@ -497,20 +497,21 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         rollout_state = self.get_initial_rollout_state(self._env.batch_size)
         alg_step = self.rollout_step(time_step, rollout_state)
         exp = make_experience(time_step, alg_step, rollout_state)
-        exp = alf.utils.common.prune_exp_replay_state(
-            exp, self._use_rollout_state, self.rollout_state_spec,
-            self.train_state_spec)
+        exp = alf.utils.common.prune_exp_replay_state(exp,
+                                                      self._use_rollout_state,
+                                                      self.rollout_state_spec,
+                                                      self.train_state_spec)
         self._set_replay_buffer(exp)
 
         mp.set_start_method('spawn', force=True)
         # start the data receiver subprocess
         # Need to create the subprocess with 'spawn' so that we can pass a Module
         # object to subprocess with tensors in shared memory.
-        process = mp.Process(
-            target=receive_experience_data,
-            args=(self._replay_buffer, self._new_unroller_ips_and_ports,
-                  self._ddp_rank),
-            daemon=True)
+        process = mp.Process(target=receive_experience_data,
+                             args=(self._replay_buffer,
+                                   self._new_unroller_ips_and_ports,
+                                   self._ddp_rank),
+                             daemon=True)
         process.start()
 
     def utd(self):
@@ -540,8 +541,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         # 1. replay buffer is not ready (initial collect steps not reached)
         # 2. utd ratio is too high (training is too fast; wait for more data)
         while True:
-            replay_buffer_not_ready = (self._replay_buffer.total_size <
-                                       self._config.initial_collect_steps)
+            replay_buffer_not_ready = (self._replay_buffer.total_size
+                                       < self._config.initial_collect_steps)
             utd_exceeded = self.utd() > self._max_utd_ratio
             if not (replay_buffer_not_ready or utd_exceeded):
                 break
@@ -573,6 +574,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
 @alf.configurable(
     whitelist=['episode_length', 'name', 'optimizer', 'unroller_only'])
 class DistributedUnroller(DistributedOffPolicyAlgorithm):
+
     def __init__(self,
                  core_alg_ctor: Callable,
                  *args,
@@ -643,9 +645,10 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         port number from the trainer.
         """
         # First register to the main rank
-        register_socket, cxt = create_zmq_socket(
-            zmq.DEALER, _trainer_addr_config.ip, _trainer_addr_config.port,
-            self._id)
+        register_socket, cxt = create_zmq_socket(zmq.DEALER,
+                                                 _trainer_addr_config.ip,
+                                                 _trainer_addr_config.port,
+                                                 self._id)
 
         register_socket.send_string('init')
         message = register_socket.recv_string()
@@ -682,19 +685,20 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         size = len(buffer.getvalue())
         # Create a shared memory object to store the new params
         # The first char indicates whether the params have been updated
-        self._shared_alg_params = SharedMemory(
-            create=True, size=size + 1, name='params_' + self._id)
+        self._shared_alg_params = SharedMemory(create=True,
+                                               size=size + 1,
+                                               name='params_' + self._id)
         # Initialize the update char to False (not updated)
         self._shared_alg_params.buf[0] = 0
 
         self._shared_mem_lock = mp.Lock()
 
         mp.set_start_method('fork', force=True)
-        process = mp.Process(
-            target=pull_params_from_trainer,
-            args=(self._shared_alg_params.name, self._shared_mem_lock,
-                  self._id, self._params_socket_rank),
-            daemon=True)
+        process = mp.Process(target=pull_params_from_trainer,
+                             args=(self._shared_alg_params.name,
+                                   self._shared_mem_lock, self._id,
+                                   self._params_socket_rank),
+                             daemon=True)
         process.start()
 
     def observe_for_replay(self, exp: Experience):
@@ -732,13 +736,14 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
                 torch.tensor([StepType.LAST], dtype=torch.int32))
             # Ask the trainer to dump to the replay buffer
             self._is_first_step = True
-            self._current_worker = (
-                self._current_worker + 1) % self._num_trainer_workers
+            self._current_worker = (self._current_worker +
+                                    1) % self._num_trainer_workers
 
         # First prune exp's replay state to save communication overhead
-        exp = alf.utils.common.prune_exp_replay_state(
-            exp, self._use_rollout_state, self.rollout_state_spec,
-            self.train_state_spec)
+        exp = alf.utils.common.prune_exp_replay_state(exp,
+                                                      self._use_rollout_state,
+                                                      self.rollout_state_spec,
+                                                      self.train_state_spec)
         # Need to convert the experience to params because it might contain distributions.
         exp_params = dist_utils.distributions_to_params(exp)
         # Use torch's save to serialize

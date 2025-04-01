@@ -123,8 +123,10 @@ class ProcessFrame84(gym.ObservationWrapper):
     def __init__(self, env, crop=True):
         self.crop = crop
         super(ProcessFrame84, self).__init__(env)
-        self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=(84, 84, 1), dtype=np.uint8)
+        self.observation_space = gym.spaces.Box(low=0,
+                                                high=255,
+                                                shape=(84, 84, 1),
+                                                dtype=np.uint8)
 
     def observation(self, obs):
         return ProcessFrame84.process(obs, crop=self.crop)
@@ -139,11 +141,12 @@ class ProcessFrame84(gym.ObservationWrapper):
             img = np.reshape(frame, [224, 240, 3]).astype(np.float32)
         else:
             assert False, "Unknown resolution." + str(frame.size)
-        img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
+        img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :,
+                                                                2] * 0.114
         size = (84, 110 if crop else 84)
-        resized_screen = np.array(
-            Image.fromarray(img).resize(size, resample=Image.BILINEAR),
-            dtype=np.uint8)
+        resized_screen = np.array(Image.fromarray(img).resize(
+            size, resample=Image.BILINEAR),
+                                  dtype=np.uint8)
         x_t = resized_screen[18:102, :] if crop else resized_screen
         x_t = np.reshape(x_t, [84, 84, 1])
         return x_t.astype(np.uint8)
@@ -170,11 +173,10 @@ class FrameFormat(gym.Wrapper):
         if data_format == 'channels_first':
             self._transpose = True
             obs_shape = (obs_shape[-1], ) + (obs_shape[:-1])
-        self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=obs_shape,
-            dtype=env.observation_space.dtype)
+        self.observation_space = spaces.Box(low=0,
+                                            high=255,
+                                            shape=obs_shape,
+                                            dtype=env.observation_space.dtype)
 
     def reset(self):
         ob = self.env.reset()

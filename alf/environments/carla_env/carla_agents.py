@@ -33,7 +33,10 @@ class SimpleNavigationAgent(BasicAgent):
     TODO: Implement more advanced control logics.
     """
 
-    def __init__(self, vehicle, navigation_sensor, alf_world,
+    def __init__(self,
+                 vehicle,
+                 navigation_sensor,
+                 alf_world,
                  target_speed=5.6):
         """
         Args:

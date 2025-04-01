@@ -69,10 +69,9 @@ def regression_loss(output, target):
     out_shape = output.shape[-1]
     assert (target.shape[-1] == out_shape), (
         "feature dimension of output and target does not match.")
-    loss = 0.5 * F.mse_loss(
-        output.reshape(-1, out_shape),
-        target.reshape(-1, out_shape),
-        reduction='sum')
+    loss = 0.5 * F.mse_loss(output.reshape(-1, out_shape),
+                            target.reshape(-1, out_shape),
+                            reduction='sum')
     return LossInfo(loss=loss, extra=())
 
 

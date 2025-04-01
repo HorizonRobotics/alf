@@ -40,8 +40,8 @@ class DecodingAlgorithm(Algorithm):
                 keep the batch dimension in the returned loss.
             loss_weight (float): weight for the loss.
         """
-        super(DecodingAlgorithm, self).__init__(
-            train_state_spec=decoder.state_spec, name=name)
+        super(DecodingAlgorithm,
+              self).__init__(train_state_spec=decoder.state_spec, name=name)
 
         self._decoder = decoder
         self._loss = loss
@@ -68,7 +68,6 @@ class DecodingAlgorithm(Algorithm):
         assert loss.ndim > 0, "`loss` should return a tensor with batch dimension"
         # reduce to (B,)
         loss = sum_to_leftmost(loss, 1)
-        return AlgStep(
-            output=pred,
-            state=state,
-            info=LossInfo(loss=self._loss_weight * loss))
+        return AlgStep(output=pred,
+                       state=state,
+                       info=LossInfo(loss=self._loss_weight * loss))

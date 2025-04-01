@@ -82,13 +82,12 @@ def load(environment_name,
 
     def env_ctor(port, env_id=None):
         gym_env = gym_spec.make(port=port)
-        return suite_gym.wrap_env(
-            gym_env,
-            env_id=env_id,
-            discount=discount,
-            max_episode_steps=max_episode_steps,
-            gym_env_wrappers=gym_env_wrappers,
-            alf_env_wrappers=alf_env_wrappers)
+        return suite_gym.wrap_env(gym_env,
+                                  env_id=env_id,
+                                  discount=discount,
+                                  max_episode_steps=max_episode_steps,
+                                  gym_env_wrappers=gym_env_wrappers,
+                                  alf_env_wrappers=alf_env_wrappers)
 
     port_range = [port, port + 1] if port else [DEFAULT_SOCIALBOT_PORT]
     with get_unused_port(*port_range) as port:

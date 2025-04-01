@@ -312,14 +312,22 @@ class MapHandler(object):
         could cause out-of-range exceptions (e.g. pavements, walkers, etc.)
         """
         return MapBoundaries(
-            min_x=min(self._waypoints, key=lambda x: x.transform.location.
-                      x).transform.location.x - MAP_BOUNDARY_MARGIN,
-            min_y=min(self._waypoints, key=lambda x: x.transform.location.
-                      y).transform.location.y - MAP_BOUNDARY_MARGIN,
-            max_x=max(self._waypoints, key=lambda x: x.transform.location.
-                      x).transform.location.x + MAP_BOUNDARY_MARGIN,
-            max_y=max(self._waypoints, key=lambda x: x.transform.location.y).
-            transform.location.y + MAP_BOUNDARY_MARGIN,
+            min_x=min(
+                self._waypoints,
+                key=lambda x: x.transform.location.x).transform.location.x -
+            MAP_BOUNDARY_MARGIN,
+            min_y=min(
+                self._waypoints,
+                key=lambda x: x.transform.location.y).transform.location.y -
+            MAP_BOUNDARY_MARGIN,
+            max_x=max(
+                self._waypoints,
+                key=lambda x: x.transform.location.x).transform.location.x +
+            MAP_BOUNDARY_MARGIN,
+            max_y=max(
+                self._waypoints,
+                key=lambda x: x.transform.location.y).transform.location.y +
+            MAP_BOUNDARY_MARGIN,
         )
 
     def _calculate_mask_size(self):
@@ -395,8 +403,11 @@ class MapHandler(object):
             polygon = [self.world_to_pixel(x) for x in polygon_in_world]
             if len(polygon) > 2:
                 polygon = np.array([polygon], dtype=np.int32)
-                cv2.polylines(
-                    img=mask, pts=polygon, isClosed=True, color=1, thickness=5)
+                cv2.polylines(img=mask,
+                              pts=polygon,
+                              isClosed=True,
+                              color=1,
+                              thickness=5)
                 if fill_road_mask:
                     cv2.fillPoly(img=mask, pts=polygon, color=1)
 
@@ -503,11 +514,11 @@ def draw_broken_line(canvas, color, closed, points, thickness):
 
 
 def get_lane_markings(
-        lane_marking_type,
-        lane_marking_color,
-        waypoints,
-        side: LaneSide,
-        location_to_pixel_func,
+    lane_marking_type,
+    lane_marking_color,
+    waypoints,
+    side: LaneSide,
+    location_to_pixel_func,
 ):
     """There are several lane marking types in Carla (SolidSolid, BrokenSolid,
         SolidBroken and BrokenBroken). This function converts them to the
@@ -742,8 +753,8 @@ class CarlaMergedActionWrapper(AlfEnvironmentBaseWrapper):
         unmerged_action = torch.zeros(*action.shape[0:-1],
                                       self._full_action_dim)
         # throttle
-        valid_mask_throttle = (action[..., 0] >=
-                               self._throttle_damping).float()
+        valid_mask_throttle = (action[..., 0]
+                               >= self._throttle_damping).float()
         unmerged_action[..., 0] = valid_mask_throttle * (
             action[..., 0] -
             self._throttle_dammping) / self._conversion_ratio_throttle

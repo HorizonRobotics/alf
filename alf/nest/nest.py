@@ -242,8 +242,8 @@ def prune_nest_like(nest, slim_nest, value_to_match=None):
 def assert_same_type(value1, value2):
     assert (type(value1) == type(value2)
             or (isinstance(value1, dict) and isinstance(value2, dict))), (
-                "Different types! {} <-> {}".format(
-                    type(value1), type(value2)))
+                "Different types! {} <-> {}".format(type(value1),
+                                                    type(value2)))
 
 
 def assert_same_length(seq1, seq2):
@@ -343,8 +343,8 @@ def py_flatten(nest, keep_fields_order=False):
         for value in nest:
             flattened.extend(py_flatten(value))
     else:
-        for _, value in extract_fields_from_nest(
-                nest, keep_order=keep_fields_order):
+        for _, value in extract_fields_from_nest(nest,
+                                                 keep_order=keep_fields_order):
             flattened.extend(py_flatten(value))
     return flattened
 
@@ -371,9 +371,8 @@ def py_flatten_up_to(shallow_nest, nest):
         for sn, n in zip(shallow_nest, nest):
             flattened.extend(py_flatten_up_to(sn, n))
     else:
-        for fv1, fv2 in zip(
-                extract_fields_from_nest(shallow_nest),
-                extract_fields_from_nest(nest)):
+        for fv1, fv2 in zip(extract_fields_from_nest(shallow_nest),
+                            extract_fields_from_nest(nest)):
             assert fv1[0] == fv2[0], \
                 "Keys are different !{} <-> {}".format(fv1[0], fv2[0])
             flattened.extend(py_flatten_up_to(fv1[1], fv2[1]))
@@ -397,9 +396,8 @@ def py_assert_same_structure(nest1, nest2):
             for value1, value2 in zip(nest1, nest2):
                 py_assert_same_structure(value1, value2)
         else:
-            for fv1, fv2 in zip(
-                    extract_fields_from_nest(nest1),
-                    extract_fields_from_nest(nest2)):
+            for fv1, fv2 in zip(extract_fields_from_nest(nest1),
+                                extract_fields_from_nest(nest2)):
                 assert fv1[0] == fv2[0], \
                     "Keys are different !{} <-> {}".format(fv1[0], fv2[0])
                 py_assert_same_structure(fv1[1], fv2[1])
@@ -420,9 +418,8 @@ def py_map_structure_with_path(func, *nests):
             return func(path, *nests)
         if isinstance(nests[0], list) or is_unnamedtuple(nests[0]):
             ret = type(nests[0])([
-                _map(
-                    *values[:-1],
-                    path=path + ("." if path else "") + str(values[-1]))
+                _map(*values[:-1],
+                     path=path + ("." if path else "") + str(values[-1]))
                 for values in zip(*nests, range(len(nests[0])))
             ])
         else:
@@ -431,8 +428,8 @@ def py_map_structure_with_path(func, *nests):
                     *[extract_fields_from_nest(nest) for nest in nests]):
                 field = fields_and_values[0][0]
                 values = map(lambda fv: fv[1], fields_and_values)
-                ret[field] = _map(
-                    *values, path=path + ("." if path else "") + field)
+                ret[field] = _map(*values,
+                                  path=path + ("." if path else "") + field)
             ret = type(nests[0])(**ret)
         return ret
 
@@ -783,8 +780,8 @@ def get_field(nested, field):
             raise LookupError()
 
     try:
-        return _traverse(
-            nested=nested, levels=field.split('.') if field else [])
+        return _traverse(nested=nested,
+                         levels=field.split('.') if field else [])
     except (AttributeError, LookupError, ValueError):
         raise LookupError(
             "Cannot find path '%s' in nested. nested has paths: %s" %
@@ -828,13 +825,13 @@ def transform_nest(nested, field, func):
             return func(nested)
         level = levels[0]
         if is_namedtuple(nested):
-            new_val = _traverse_transform(
-                nested=getattr(nested, level), levels=levels[1:])
+            new_val = _traverse_transform(nested=getattr(nested, level),
+                                          levels=levels[1:])
             return nested._replace(**{level: new_val})
         elif isinstance(nested, dict):
             new_val = nested.copy()
-            new_val[level] = _traverse_transform(
-                nested=nested[level], levels=levels[1:])
+            new_val[level] = _traverse_transform(nested=nested[level],
+                                                 levels=levels[1:])
             return new_val
         elif isinstance(nested, (list, tuple)):
             new_val = list(nested).copy()
@@ -844,8 +841,8 @@ def transform_nest(nested, field, func):
         else:
             raise TypeError("")
 
-    return _traverse_transform(
-        nested=nested, levels=field.split('.') if field else [])
+    return _traverse_transform(nested=nested,
+                               levels=field.split('.') if field else [])
 
 
 def transform_nests(nests, field, func):

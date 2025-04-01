@@ -26,6 +26,7 @@ FLAGS = flags.FLAGS
 
 
 class SuiteCarlaTest(alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         if not suite_carla.is_available():
@@ -35,10 +36,10 @@ class SuiteCarlaTest(alf.test.TestCase):
         alf.config('suite_carla.Player', with_bev_sensor=True)
 
         env = suite_carla.CarlaEnvironment(4, 'Town01')
-        logging.info(
-            "observation_spec: %s" % pprint.pformat(env.observation_spec()))
-        logging.info(
-            "observation_desc: %s" % pprint.pformat(env.observation_desc()))
+        logging.info("observation_spec: %s" %
+                     pprint.pformat(env.observation_spec()))
+        logging.info("observation_desc: %s" %
+                     pprint.pformat(env.observation_desc()))
         logging.info("action_spec: %s" % pprint.pformat(env.action_spec()))
         logging.info("action_desc: %s" % pprint.pformat(env.action_desc()))
         action_spec = env.action_spec()
@@ -59,10 +60,10 @@ class SuiteCarlaTest(alf.test.TestCase):
 
 
 def play(env):
-    logging.info(
-        "observation_spec: %s" % pprint.pformat(env.observation_spec()))
-    logging.info(
-        "observation_desc: %s" % pprint.pformat(env.observation_desc()))
+    logging.info("observation_spec: %s" %
+                 pprint.pformat(env.observation_spec()))
+    logging.info("observation_desc: %s" %
+                 pprint.pformat(env.observation_desc()))
     logging.info("action_spec: %s" % pprint.pformat(env.action_spec()))
     logging.info("action_desc: %s" % pprint.pformat(env.action_desc()))
     logging.info("Keyboard control:" + """
@@ -149,12 +150,11 @@ def main():
     logging.set_verbosity(logging.INFO)
 
     alf.config('suite_carla.Player', with_bev_sensor=True)
-    env = suite_carla.CarlaEnvironment(
-        batch_size=1,
-        map_name='Town01',
-        num_other_vehicles=20,
-        num_walkers=20,
-        day_length=100)
+    env = suite_carla.CarlaEnvironment(batch_size=1,
+                                       map_name='Town01',
+                                       num_other_vehicles=20,
+                                       num_walkers=20,
+                                       day_length=100)
     try:
         play(env)
     finally:

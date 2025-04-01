@@ -111,17 +111,16 @@ def critic_network_visualizer(net,
     # create the mini-image: [action_dim, 2, 2]
     # [action_upper_left,  action_upper_right]
     # [action_lower_left,  action_lower_right]
-    mini_image = torch.stack(
-        (torch.stack((action_upper_left, action_lower_left), dim=1),
-         torch.stack((action_upper_right, action_lower_right), dim=1)),
-        dim=2)
+    mini_image = torch.stack((torch.stack(
+        (action_upper_left, action_lower_left),
+        dim=1), torch.stack((action_upper_right, action_lower_right), dim=1)),
+                             dim=2)
 
     # [action_dim, 2, 2] -> [1, action_dim, 2, 2] -> [1, action_dim, H, W]
-    mini_image = torch.nn.functional.interpolate(
-        mini_image.unsqueeze(0),
-        size=(H, W),
-        mode='bilinear',
-        align_corners=True)
+    mini_image = torch.nn.functional.interpolate(mini_image.unsqueeze(0),
+                                                 size=(H, W),
+                                                 mode='bilinear',
+                                                 align_corners=True)
 
     # [action_dim, H, W]
     mini_image = mini_image.squeeze(0)

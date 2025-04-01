@@ -56,15 +56,14 @@ class HandcraftedAlgorithm(OffPolicyAlgorithm):
             name (str): The name of this algorithm.
         """
 
-        super().__init__(
-            observation_spec,
-            action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=(),
-            env=env,
-            config=config,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec,
+                         action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=(),
+                         env=env,
+                         config=config,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
     def _policy_func(self, observation):
         """A function calculating action based on the input observation.
@@ -135,14 +134,13 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
             name (str): The name of this algorithm.
         """
 
-        super().__init__(
-            observation_spec,
-            action_spec,
-            reward_spec=reward_spec,
-            env=env,
-            config=config,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec,
+                         action_spec,
+                         reward_spec=reward_spec,
+                         env=env,
+                         config=config,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._distance_to_decelerate = distance_to_decelerate
         self._distance_to_stop = distance_to_stop

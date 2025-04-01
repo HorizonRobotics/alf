@@ -45,13 +45,12 @@ def _create_merlin_algorithm(env,
             fc_layer_params=encoder_fc_layers,
             activation=math_ops.identity,
             name="ObsEncoder"),
-        decoders=DecodingAlgorithm(
-            decoder=alf.networks.EncodingNetwork(
-                input_tensor_spec=alf.TensorSpec((latent_dim, )),
-                fc_layer_params=encoder_fc_layers,
-                activation=math_ops.identity,
-                name="ObsDecoder"),
-            loss_weight=100.),
+        decoders=DecodingAlgorithm(decoder=alf.networks.EncodingNetwork(
+            input_tensor_spec=alf.TensorSpec((latent_dim, )),
+            fc_layer_params=encoder_fc_layers,
+            activation=math_ops.identity,
+            name="ObsDecoder"),
+                                   loss_weight=100.),
         latent_dim=latent_dim,
         lstm_size=lstm_size,
         memory_size=memory_size,
@@ -62,6 +61,7 @@ def _create_merlin_algorithm(env,
 
 
 class MerlinAlgorithmTest(alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         if os.environ.get('SKIP_LONG_TIME_COST_TESTS', False):
@@ -71,12 +71,15 @@ class MerlinAlgorithmTest(alf.test.TestCase):
         batch_size = 200
         steps_per_episode = 15
         gap = 10
-        env = RNNPolicyUnittestEnv(
-            batch_size, steps_per_episode, gap, obs_dim=3)
+        env = RNNPolicyUnittestEnv(batch_size,
+                                   steps_per_episode,
+                                   gap,
+                                   obs_dim=3)
         eval_env = RNNPolicyUnittestEnv(100, steps_per_episode, gap, obs_dim=3)
 
-        algorithm = _create_merlin_algorithm(
-            env, learning_rate=3e-3, debug_summaries=False)
+        algorithm = _create_merlin_algorithm(env,
+                                             learning_rate=3e-3,
+                                             debug_summaries=False)
 
         for i in range(300):
             algorithm.train_iter()
@@ -84,11 +87,12 @@ class MerlinAlgorithmTest(alf.test.TestCase):
                 eval_env.reset()
                 eval_time_step = unroll(eval_env, algorithm,
                                         steps_per_episode - 1)
-                logging.info(
-                    "%d reward=%f" % (i, float(eval_time_step.reward.mean())))
+                logging.info("%d reward=%f" %
+                             (i, float(eval_time_step.reward.mean())))
 
-        self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=1e-2)
+        self.assertAlmostEqual(1.0,
+                               float(eval_time_step.reward.mean()),
+                               delta=1e-2)
 
 
 if __name__ == '__main__':

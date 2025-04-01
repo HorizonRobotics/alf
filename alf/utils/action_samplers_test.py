@@ -19,6 +19,7 @@ from alf.utils.action_samplers import _CategoricalSeedSamplerBase
 
 
 class ActionSamplersTest(alf.test.TestCase):
+
     def test_categorical_seed_sampler(self):
         n_classes = 3
         n_probs = 2
@@ -28,8 +29,8 @@ class ActionSamplersTest(alf.test.TestCase):
         l = _CategoricalSeedSamplerBase(n_classes, new_noise_prob=1)
         probs = torch.rand((n_probs, n_classes))
         probs = probs / probs.sum(dim=-1, keepdim=True)
-        x = probs.unsqueeze(0).expand(repeat, n_probs, n_classes).reshape(
-            -1, n_classes)
+        x = probs.unsqueeze(0).expand(repeat, n_probs,
+                                      n_classes).reshape(-1, n_classes)
         state = zero_tensor_from_nested_spec(l.state_spec, x.shape[0])
         new_probs, state = l(x, state)
         new_probs = new_probs.reshape(repeat, n_probs, n_classes)

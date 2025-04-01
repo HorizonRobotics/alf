@@ -112,8 +112,8 @@ class NormalizingFlowNetwork(Network):
         raise NotImplementedError()
 
     def forward(self,
-                xz: Union[torch.Tensor, Tuple[torch.Tensor, alf.nest.
-                                              NestedTensor]],
+                xz: Union[torch.Tensor, Tuple[torch.Tensor,
+                                              alf.nest.NestedTensor]],
                 state: alf.nest.NestedTensor = ()):
         """When we have no conditional input for forward: ``y=self.forward(x)``.
         Otherwise ``y=self.forward((x,z))`` where ``z`` is the conditional input.
@@ -133,8 +133,8 @@ class NormalizingFlowNetwork(Network):
         return transform(x), ()
 
     def inverse(self,
-                yz: Union[torch.Tensor, Tuple[torch.Tensor, alf.nest.
-                                              NestedTensor]],
+                yz: Union[torch.Tensor, Tuple[torch.Tensor,
+                                              alf.nest.NestedTensor]],
                 state: alf.nest.NestedTensor = ()):
         """When we have no conditional input for forward: ``x=self.inverse(y)``.
         Otherwise ``x=self.inverse((y,z))`` where ``z`` is the conditional input.
@@ -272,11 +272,11 @@ class RealNVPNetwork(NormalizingFlowNetwork):
                 the inverse result.
             name: name of the network
         """
-        super(RealNVPNetwork, self).__init__(
-            input_tensor_spec,
-            conditional_input_tensor_spec,
-            use_transform_cache=use_transform_cache,
-            name=name)
+        super(RealNVPNetwork,
+              self).__init__(input_tensor_spec,
+                             conditional_input_tensor_spec,
+                             use_transform_cache=use_transform_cache,
+                             name=name)
 
         self._transform_scale_nonlinear = transform_scale_nonlinear
 
@@ -356,10 +356,10 @@ class RealNVPNetwork(NormalizingFlowNetwork):
 
 
 def _prepare_conditional_flow_inputs(
-        xy_spec: alf.TensorSpec,
-        xy: torch.Tensor,
-        z_spec: alf.NestedTensorSpec = None,
-        z: alf.nest.NestedTensor = None
+    xy_spec: alf.TensorSpec,
+    xy: torch.Tensor,
+    z_spec: alf.NestedTensorSpec = None,
+    z: alf.nest.NestedTensor = None
 ) -> Tuple[alf.nest.NestedTensor, alf.utils.tensor_utils.BatchSquash]:
     """A general function for adjusting the shapes of inputs and conditional inputs
     of a conditional flow, prepared for a forward of a network next. Some networks
@@ -470,14 +470,13 @@ class _RealNVPTransform(td.Transform):
         transform instances that have different ``z``s but share other properties
         including scale&translation encoding networks.
         """
-        return partial(
-            _RealNVPTransform,
-            input_tensor_spec=self._tensor_specs[0],
-            scale_trans_net=self._scale_trans_net,
-            mask=self._b,
-            conditional_input_tensor_spec=self._tensor_specs[1],
-            cache_size=self._cache_size,
-            scale_nonlinear=self._scale_nonlinear)
+        return partial(_RealNVPTransform,
+                       input_tensor_spec=self._tensor_specs[0],
+                       scale_trans_net=self._scale_trans_net,
+                       mask=self._b,
+                       conditional_input_tensor_spec=self._tensor_specs[1],
+                       cache_size=self._cache_size,
+                       scale_nonlinear=self._scale_nonlinear)
 
     def __eq__(self, other):
         return (isinstance(other, _realVNPTransform)

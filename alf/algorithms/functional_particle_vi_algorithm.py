@@ -214,20 +214,19 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
 
         if param_net is None:
             assert input_tensor_spec is not None
-            param_net = ParamNetwork(
-                input_tensor_spec=input_tensor_spec,
-                conv_layer_params=conv_layer_params,
-                fc_layer_params=fc_layer_params,
-                use_conv_bias=use_conv_bias,
-                use_conv_ln=use_conv_ln,
-                use_fc_bias=use_fc_bias,
-                use_fc_ln=use_fc_ln,
-                n_groups=num_particles,
-                activation=activation,
-                last_layer_size=last_layer_size,
-                last_activation=last_activation,
-                last_use_bias=last_use_bias,
-                last_use_ln=last_use_ln)
+            param_net = ParamNetwork(input_tensor_spec=input_tensor_spec,
+                                     conv_layer_params=conv_layer_params,
+                                     fc_layer_params=fc_layer_params,
+                                     use_conv_bias=use_conv_bias,
+                                     use_conv_ln=use_conv_ln,
+                                     use_fc_bias=use_fc_bias,
+                                     use_fc_ln=use_fc_ln,
+                                     n_groups=num_particles,
+                                     activation=activation,
+                                     last_layer_size=last_layer_size,
+                                     last_activation=last_activation,
+                                     last_use_bias=last_use_bias,
+                                     last_use_ln=last_use_ln)
 
         particle_dim = param_net.param_length
 
@@ -236,19 +235,18 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             logging.info("-" * 68)
             logging.info(param_net)
 
-        super().__init__(
-            particle_dim,
-            num_particles=num_particles,
-            entropy_regularization=entropy_regularization,
-            par_vi=par_vi,
-            critic_hidden_layers=critic_hidden_layers,
-            critic_l2_weight=critic_l2_weight,
-            critic_iter_num=critic_iter_num,
-            critic_use_bn=critic_use_bn,
-            critic_optimizer=critic_optimizer,
-            optimizer=optimizer,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(particle_dim,
+                         num_particles=num_particles,
+                         entropy_regularization=entropy_regularization,
+                         par_vi=par_vi,
+                         critic_hidden_layers=critic_hidden_layers,
+                         critic_l2_weight=critic_l2_weight,
+                         critic_iter_num=critic_iter_num,
+                         critic_use_bn=critic_use_bn,
+                         critic_optimizer=critic_optimizer,
+                         optimizer=optimizer,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._param_net = param_net
         self._param_net.set_parameters(self.particles.data, reinitialize=True)
@@ -262,8 +260,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         if function_vi:
             assert function_bs is not None, (
                 "need to specify batch_size of function outputs.")
-            self._function_extra_bs = math.ceil(
-                function_bs * function_extra_bs_ratio)
+            self._function_extra_bs = math.ceil(function_bs *
+                                                function_extra_bs_ratio)
             self._function_extra_bs_sampler = function_extra_bs_sampler
             self._function_extra_bs_std = function_extra_bs_std
 
@@ -538,8 +536,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             pred = probs.argmax(-1).cpu()  # [B, N, 1]
             vote = []
             for i in range(pred.shape[0]):
-                values, counts = torch.unique(
-                    pred[i], sorted=False, return_counts=True)
+                values, counts = torch.unique(pred[i],
+                                              sorted=False,
+                                              return_counts=True)
                 modes = (counts == counts.max()).nonzero()
                 label = values[torch.randint(len(modes), (1, ))]
                 vote.append(label)

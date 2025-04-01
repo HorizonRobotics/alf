@@ -163,9 +163,8 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
             if _is_numpy_array(time_step.step_type):
                 time_step = time_step._replace(step_type=StepType.LAST)
             else:
-                time_step = time_step._replace(
-                    step_type=torch.full_like(time_step.step_type, StepType.
-                                              LAST))
+                time_step = time_step._replace(step_type=torch.full_like(
+                    time_step.step_type, StepType.LAST))
 
         if time_step.is_last():
             self._num_steps = None
@@ -414,6 +413,7 @@ class RandomFirstEpisodeLength(AlfEnvironmentBaseWrapper):
 
 @alf.configurable(whitelist=[])
 class ActionObservationWrapper(AlfEnvironmentBaseWrapper):
+
     def __init__(self, env):
         """Add prev_action to observation.
 
@@ -447,9 +447,8 @@ class ActionObservationWrapper(AlfEnvironmentBaseWrapper):
 
     def _add_action(self, time_step):
         return time_step._replace(
-            observation=dict(
-                observation=time_step.observation,
-                prev_action=time_step.prev_action))
+            observation=dict(observation=time_step.observation,
+                             prev_action=time_step.prev_action))
 
 
 @alf.configurable
@@ -481,11 +480,13 @@ class ScalarRewardWrapper(AlfEnvironmentBaseWrapper):
 
     def _average_rewards(self, time_step):
         if _is_numpy_array(time_step.reward):
-            reward = np.tensordot(
-                time_step.reward, self._np_reward_weights, axes=1)
+            reward = np.tensordot(time_step.reward,
+                                  self._np_reward_weights,
+                                  axes=1)
         else:
-            reward = torch.tensordot(
-                time_step.reward, self._tensor_reward_weights, dims=1)
+            reward = torch.tensordot(time_step.reward,
+                                     self._tensor_reward_weights,
+                                     dims=1)
         return time_step._replace(reward=reward)
 
     def _step(self, action):
@@ -553,8 +554,8 @@ class MultitaskWrapper(AlfEnvironment):
             assert _nested_eq(
                 env.observation_spec(), self._observation_spec), (
                     "All environment should have same observation spec. "
-                    "Got %s vs %s" % (self._observation_spec,
-                                      env.observation_spec()))
+                    "Got %s vs %s" %
+                    (self._observation_spec, env.observation_spec()))
             assert _nested_eq(env.action_spec(), self._action_spec), (
                 "All environment should have same action spec. "
                 "Got %s vs %s" % (self._action_spec, env.action_spec()))
@@ -567,11 +568,9 @@ class MultitaskWrapper(AlfEnvironment):
             env.reset()
 
         self._current_env_id = np.int64(0)
-        self._action_spec = OrderedDict(
-            task_id=alf.BoundedTensorSpec((),
-                                          maximum=len(envs) - 1,
-                                          dtype='int64'),
-            action=self._action_spec)
+        self._action_spec = OrderedDict(task_id=alf.BoundedTensorSpec(
+            (), maximum=len(envs) - 1, dtype='int64'),
+                                        action=self._action_spec)
 
     @staticmethod
     def load(load_fn, environment_name, env_id=None, **kwargs):
@@ -615,20 +614,20 @@ class MultitaskWrapper(AlfEnvironment):
 
     def _reset(self):
         time_step = self._envs[self._current_env_id].reset()
-        return time_step._replace(
-            env_id=self._env_id,
-            prev_action=OrderedDict(
-                task_id=self._current_env_id, action=time_step.prev_action))
+        return time_step._replace(env_id=self._env_id,
+                                  prev_action=OrderedDict(
+                                      task_id=self._current_env_id,
+                                      action=time_step.prev_action))
 
     def _step(self, action):
         self._current_env_id = action['task_id']
         action = action['action']
         assert self._current_env_id < len(self._envs)
         time_step = self._envs[self._current_env_id].step(action)
-        return time_step._replace(
-            env_id=self._env_id,
-            prev_action=OrderedDict(
-                task_id=self._current_env_id, action=time_step.prev_action))
+        return time_step._replace(env_id=self._env_id,
+                                  prev_action=OrderedDict(
+                                      task_id=self._current_env_id,
+                                      action=time_step.prev_action))
 
     def __getattr__(self, name):
         if name.startswith('_'):
@@ -720,8 +719,9 @@ class CurriculumWrapper(AlfEnvironmentBaseWrapper):
         return info
 
     def _sample_tasks(self, num_samples):
-        return torch.multinomial(
-            self._task_probs, num_samples=num_samples, replacement=True)
+        return torch.multinomial(self._task_probs,
+                                 num_samples=num_samples,
+                                 replacement=True)
 
     def _update_curriculum(self, task_ids, task_scores, task_episode_lengths):
         for task_id, task_score in zip(task_ids, task_scores):
@@ -738,15 +738,17 @@ class CurriculumWrapper(AlfEnvironmentBaseWrapper):
                 task_score - self._past_scores[task_id])
 
         # obtain the unbiased estimate of current scores and past scores
-        current_scores = self._current_scores / (1 - (
-            1 - self._current_score_update_rate)**self._task_counts + 1e-30)
+        current_scores = self._current_scores / (
+            1 -
+            (1 - self._current_score_update_rate)**self._task_counts + 1e-30)
         past_scores = self._past_scores / (
             1 - (1 - self._past_score_update_rate)**self._task_counts + 1e-30)
-        current_episode_lengths = self._current_episode_lengths / (1 - (
-            1 - self._current_score_update_rate)**self._task_counts + 1e-30)
+        current_episode_lengths = self._current_episode_lengths / (
+            1 -
+            (1 - self._current_score_update_rate)**self._task_counts + 1e-30)
         current_episode_lengths += 1e-30
-        progresses = (
-            current_scores - past_scores).relu() / current_episode_lengths
+        progresses = (current_scores -
+                      past_scores).relu() / current_episode_lengths
         max_progress = progresses.max()
         progresses = progresses / (max_progress + 1e-30)
         # Gradually increase scale from 0 to self._scale so that we tend to do
@@ -764,8 +766,8 @@ class CurriculumWrapper(AlfEnvironmentBaseWrapper):
         time_step = self._env.reset()
         info = copy.copy(time_step.env_info)
         info.update(self._zero_curriculum_info)
-        return time_step._replace(
-            env_info=info, prev_action=time_step.prev_action['action'])
+        return time_step._replace(env_info=info,
+                                  prev_action=time_step.prev_action['action'])
 
     def _step(self, action):
         time_step = self._env.step(
@@ -845,8 +847,10 @@ class BatchedTensorWrapper(AlfEnvironmentBaseWrapper):
         of the same structure.
         """
         return nest.map_structure(
-            lambda x: (torch.as_tensor(x).unsqueeze(dim=0) if isinstance(
-                x, (np.ndarray, np.number, float, int)) else x), raw)
+            lambda x:
+            (torch.as_tensor(x).unsqueeze(dim=0)
+             if isinstance(x,
+                           (np.ndarray, np.number, float, int)) else x), raw)
 
     def _step(self, action):
         numpy_action = nest.map_structure(
@@ -877,8 +881,10 @@ class TensorWrapper(AlfEnvironmentBaseWrapper):
         of the same structure.
         """
         return nest.map_structure(
-            lambda x: (torch.as_tensor(x) if isinstance(
-                x, (np.ndarray, np.number, float, int)) else x), raw)
+            lambda x:
+            (torch.as_tensor(x)
+             if isinstance(x,
+                           (np.ndarray, np.number, float, int)) else x), raw)
 
     def _step(self, action):
         numpy_action = nest.map_structure(lambda x: x.cpu().numpy(), action)
@@ -915,14 +921,16 @@ class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
             "This wrapper only supports rank-1 action!")
         assert actions_num > 1, "Should define at least 2 discrete actions!"
         self._actions_num = actions_num
-        self._action_delta = (
-            (action_spec.maximum - action_spec.minimum) / (actions_num - 1))
+        self._action_delta = ((action_spec.maximum - action_spec.minimum) /
+                              (actions_num - 1))
         self._N = action_spec.numel
         self._dtype = action_spec.dtype
         self._minimum = action_spec.minimum
         # create the new discrete action spec
-        self._action_spec = ts.BoundedTensorSpec(
-            shape=(), dtype=torch.int64, maximum=actions_num**self._N - 1)
+        self._action_spec = ts.BoundedTensorSpec(shape=(),
+                                                 dtype=torch.int64,
+                                                 maximum=actions_num**self._N -
+                                                 1)
         self._time_step_spec = env.time_step_spec()._replace(
             prev_action=self._action_spec)
 
@@ -937,8 +945,8 @@ class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
         if _is_numpy_array(time_step.prev_action):
             prev_action = np.zeros_like(time_step.step_type, dtype=np.int64)
         else:
-            prev_action = torch.zeros_like(
-                time_step.step_type, dtype=torch.int64)
+            prev_action = torch.zeros_like(time_step.step_type,
+                                           dtype=torch.int64)
         return time_step._replace(prev_action=prev_action)
 
     def _step(self, action):
@@ -953,8 +961,8 @@ class DiscreteActionWrapper(AlfEnvironmentBaseWrapper):
             action = action % base
             base //= self._actions_num
         if _is_numpy_array(action):
-            idx = np.stack(
-                idx, axis=-1).astype(ts.torch_dtype_to_str(self._dtype))
+            idx = np.stack(idx,
+                           axis=-1).astype(ts.torch_dtype_to_str(self._dtype))
             action = idx * self._action_delta + self._minimum
         else:
             idx = torch.stack(idx, dim=-1).to(self._dtype)
@@ -1035,10 +1043,10 @@ class TemporallyCorrelatedNoiseWrapper(AlfEnvironmentBaseWrapper):
         noisy_action = action + self._past_noise_weight * self._past_noise + current_noise
         self._past_noise = current_noise
 
-        noisy_action = np.clip(
-            noisy_action,
-            a_min=self._action_spec.minimum,
-            a_max=self._action_spec.maximum).astype(np.float32)
+        noisy_action = np.clip(noisy_action,
+                               a_min=self._action_spec.minimum,
+                               a_max=self._action_spec.maximum).astype(
+                                   np.float32)
 
         time_step = self._env.step(noisy_action)
 
@@ -1093,6 +1101,7 @@ class NormalizedActionWrapper(AlfEnvironmentBaseWrapper):
         return self._time_step_spec
 
     def _step(self, action):
+
         def _scale_back(a, paras):
             b, c = paras
             return a * b + c
@@ -1190,6 +1199,7 @@ class BatchEnvironmentWrapper(AlfEnvironment):
             env.seed(seed * len(self._envs) + i)
 
     def _step(self, action):
+
         def _ith(i):
             return alf.nest.map_structure(lambda x: x[i], action)
 

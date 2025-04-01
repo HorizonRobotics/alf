@@ -82,19 +82,17 @@ def load(environment_name='cheetah:run',
         f" Provided environment_name: {environment_name}")
 
     domain_name, task_name = names
-    gym_env = DMCGYMWrapper(
-        domain_name=domain_name,
-        task_name=task_name,
-        visualize_reward=visualize_reward,
-        from_pixels=from_pixels,
-        control_timestep=control_timestep,
-        height=image_size,
-        width=image_size)
-    return wrap_env(
-        gym_env,
-        env_id=env_id,
-        discount=discount,
-        max_episode_steps=max_episode_steps,
-        gym_env_wrappers=gym_env_wrappers,
-        alf_env_wrappers=alf_env_wrappers,
-        image_channel_first=False)
+    gym_env = DMCGYMWrapper(domain_name=domain_name,
+                            task_name=task_name,
+                            visualize_reward=visualize_reward,
+                            from_pixels=from_pixels,
+                            control_timestep=control_timestep,
+                            height=image_size,
+                            width=image_size)
+    return wrap_env(gym_env,
+                    env_id=env_id,
+                    discount=discount,
+                    max_episode_steps=max_episode_steps,
+                    gym_env_wrappers=gym_env_wrappers,
+                    alf_env_wrappers=alf_env_wrappers,
+                    image_channel_first=False)

@@ -31,10 +31,12 @@ def _find_event_file(root_dir):
 
 
 class SummaryTest(alf.test.TestCase):
+
     def test_summary(self):
         with tempfile.TemporaryDirectory() as root_dir:
-            writer = alf.summary.create_summary_writer(
-                root_dir, flush_secs=10, max_queue=10)
+            writer = alf.summary.create_summary_writer(root_dir,
+                                                       flush_secs=10,
+                                                       max_queue=10)
             alf.summary.set_default_writer(writer)
             alf.summary.enable_summary()
             with alf.summary.scope("root") as scope_name:

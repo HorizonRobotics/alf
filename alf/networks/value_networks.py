@@ -55,8 +55,9 @@ class ValueNetworkBase(Network):
         if encoder_kwargs.get('kernel_initializer', None) is None:
             encoder_kwargs[
                 'kernel_initializer'] = torch.nn.init.xavier_uniform_
-        last_kernel_initializer = functools.partial(
-            torch.nn.init.uniform_, a=-0.03, b=0.03)
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_,
+                                                    a=-0.03,
+                                                    b=0.03)
 
         self._encoding_net = encoding_network_ctor(
             input_tensor_spec=input_tensor_spec,
@@ -150,20 +151,19 @@ class ValueNetwork(ValueNetworkBase):
                 fc layers (i.e. FC layers except the last one).
             name (str):
         """
-        super().__init__(
-            input_tensor_spec,
-            output_tensor_spec,
-            encoding_network_ctor=EncodingNetwork,
-            name=name,
-            input_preprocessors=input_preprocessors,
-            input_preprocessors_ctor=input_preprocessors_ctor,
-            preprocessing_combiner=preprocessing_combiner,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            activation=activation,
-            kernel_initializer=kernel_initializer,
-            use_fc_bn=use_fc_bn,
-            use_fc_ln=use_fc_ln)
+        super().__init__(input_tensor_spec,
+                         output_tensor_spec,
+                         encoding_network_ctor=EncodingNetwork,
+                         name=name,
+                         input_preprocessors=input_preprocessors,
+                         input_preprocessors_ctor=input_preprocessors_ctor,
+                         preprocessing_combiner=preprocessing_combiner,
+                         conv_layer_params=conv_layer_params,
+                         fc_layer_params=fc_layer_params,
+                         activation=activation,
+                         kernel_initializer=kernel_initializer,
+                         use_fc_bn=use_fc_bn,
+                         use_fc_ln=use_fc_ln)
 
 
 class ParallelValueNetwork(Network):
@@ -182,8 +182,8 @@ class ParallelValueNetwork(Network):
             name (str):
         """
 
-        super().__init__(
-            input_tensor_spec=value_network.input_tensor_spec, name=name)
+        super().__init__(input_tensor_spec=value_network.input_tensor_spec,
+                         name=name)
         self._encoding_net = value_network._encoding_net.make_parallel(n, True)
         self._output_spec = TensorSpec((n, ) + value_network.output_spec.shape)
 
@@ -258,16 +258,15 @@ class ValueRNNNetwork(ValueNetworkBase):
                 initializer will be used.
             name (str):
         """
-        super().__init__(
-            input_tensor_spec=input_tensor_spec,
-            output_tensor_spec=output_tensor_spec,
-            encoding_network_ctor=LSTMEncodingNetwork,
-            name=name,
-            input_preprocessors=input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
-            conv_layer_params=conv_layer_params,
-            pre_fc_layer_params=fc_layer_params,
-            hidden_size=lstm_hidden_size,
-            post_fc_layer_params=value_fc_layer_params,
-            activation=activation,
-            kernel_initializer=kernel_initializer)
+        super().__init__(input_tensor_spec=input_tensor_spec,
+                         output_tensor_spec=output_tensor_spec,
+                         encoding_network_ctor=LSTMEncodingNetwork,
+                         name=name,
+                         input_preprocessors=input_preprocessors,
+                         preprocessing_combiner=preprocessing_combiner,
+                         conv_layer_params=conv_layer_params,
+                         pre_fc_layer_params=fc_layer_params,
+                         hidden_size=lstm_hidden_size,
+                         post_fc_layer_params=value_fc_layer_params,
+                         activation=activation,
+                         kernel_initializer=kernel_initializer)

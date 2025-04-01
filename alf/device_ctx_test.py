@@ -17,6 +17,7 @@ import alf
 
 
 class DeviceCtxTest(alf.test.TestCase):
+
     def test_device_ctx(self):
         with alf.device("cpu"):
             self.assertEqual(alf.get_default_device(), "cpu")

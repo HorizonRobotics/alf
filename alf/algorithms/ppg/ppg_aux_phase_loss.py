@@ -106,12 +106,11 @@ class PPGAuxPhaseLoss(Loss):
         # Compute the total loss by combing the above 3 components
         loss = td_loss_actual + td_loss_aux + self._policy_kl_loss_weight * policy_kl_loss
 
-        return LossInfo(
-            loss=loss,
-            extra=PPGAuxPhaseLossInfo(
-                td_loss_actual=td_loss_actual,
-                td_loss_aux=td_loss_aux,
-                policy_kl_loss=policy_kl_loss))
+        return LossInfo(loss=loss,
+                        extra=PPGAuxPhaseLossInfo(
+                            td_loss_actual=td_loss_actual,
+                            td_loss_aux=td_loss_aux,
+                            policy_kl_loss=policy_kl_loss))
 
     def _calc_returns(self, info, value):
 

@@ -70,8 +70,9 @@ def _slugify(value, allow_unicode=False):
     if allow_unicode:
         value = unicodedata.normalize('NFKC', value)
     else:
-        value = unicodedata.normalize('NFKD', value).encode(
-            'ascii', 'ignore').decode('ascii')
+        value = unicodedata.normalize('NFKD',
+                                      value).encode('ascii',
+                                                    'ignore').decode('ascii')
     value = re.sub(r'[^\w\s-]', '', value)
     return re.sub(r'[-\s]+', '-', value).strip('-_')
 
@@ -248,6 +249,7 @@ class GridSearch(object):
         """
 
         def _abbr_single(x, l):
+
             def _initials(t):
                 words = [w for w in t.split('_') if w]
                 len_per_word = max(l // len(words), 1)
@@ -296,8 +298,8 @@ class GridSearch(object):
         param_values = self._conf.param_values
         max_worker_num = self._conf.max_worker_num
 
-        process_pool = multiprocessing.Pool(
-            processes=max_worker_num, maxtasksperchild=1)
+        process_pool = multiprocessing.Pool(processes=max_worker_num,
+                                            maxtasksperchild=1)
         device_queue = self._init_device_queue(max_worker_num)
 
         for repeat in range(self._conf.repeats):
@@ -356,9 +358,8 @@ class GridSearch(object):
             else:
                 # need to first pre_config before parsing the conf file
                 confs = copy.copy(parameters)
-                confs.update({
-                    'TrainerConfig.confirm_checkpoint_upon_crash': False
-                })
+                confs.update(
+                    {'TrainerConfig.confirm_checkpoint_upon_crash': False})
                 alf.pre_config(confs)
                 common.parse_conf_file(conf_file)
 
@@ -425,12 +426,11 @@ def launch_snapshot_gridsearch():
     args = ['python', '-m', 'alf.bin.grid_search'] + flags
 
     try:
-        subprocess.check_call(
-            " ".join(args),
-            env=env_vars,
-            stdout=sys.stdout,
-            stderr=sys.stdout,
-            shell=True)
+        subprocess.check_call(" ".join(args),
+                              env=env_vars,
+                              stdout=sys.stdout,
+                              stderr=sys.stdout,
+                              shell=True)
     except subprocess.CalledProcessError:
         # No need to output anything
         pass

@@ -24,9 +24,9 @@ from alf.algorithms.algorithm import Algorithm
 from alf.utils.dist_utils import Beta
 from alf.utils import losses
 
-FlowMatchingInfo = namedtuple(
-    'FlowMatchingInfo', ['loss', 'denoise_vec', 'pred_denoise_vec'],
-    default_value=())
+FlowMatchingInfo = namedtuple('FlowMatchingInfo',
+                              ['loss', 'denoise_vec', 'pred_denoise_vec'],
+                              default_value=())
 
 
 class FlowMatchingAlgorithm(Algorithm):
@@ -109,8 +109,8 @@ class FlowMatchingAlgorithm(Algorithm):
             name: the name of the algorithm.
         """
         super().__init__(name=name)
-        self._tau_beta = Beta(
-            torch.tensor(tau_beta_paras[0]), torch.tensor(tau_beta_paras[1]))
+        self._tau_beta = Beta(torch.tensor(tau_beta_paras[0]),
+                              torch.tensor(tau_beta_paras[1]))
         self._int_steps = integration_steps
         assert integration_type in ('euler', 'midpoint')
         self._int_type = integration_type
@@ -141,8 +141,8 @@ class FlowMatchingAlgorithm(Algorithm):
         return noise
 
     def train_step(self,
-                   inputs: Union[Tuple[alf.nest.NestedTensor, torch.
-                                       Tensor], alf.nest.NestedTensor],
+                   inputs: Union[Tuple[alf.nest.NestedTensor, torch.Tensor],
+                                 alf.nest.NestedTensor],
                    state=()):
         """Perform a training step of the flow matching algorithm.
 
@@ -175,10 +175,9 @@ class FlowMatchingAlgorithm(Algorithm):
         loss = self._loss_fn(denoising_vec, pred_denoising_vec)
         loss = loss.sum(list(range(1, loss.ndim)))
         return AlgStep(
-            info=FlowMatchingInfo(
-                loss=loss,
-                denoise_vec=denoising_vec,
-                pred_denoise_vec=pred_denoising_vec))
+            info=FlowMatchingInfo(loss=loss,
+                                  denoise_vec=denoising_vec,
+                                  pred_denoise_vec=pred_denoising_vec))
 
     def generate(self,
                  cond_input: alf.nest.NestedTensor = None,

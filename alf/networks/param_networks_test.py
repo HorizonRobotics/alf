@@ -23,6 +23,7 @@ from alf.utils import math_ops
 
 
 class ParamNetworksTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((1, True), (3, True, False),
                               (3, False, True, True),
                               (3, False, True, True, True))
@@ -34,16 +35,16 @@ class ParamNetworksTest(parameterized.TestCase, alf.test.TestCase):
                            flatten_output=False):
         replica = 2
         input_spec = TensorSpec((3, 32, 32), torch.float32)
-        network = ParamConvNet(
-            input_channels=input_spec.shape[0],
-            input_size=input_spec.shape[1:],
-            conv_layer_params=((16, (2, 2), 1, (1, 0)), (15, 2, (1, 2), 1, 2)),
-            use_bias=use_bias,
-            use_ln=use_ln,
-            n_groups=replica,
-            same_padding=same_padding,
-            activation=torch.tanh,
-            flatten_output=flatten_output)
+        network = ParamConvNet(input_channels=input_spec.shape[0],
+                               input_size=input_spec.shape[1:],
+                               conv_layer_params=((16, (2, 2), 1, (1, 0)),
+                                                  (15, 2, (1, 2), 1, 2)),
+                               use_bias=use_bias,
+                               use_ln=use_ln,
+                               n_groups=replica,
+                               same_padding=same_padding,
+                               activation=torch.tanh,
+                               flatten_output=flatten_output)
         self.assertLen(network._conv_layers, 2)
 
         # test non-parallel forward
@@ -87,18 +88,17 @@ class ParamNetworksTest(parameterized.TestCase, alf.test.TestCase):
         last_layer_size = 10
         last_activation = math_ops.identity
         replica = 2
-        network = ParamNetwork(
-            input_spec,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            use_conv_ln=use_ln,
-            use_fc_bias=True,
-            use_fc_ln=use_ln,
-            n_groups=replica,
-            last_layer_size=last_layer_size,
-            last_use_bias=True,
-            last_use_ln=use_ln,
-            last_activation=last_activation)
+        network = ParamNetwork(input_spec,
+                               conv_layer_params=conv_layer_params,
+                               fc_layer_params=fc_layer_params,
+                               use_conv_ln=use_ln,
+                               use_fc_bias=True,
+                               use_fc_ln=use_ln,
+                               n_groups=replica,
+                               last_layer_size=last_layer_size,
+                               last_use_bias=True,
+                               last_use_ln=use_ln,
+                               last_activation=last_activation)
         self.assertLen(network._fc_layers, 2)
 
         # test non-parallel forward

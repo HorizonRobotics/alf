@@ -112,11 +112,10 @@ def make_ddp_performer(module: torch.nn.Module,
 
     """
     print(f'find_unused_parameters={find_unused_parameters}')
-    return DDP(
-        _MethodPerformer(module=module, perform=method),
-        device_ids=None,
-        find_unused_parameters=find_unused_parameters,
-        bucket_cap_mb=bucket_cap_mb)
+    return DDP(_MethodPerformer(module=module, perform=method),
+               device_ids=None,
+               find_unused_parameters=find_unused_parameters,
+               bucket_cap_mb=bucket_cap_mb)
 
 
 def data_distributed(method):
@@ -163,8 +162,8 @@ def data_distributed(method):
     return data_distributed_when(None)(method)
 
 
-def data_distributed_when(
-        cond: Optional[Callable[[torch.nn.Module], bool]] = None):
+def data_distributed_when(cond: Optional[Callable[[torch.nn.Module],
+                                                  bool]] = None):
     """This is @ data_distributed with an extra conditionon.
 
     The condition is a function that returns True or False given the wrapped
@@ -174,6 +173,7 @@ def data_distributed_when(
     """
 
     def decorator(method):
+
         @functools.wraps(method)
         def wrapped(*args, **kwargs):
             # The first argument to the method is going to be ``self``, i.e. the

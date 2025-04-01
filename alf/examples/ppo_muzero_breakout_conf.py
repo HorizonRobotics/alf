@@ -39,9 +39,8 @@ LATENT_SIZE = 64 * 7 * 7
 
 alf.config("AverageDiscountedReturnMetric", discount=discount)
 
-alf.config(
-    'TrainerConfig',
-    data_transformer_ctor=[UntransformedTimeStep, FrameStacker])
+alf.config('TrainerConfig',
+           data_transformer_ctor=[UntransformedTimeStep, FrameStacker])
 
 # From OpenAI gym wiki:
 # "v0 vs v4: v0 has repeat_action_probability of 0.25
@@ -49,17 +48,16 @@ alf.config(
 #   while v4 has 0 (always follow your issued action)
 # Because we already implements frame_skip in AtariPreprocessing, we should always
 # use 'NoFrameSkip' Atari environments from OpenAI gym
-alf.config(
-    'create_environment',
-    env_name='BreakoutNoFrameskip-v4',
-    num_parallel_environments=num_envs)
+alf.config('create_environment',
+           env_name='BreakoutNoFrameskip-v4',
+           num_parallel_environments=num_envs)
 
 # +------------------------------------------------------------+
 # | MuZero Representation Configurations                       |
 # +------------------------------------------------------------+
 
-rv_loss = OrderedDiscreteRegressionLoss(
-    transform=alf.math.Sqrt1pTransform(), inverse_after_mean=False)
+rv_loss = OrderedDiscreteRegressionLoss(transform=alf.math.Sqrt1pTransform(),
+                                        inverse_after_mean=False)
 
 
 def create_representation_net_small(observation_spec):
@@ -90,8 +88,11 @@ def create_dynamics_net_small(input_tensor_spec):
                 -1, 1, *plane_size)
         ],
                             dim=1),
-        a=layers.Conv2D(
-            num_planes + 1, 64, 3, padding=1, activation=alf.math.identity),
+        a=layers.Conv2D(num_planes + 1,
+                        64,
+                        3,
+                        padding=1,
+                        activation=alf.math.identity),
         b=(('input.0', 'a'), lambda x: (x[0] + x[1]).relu_()),
         c=torch.nn.GroupNorm(1, 64),
         input_tensor_spec=input_tensor_spec,
@@ -105,8 +106,9 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
         if not x.requires_grad:
             return x
         if alf.summary.should_record_summaries():
-            return summarize_tensor_gradients(
-                "SimpleMCTSModel/" + name, x, clone=True)
+            return summarize_tensor_gradients("SimpleMCTSModel/" + name,
+                                              x,
+                                              clone=True)
         else:
             return x
 
@@ -120,45 +122,45 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
         else:
             return [
                 layers.Reshape(-1),
-                layers.FC(
-                    LATENT_SIZE, 1024, activation=torch.relu_, use_bn=False),
+                layers.FC(LATENT_SIZE,
+                          1024,
+                          activation=torch.relu_,
+                          use_bn=False),
                 layers.FC(1024, dim, activation=torch.relu_, use_bn=False),
             ]
 
     value_net = layers.Sequential(
         functools.partial(_summarize_grad, name='value_grad'),
         *_make_trunk(),
-        layers.FC(
-            dim,
-            num_quantiles,
-            bias_initializer=rv_loss.initialize_bias,
-            kernel_initializer=torch.nn.init.zeros_),
+        layers.FC(dim,
+                  num_quantiles,
+                  bias_initializer=rv_loss.initialize_bias,
+                  kernel_initializer=torch.nn.init.zeros_),
     )
 
     reward_net = [
         functools.partial(_summarize_grad, name='reward_grad'),
         *_make_trunk(lstm=True),
-        layers.FC(
-            dim,
-            num_quantiles,
-            bias_initializer=rv_loss.initialize_bias,
-            kernel_initializer=torch.nn.init.zeros_),
+        layers.FC(dim,
+                  num_quantiles,
+                  bias_initializer=rv_loss.initialize_bias,
+                  kernel_initializer=torch.nn.init.zeros_),
     ]
     reward_net = alf.nn.Sequential(*reward_net, input_tensor_spec=state_spec)
 
     # NOTE: The action net is not used when train_policy is set to False
     action_net = layers.Sequential(
         functools.partial(_summarize_grad, name='policy_grad'), *_make_trunk(),
-        alf.nn.CategoricalProjectionNetwork(
-            dim, action_spec, logits_init_output_factor=0.0))
+        alf.nn.CategoricalProjectionNetwork(dim,
+                                            action_spec,
+                                            logits_init_output_factor=0.0))
 
     game_over_net = layers.Sequential(
         *_make_trunk(),
-        layers.FC(
-            dim,
-            1,
-            kernel_initializer=torch.nn.init.zeros_,
-            bias_init_value=initial_game_over_bias), layers.Reshape(()))
+        layers.FC(dim,
+                  1,
+                  kernel_initializer=torch.nn.init.zeros_,
+                  bias_init_value=initial_game_over_bias), layers.Reshape(()))
 
     return alf.nn.Branch(
         value_net,
@@ -169,45 +171,40 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
     )
 
 
-alf.config(
-    "MCTSModel",
-    value_loss=rv_loss,
-    reward_loss=rv_loss,
-    repr_loss=AsymmetricSimSiamLoss(
-        input_size=LATENT_SIZE,
-        proj_hidden_size=512,
-        pred_hidden_size=512,
-        output_size=1024))
+alf.config("MCTSModel",
+           value_loss=rv_loss,
+           reward_loss=rv_loss,
+           repr_loss=AsymmetricSimSiamLoss(input_size=LATENT_SIZE,
+                                           proj_hidden_size=512,
+                                           pred_hidden_size=512,
+                                           output_size=1024))
 
-alf.config(
-    "SimpleMCTSModel",
-    encoding_net_ctor=create_representation_net_small,
-    dynamics_net_ctor=create_dynamics_net_small,
-    prediction_net_ctor=create_prediction_net)
+alf.config("SimpleMCTSModel",
+           encoding_net_ctor=create_representation_net_small,
+           dynamics_net_ctor=create_dynamics_net_small,
+           prediction_net_ctor=create_prediction_net)
 
-alf.config(
-    "MuzeroRepresentationImpl",
-    reanalyze_batch_size=1280,
-    num_unroll_steps=5,
-    td_steps=10,
-    discount=discount,
-    enable_amp=True,
-    reanalyze_algorithm_ctor=PPOAlgorithm,
-    reanalyze_ratio=1.0,
-    optimizer=AdamTF(lr=1e-4, betas=(0.9, 0.999), eps=1e-7))
+alf.config("MuzeroRepresentationImpl",
+           reanalyze_batch_size=1280,
+           num_unroll_steps=5,
+           td_steps=10,
+           discount=discount,
+           enable_amp=True,
+           reanalyze_algorithm_ctor=PPOAlgorithm,
+           reanalyze_ratio=1.0,
+           optimizer=AdamTF(lr=1e-4, betas=(0.9, 0.999), eps=1e-7))
 
-alf.config(
-    "MuzeroRepresentationLearner",
-    training_options=MuzeroRepresentationTrainingOptions(
-        interval=1,
-        mini_batch_length=1,
-        mini_batch_size=256,
-        num_updates_per_train_iter=10,
-        replay_buffer_length=100000 // num_envs,
-        initial_collect_steps=2000,
-        priority_replay=True,
-        priority_replay_alpha=1.2,
-        priority_replay_beta=0.0))
+alf.config("MuzeroRepresentationLearner",
+           training_options=MuzeroRepresentationTrainingOptions(
+               interval=1,
+               mini_batch_length=1,
+               mini_batch_size=256,
+               num_updates_per_train_iter=10,
+               replay_buffer_length=100000 // num_envs,
+               initial_collect_steps=2000,
+               priority_replay=True,
+               priority_replay_alpha=1.2,
+               priority_replay_beta=0.0))
 
 # +------------------------------------------------------------+
 # | Policy Algorithm Configurations: PPO                       |
@@ -229,57 +226,51 @@ def memoized(func):
 
 @memoized
 def create_actor_network(input_tensor_spec, action_spec):
-    return alf.nn.Sequential(
-        layers.Reshape((-1, )),
-        ActorDistributionNetwork(
-            input_tensor_spec=TensorSpec(
-                shape=(LATENT_SIZE, ), dtype=torch.float32),
-            action_spec=action_spec,
-            fc_layer_params=(128, )),
-        input_tensor_spec=input_tensor_spec)
+    return alf.nn.Sequential(layers.Reshape((-1, )),
+                             ActorDistributionNetwork(
+                                 input_tensor_spec=TensorSpec(
+                                     shape=(LATENT_SIZE, ),
+                                     dtype=torch.float32),
+                                 action_spec=action_spec,
+                                 fc_layer_params=(128, )),
+                             input_tensor_spec=input_tensor_spec)
 
 
 @memoized
 def create_value_network(input_tensor_spec):
-    return alf.nn.Sequential(
-        layers.Reshape((-1, )),
-        ValueNetwork(
-            input_tensor_spec=TensorSpec(
-                shape=(LATENT_SIZE, ), dtype=torch.float32),
-            fc_layer_params=(128, )),
-        input_tensor_spec=input_tensor_spec)
+    return alf.nn.Sequential(layers.Reshape((-1, )),
+                             ValueNetwork(input_tensor_spec=TensorSpec(
+                                 shape=(LATENT_SIZE, ), dtype=torch.float32),
+                                          fc_layer_params=(128, )),
+                             input_tensor_spec=input_tensor_spec)
 
 
 alf.config('CategoricalProjectionNetwork', logits_init_output_factor=1e-10)
 
-alf.config(
-    'PPOLoss',
-    entropy_regularization=1e-2,
-    gamma=discount,
-    td_loss_weight=0.1,
-    normalize_advantages=False)
+alf.config('PPOLoss',
+           entropy_regularization=1e-2,
+           gamma=discount,
+           td_loss_weight=0.1,
+           normalize_advantages=False)
 
-alf.config(
-    'ActorCriticAlgorithm',
-    actor_network_ctor=create_actor_network,
-    value_network_ctor=create_value_network)
+alf.config('ActorCriticAlgorithm',
+           actor_network_ctor=create_actor_network,
+           value_network_ctor=create_value_network)
 
-alf.config(
-    'Agent',
-    representation_learner_cls=MuzeroRepresentationLearner,
-    optimizer=AdamTF(lr=1e-3))
+alf.config('Agent',
+           representation_learner_cls=MuzeroRepresentationLearner,
+           optimizer=AdamTF(lr=1e-3))
 
-alf.config(
-    'TrainerConfig',
-    unroll_length=8,
-    mini_batch_size=64,
-    mini_batch_length=None,
-    enable_amp=True,
-    num_updates_per_train_iter=3,
-    algorithm_ctor=Agent,
-    num_iterations=0,
-    num_env_steps=5_000_000,
-    evaluate=False,
-    debug_summaries=True,
-    summarize_grads_and_vars=True,
-    summary_interval=50)
+alf.config('TrainerConfig',
+           unroll_length=8,
+           mini_batch_size=64,
+           mini_batch_length=None,
+           enable_amp=True,
+           num_updates_per_train_iter=3,
+           algorithm_ctor=Agent,
+           num_iterations=0,
+           num_env_steps=5_000_000,
+           evaluate=False,
+           debug_summaries=True,
+           summarize_grads_and_vars=True,
+           summary_interval=50)

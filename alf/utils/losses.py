@@ -171,8 +171,10 @@ def iqn_huber_loss(value: torch.Tensor,
             # while tau_hat and next_delta_tau have shape [T or T-1, B, n_quantiles]
             tau_hat = tau_hat.unsqueeze(-2)
             next_delta_tau = next_delta_tau.unsqueeze(-2)
-        loss = torch.abs((tau_hat.unsqueeze(-2) - (diff.detach() < 0).float()
-                          )) * error * next_delta_tau.unsqueeze(-1)
+        loss = torch.abs(
+            (tau_hat.unsqueeze(-2) -
+             (diff.detach()
+              < 0).float())) * error * next_delta_tau.unsqueeze(-1)
     else:
         loss = torch.abs((fixed_tau - (diff.detach() < 0).float())) * error
     if sum_over_quantiles:
@@ -184,6 +186,7 @@ def iqn_huber_loss(value: torch.Tensor,
 
 
 class ScalarPredictionLoss(object):
+
     def __call__(self, pred: torch.Tensor, target: torch.Tensor):
         """Calculate the loss given ``pred`` and ``target``.
 
@@ -466,8 +469,9 @@ class OrderedDiscreteRegressionLoss(_DiscreteRegressionLossBase):
         B = _get_indexer(target.shape)
         w[B + (bin2, )] = w2
         w[B + (bin1, )] = 1
-        cross_entropy = F.binary_cross_entropy_with_logits(
-            logits, w, reduction='none')
+        cross_entropy = F.binary_cross_entropy_with_logits(logits,
+                                                           w,
+                                                           reduction='none')
         kld = cross_entropy + binary_neg_entropy(w)
         return kld.relu().sum(dim=-1)
 
@@ -642,39 +646,37 @@ class AsymmetricSimSiamLoss(nn.Module):
             assert input_size is not None, "input_size must be provided if proj_net is not given"
             proj_net = alf.nn.Sequential(
                 alf.layers.Reshape(-1),
-                alf.layers.FC(
-                    input_size,
-                    proj_hidden_size,
-                    activation=torch.relu_,
-                    use_bn=True,
-                    weight_opt_args=dict(fixed_norm=fixed_weight_norm, lr=lr)),
-                alf.layers.FC(
-                    proj_hidden_size,
-                    proj_hidden_size,
-                    activation=torch.relu_,
-                    use_bn=True,
-                    weight_opt_args=dict(fixed_norm=fixed_weight_norm, lr=lr)),
-                alf.layers.FC(
-                    proj_hidden_size,
-                    output_size,
-                    use_bn=proj_last_use_bn,
-                    weight_opt_args=dict(
-                        lr=lr,
-                        fixed_norm=fixed_weight_norm and proj_last_use_bn)),
+                alf.layers.FC(input_size,
+                              proj_hidden_size,
+                              activation=torch.relu_,
+                              use_bn=True,
+                              weight_opt_args=dict(
+                                  fixed_norm=fixed_weight_norm, lr=lr)),
+                alf.layers.FC(proj_hidden_size,
+                              proj_hidden_size,
+                              activation=torch.relu_,
+                              use_bn=True,
+                              weight_opt_args=dict(
+                                  fixed_norm=fixed_weight_norm, lr=lr)),
+                alf.layers.FC(proj_hidden_size,
+                              output_size,
+                              use_bn=proj_last_use_bn,
+                              weight_opt_args=dict(lr=lr,
+                                                   fixed_norm=fixed_weight_norm
+                                                   and proj_last_use_bn)),
                 input_tensor_spec=alf.TensorSpec((input_size, )))
         output_size = proj_net.output_spec.numel
         if pred_net is None:
             pred_net = alf.nn.Sequential(
-                alf.layers.FC(
-                    output_size,
-                    pred_hidden_size,
-                    activation=torch.relu_,
-                    use_bn=True,
-                    weight_opt_args=dict(lr=lr, fixed_norm=fixed_weight_norm)),
-                alf.layers.FC(
-                    pred_hidden_size,
-                    output_size,
-                    weight_opt_args=dict(lr=lr, fixed_norm=False)))
+                alf.layers.FC(output_size,
+                              pred_hidden_size,
+                              activation=torch.relu_,
+                              use_bn=True,
+                              weight_opt_args=dict(
+                                  lr=lr, fixed_norm=fixed_weight_norm)),
+                alf.layers.FC(pred_hidden_size,
+                              output_size,
+                              weight_opt_args=dict(lr=lr, fixed_norm=False)))
         self._proj_net = proj_net
         self._pred_net = pred_net
         self._eps = eps
@@ -696,18 +698,21 @@ class AsymmetricSimSiamLoss(nn.Module):
         target = target.reshape(B * T, *target.shape[2:])
         pred = pred.reshape(B * T, *pred.shape[2:])
         if self._debug_summaries and alf.summary.should_record_summaries():
-            pred = summary_utils.summarize_tensor_gradients(
-                "pred_grad", pred, clone=True)
+            pred = summary_utils.summarize_tensor_gradients("pred_grad",
+                                                            pred,
+                                                            clone=True)
         with torch.no_grad():
             projected_target = self._proj_net(target.to(pred.dtype))[0]
-            norm_projected_target = F.normalize(
-                projected_target.detach(), dim=1, eps=self._eps)
+            norm_projected_target = F.normalize(projected_target.detach(),
+                                                dim=1,
+                                                eps=self._eps)
         projected_pred = self._proj_net(pred)[0]
         predicted_projected_pred = self._pred_net(projected_pred)[0]
-        norm_predicted_projected_pred = F.normalize(
-            predicted_projected_pred, dim=1, eps=self._eps)
-        cos = (norm_projected_target * norm_predicted_projected_pred).sum(
-            dim=1)
+        norm_predicted_projected_pred = F.normalize(predicted_projected_pred,
+                                                    dim=1,
+                                                    eps=self._eps)
+        cos = (norm_projected_target *
+               norm_predicted_projected_pred).sum(dim=1)
         if self._debug_summaries and alf.summary.should_record_summaries():
             summary_utils.add_mean_hist_summary("cos", cos)
             summary_utils.add_mean_hist_summary(
@@ -748,8 +753,9 @@ class MeanSquaredLoss(object):
         """
         assert pred.shape == target.shape
         if self._debug_summaries and alf.summary.should_record_summaries():
-            pred = summary_utils.summarize_tensor_gradients(
-                "pred_grad", pred, clone=True)
+            pred = summary_utils.summarize_tensor_gradients("pred_grad",
+                                                            pred,
+                                                            clone=True)
         ndim = pred.ndim
         assert ndim >= self._batch_dims
         loss = (pred - target)**2
@@ -829,8 +835,8 @@ class BipartiteMatchingLoss(object):
             # [B*N, B*N]
             # Subtract all diag entries by a max cost so that no off-diag matchings
             # will be optimal.
-            big_cost_mat = torch.block_diag(
-                *list(matching_cost_mat - max_cost))
+            big_cost_mat = torch.block_diag(*list(matching_cost_mat -
+                                                  max_cost))
             np_big_cost_mat = big_cost_mat.cpu().numpy()
             # col_ind: [B*N]
             row_ind, col_ind = linear_sum_assignment(np_big_cost_mat)

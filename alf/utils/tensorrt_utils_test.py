@@ -24,9 +24,10 @@ import os
 import alf
 from alf.data_structures import restart
 from alf.algorithms.sac_algorithm import SacAlgorithm
-from alf.utils.tensorrt_utils import (
-    OnnxRuntimeEngine, compile_method, get_tensorrt_engine_class,
-    is_onnxruntime_available, is_tensorrt_available)
+from alf.utils.tensorrt_utils import (OnnxRuntimeEngine, compile_method,
+                                      get_tensorrt_engine_class,
+                                      is_onnxruntime_available,
+                                      is_tensorrt_available)
 
 
 def create_sac_and_inputs():
@@ -36,16 +37,16 @@ def create_sac_and_inputs():
     sac = SacAlgorithm(
         observation_spec,
         action_spec,
-        actor_network_cls=partial(
-            alf.networks.ActorDistributionNetwork,
-            fc_layer_params=(1024, ) * 5),
-        critic_network_cls=partial(
-            alf.networks.CriticNetwork, joint_fc_layer_params=(64, 64)))
+        actor_network_cls=partial(alf.networks.ActorDistributionNetwork,
+                                  fc_layer_params=(1024, ) * 5),
+        critic_network_cls=partial(alf.networks.CriticNetwork,
+                                   joint_fc_layer_params=(64, 64)))
 
     # Create dummy timestep and state
     obs = alf.utils.spec_utils.zeros_from_spec(observation_spec, batch_size=1)
-    dummy_timestep = restart(
-        observation=obs, action_spec=action_spec, batched=True)
+    dummy_timestep = restart(observation=obs,
+                             action_spec=action_spec,
+                             batched=True)
     state = sac.get_initial_predict_state(batch_size=1)
 
     # randomize agent parameters
@@ -56,6 +57,7 @@ def create_sac_and_inputs():
 
 
 class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
+
     @unittest.skipIf(not is_onnxruntime_available(),
                      "onnxruntime not installed")
     def test_onnxruntime_backends(self):
@@ -77,11 +79,10 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
                      "onnxruntime not installed")
     def test_onnxruntime_engine(self):
         alg, timestep, state = create_sac_and_inputs()
-        engine = OnnxRuntimeEngine(
-            alg,
-            SacAlgorithm.predict_step,
-            example_args=(timestep, ),
-            example_kwargs={'state': state})
+        engine = OnnxRuntimeEngine(alg,
+                                   SacAlgorithm.predict_step,
+                                   example_args=(timestep, ),
+                                   example_kwargs={'state': state})
         alg.eval()
 
         start_time = time.time()
@@ -154,8 +155,8 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
         alg, timestep, state = create_sac_and_inputs()
         compile_method(
             alg, 'predict_step',
-            get_tensorrt_engine_class(
-                validate_args=True, engine_file=engine_file))
+            get_tensorrt_engine_class(validate_args=True,
+                                      engine_file=engine_file))
         start_time = time.time()
         alg.predict_step(timestep, state=state)  # build engine
         self.assertGreater(time.time() - start_time,
@@ -166,8 +167,8 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
         # loaded from disk, even though the alg has been recreated
         compile_method(
             alg, 'predict_step',
-            get_tensorrt_engine_class(
-                validate_args=True, engine_file=engine_file))
+            get_tensorrt_engine_class(validate_args=True,
+                                      engine_file=engine_file))
         start_time = time.time()
         alg.predict_step(timestep, state=state)  # load engine
         self.assertLess(time.time() - start_time, 0.1)
@@ -176,10 +177,9 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
         # Now we compile again and force building the engine
         compile_method(
             alg, 'predict_step',
-            get_tensorrt_engine_class(
-                validate_args=True,
-                engine_file=engine_file,
-                force_build_engine=True))
+            get_tensorrt_engine_class(validate_args=True,
+                                      engine_file=engine_file,
+                                      force_build_engine=True))
         start_time = time.time()
         alg.predict_step(timestep, state=state)  # build engine
         self.assertGreater(time.time() - start_time, 1)
@@ -190,9 +190,9 @@ class TensorRTUtilsTest(parameterized.TestCase, alf.test.TestCase):
         alg.predict_step(timestep, state=state)  # build engine
         self.assertGreater(time.time() - start_time, 1)
 
-    @unittest.skipIf(not is_tensorrt_available()
-                     and not is_onnxruntime_available(),
-                     "tensorrt and onnxruntime are unavailable")
+    @unittest.skipIf(
+        not is_tensorrt_available() and not is_onnxruntime_available(),
+        "tensorrt and onnxruntime are unavailable")
     def test_tensorrt_resnet50(self):
         model = models.resnet50(pretrained=True)
         model.eval()

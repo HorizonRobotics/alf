@@ -24,6 +24,7 @@ from alf.algorithms.data_transformer import create_data_transformer
 
 
 class AsyncUnrollerTest(alf.test.TestCase):
+
     def test_async_unroller(self):
         with tempfile.TemporaryDirectory() as root_dir:
             alf.pre_config({

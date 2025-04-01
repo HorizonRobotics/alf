@@ -68,9 +68,8 @@ def clip_to_spec(value, spec: BoundedTensorSpec):
     Returns:
         clipped_value: (tensor) `value` clipped to be compatible with `spec`.
     """
-    return torch.max(
-        torch.min(value, torch.as_tensor(spec.maximum)),
-        torch.as_tensor(spec.minimum))
+    return torch.max(torch.min(value, torch.as_tensor(spec.maximum)),
+                     torch.as_tensor(spec.minimum))
 
 
 def zeros_from_spec(nested_spec, batch_size):
@@ -144,9 +143,8 @@ def consistent_with_spec(nested, spec, from_dim=0):
         return False
 
     def _check_spec(path, x, s):
-        if not (len(x.shape) - from_dim == len(s.shape)
-                and x.shape[from_dim:] == s.shape
-                and dtype_to_str(x.dtype) == s.dtype_str):
+        if not (len(x.shape) - from_dim == len(s.shape) and x.shape[from_dim:]
+                == s.shape and dtype_to_str(x.dtype) == s.dtype_str):
             print(
                 f"Spec mismatch at path: {path}, "
                 f"tensor shape={x.shape} tensor dtype={x.dtype} "

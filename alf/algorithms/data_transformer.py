@@ -137,6 +137,7 @@ class SequentialDataTransformer(DataTransformer):
 
     @staticmethod
     def _validate_order(data_transformers):
+
         def _tier_of(data_transformer):
             if isinstance(data_transformer, UntransformedTimeStep):
                 return 1
@@ -176,6 +177,7 @@ class SequentialDataTransformer(DataTransformer):
 
 @alf.configurable
 class FrameStacker(DataTransformer):
+
     def __init__(self,
                  observation_spec,
                  stack_size=4,
@@ -212,11 +214,10 @@ class FrameStacker(DataTransformer):
             stacked_observation_spec = alf.nest.transform_nest(
                 stacked_observation_spec, field, self._make_stacked_spec)
 
-        super().__init__(
-            transformed_observation_spec=stacked_observation_spec,
-            state_spec=FrameStackState(
-                steps=alf.TensorSpec((), dtype=torch.int64),
-                prev_frames=prev_frames_spec))
+        super().__init__(transformed_observation_spec=stacked_observation_spec,
+                         state_spec=FrameStackState(
+                             steps=alf.TensorSpec((), dtype=torch.int64),
+                             prev_frames=prev_frames_spec))
 
     @property
     def stack_size(self):
@@ -224,8 +225,8 @@ class FrameStacker(DataTransformer):
         return self._stack_size
 
     def _make_stacked_spec(self, spec):
-        assert isinstance(
-            spec, alf.TensorSpec), (str(type(spec)) + "is not a TensorSpec")
+        assert isinstance(spec, alf.TensorSpec), (str(type(spec)) +
+                                                  "is not a TensorSpec")
         if spec.ndim > 0:
             stacked_shape = list(copy.copy(spec.shape))
             stacked_shape[self._stack_axis] = stacked_shape[
@@ -250,11 +251,10 @@ class FrameStacker(DataTransformer):
                 maximum = np.tile(spec.maximum, rep)
             else:
                 maximum = spec.maximum
-            return alf.BoundedTensorSpec(
-                stacked_shape,
-                minimum=minimum,
-                maximum=maximum,
-                dtype=spec.dtype)
+            return alf.BoundedTensorSpec(stacked_shape,
+                                         minimum=minimum,
+                                         maximum=maximum,
+                                         dtype=spec.dtype)
 
     def _make_state(self, spec):
         stacked_shape = list(copy.copy(spec.shape))
@@ -376,8 +376,8 @@ class FrameStacker(DataTransformer):
         for i, field in enumerate(self._fields):
             observation = alf.nest.transform_nest(observation, field,
                                                   partial(_stack_frame, i=i))
-        return experience._replace(
-            time_step=experience.time_step._replace(observation=observation))
+        return experience._replace(time_step=experience.time_step._replace(
+            observation=observation))
 
 
 class SimpleDataTransformer(DataTransformer):
@@ -446,6 +446,7 @@ class IdentityDataTransformer(SimpleDataTransformer):
 
 @alf.configurable
 class ImageScaleTransformer(SimpleDataTransformer):
+
     def __init__(self, observation_spec, min=-1.0, max=1.0, fields=None):
         """Scale image to min and max (0->min, 255->max).
 
@@ -463,13 +464,14 @@ class ImageScaleTransformer(SimpleDataTransformer):
         new_observation_spec = observation_spec
 
         def _transform_spec(spec):
-            assert isinstance(
-                spec,
-                alf.TensorSpec), (str(type(spec)) + "is not a TensorSpec")
+            assert isinstance(spec, alf.TensorSpec), (str(type(spec)) +
+                                                      "is not a TensorSpec")
             assert ImageScaleTransformer._check_img_type(spec), (
                 "Image must have int dtype in [0, 255]!")
-            return alf.BoundedTensorSpec(
-                spec.shape, dtype=torch.float32, minimum=min, maximum=max)
+            return alf.BoundedTensorSpec(spec.shape,
+                                         dtype=torch.float32,
+                                         minimum=min,
+                                         maximum=max)
 
         for field in self._fields:
             new_observation_spec = alf.nest.transform_nest(
@@ -488,6 +490,7 @@ class ImageScaleTransformer(SimpleDataTransformer):
         return False
 
     def _transform(self, timestep):
+
         def _transform_image(obs):
             assert isinstance(obs,
                               torch.Tensor), str(type(obs)) + ' is not Tensor'
@@ -507,6 +510,7 @@ class ImageScaleTransformer(SimpleDataTransformer):
 
 @alf.configurable
 class ObservationNormalizer(SimpleDataTransformer):
+
     def __init__(self,
                  observation_spec,
                  fields=None,
@@ -551,10 +555,10 @@ class ObservationNormalizer(SimpleDataTransformer):
         self._clipping = float(clipping)
         self._fields = fields
         if fields is not None:
-            observation_spec = dict([(field,
-                                      alf.nest.get_field(
-                                          observation_spec, field))
-                                     for field in fields])
+            observation_spec = dict([
+                (field, alf.nest.get_field(observation_spec, field))
+                for field in fields
+            ])
         if mode == "adaptive":
             self._normalizer = AdaptiveNormalizer(
                 tensor_spec=observation_spec,
@@ -563,17 +567,15 @@ class ObservationNormalizer(SimpleDataTransformer):
                 zero_mean=zero_mean,
                 name="observations/adaptive_normalizer")
         elif mode == "window":
-            self._normalzier = WindowNormalizer(
-                tensor_spec=observation_spec,
-                window_size=int(window_size),
-                zero_mean=zero_mean,
-                auto_update=False)
+            self._normalzier = WindowNormalizer(tensor_spec=observation_spec,
+                                                window_size=int(window_size),
+                                                zero_mean=zero_mean,
+                                                auto_update=False)
         elif mode == "em":
-            self._normalizer = EMNormalizer(
-                tensor_spec=observation_spec,
-                update_rate=float(update_rate),
-                zero_mean=zero_mean,
-                auto_update=False)
+            self._normalizer = EMNormalizer(tensor_spec=observation_spec,
+                                            update_rate=float(update_rate),
+                                            zero_mean=zero_mean,
+                                            auto_update=False)
         else:
             raise ValueError("Unsupported mode: " + mode)
 
@@ -829,8 +831,8 @@ class HindsightExperienceTransformer(DataTransformer):
                 L2 distance less than 0.05 and -1 otherwise, same as is done in
                 suite_robotics environments.
         """
-        super().__init__(
-            transformed_observation_spec=observation_spec, state_spec=())
+        super().__init__(transformed_observation_spec=observation_spec,
+                         state_spec=())
         self._her_proportion = her_proportion
         self._achieved_goal_field = achieved_goal_field
         self._desired_goal_field = desired_goal_field
@@ -864,8 +866,9 @@ class HindsightExperienceTransformer(DataTransformer):
             self._desired_goal_field, self._achieved_goal_field
         ]
         with alf.device(buffer.device):
-            experience = alf.nest.transform_nest(
-                experience, "batch_info.replay_buffer", lambda _: ())
+            experience = alf.nest.transform_nest(experience,
+                                                 "batch_info.replay_buffer",
+                                                 lambda _: ())
             for f in accessed_fields:
                 experience = alf.nest.transform_nest(
                     experience, f, lambda t: convert_device(t))
@@ -910,8 +913,8 @@ class HindsightExperienceTransformer(DataTransformer):
             result_ag = alf.nest.get_field(result, self._achieved_goal_field)
             relabeled_rewards = self._reward_fn(result_ag, relabed_goal)
 
-            non_her_or_fst = ~her_cond.unsqueeze(1) & (result.step_type !=
-                                                       StepType.FIRST)
+            non_her_or_fst = ~her_cond.unsqueeze(1) & (result.step_type
+                                                       != StepType.FIRST)
             # assert reward function is the same as used by the environment.
             if not torch.allclose(relabeled_rewards[non_her_or_fst],
                                   result.reward[non_her_or_fst]):
@@ -942,17 +945,17 @@ class HindsightExperienceTransformer(DataTransformer):
                 "replayer/" + buffer._name + ".reward_mean_after_relabel",
                 torch.mean(relabeled_rewards[her_indices][:-1]))
 
-        result = alf.nest.transform_nest(
-            result, self._desired_goal_field, lambda _: relabed_goal)
+        result = alf.nest.transform_nest(result, self._desired_goal_field,
+                                         lambda _: relabed_goal)
 
         result = result.update_time_step_field('reward', relabeled_rewards)
 
         if alf.get_default_device() != buffer.device:
             for f in accessed_fields:
-                result = alf.nest.transform_nest(
-                    result, f, lambda t: convert_device(t))
-        result = alf.nest.transform_nest(
-            result, "batch_info.replay_buffer", lambda _: buffer)
+                result = alf.nest.transform_nest(result, f,
+                                                 lambda t: convert_device(t))
+        result = alf.nest.transform_nest(result, "batch_info.replay_buffer",
+                                         lambda _: buffer)
         return result
 
 
@@ -978,10 +981,9 @@ class UntransformedTimeStep(SimpleDataTransformer):
 
     def _transform(self, timestep):
         if self._fields_to_keep is not None:
-            return timestep._replace(
-                untransformed=TimeStep(
-                    **{f: getattr(timestep, f)
-                       for f in self._fields_to_keep}))
+            return timestep._replace(untransformed=TimeStep(
+                **{f: getattr(timestep, f)
+                   for f in self._fields_to_keep}))
         return timestep._replace(untransformed=timestep)
 
 

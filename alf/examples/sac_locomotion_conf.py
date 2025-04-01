@@ -18,11 +18,10 @@ from alf.examples.benchmarks.locomotion import locomotion_conf
 
 alf.config('Agent', optimizer=locomotion_conf.optimizer)
 
-alf.config(
-    'SacAlgorithm',
-    actor_network_cls=locomotion_conf.actor_distribution_network_cls,
-    critic_network_cls=locomotion_conf.critic_network_cls,
-    reproduce_locomotion=True,
-    target_update_tau=0.005)
+alf.config('SacAlgorithm',
+           actor_network_cls=locomotion_conf.actor_distribution_network_cls,
+           critic_network_cls=locomotion_conf.critic_network_cls,
+           reproduce_locomotion=True,
+           target_update_tau=0.005)
 
 alf.config('calc_default_target_entropy', min_prob=0.184)

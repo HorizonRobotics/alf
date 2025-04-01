@@ -45,6 +45,7 @@ def normalize(batch_norm, x):
 
 @alf.configurable
 class ActorCriticLoss(Loss):
+
     def __init__(self,
                  reward_dim=1,
                  gamma=0.99,
@@ -221,10 +222,10 @@ class ActorCriticLoss(Loss):
             loss -= self._entropy_regularization * sum(
                 alf.nest.flatten(entropy_for_gradient))
 
-        return LossInfo(
-            loss=loss,
-            extra=ActorCriticLossInfo(
-                td_loss=td_loss, pg_loss=pg_loss, neg_entropy=entropy_loss))
+        return LossInfo(loss=loss,
+                        extra=ActorCriticLossInfo(td_loss=td_loss,
+                                                  pg_loss=pg_loss,
+                                                  neg_entropy=entropy_loss))
 
     def _pg_loss(self, info, advantages):
         action_log_prob = dist_utils.compute_log_probability(
@@ -240,11 +241,10 @@ class ActorCriticLoss(Loss):
             # [T, B]
             discounts = info.discount * self._gamma
 
-        returns = value_ops.discounted_return(
-            rewards=info.reward,
-            values=value,
-            step_types=info.step_type,
-            discounts=discounts)
+        returns = value_ops.discounted_return(rewards=info.reward,
+                                              values=value,
+                                              step_types=info.step_type,
+                                              discounts=discounts)
         returns = tensor_utils.tensor_extend(returns, value[-1])
 
         if not self._use_gae:

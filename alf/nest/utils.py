@@ -86,6 +86,7 @@ class NestCombiner(abc.ABC, nn.Module):
 @alf.configurable
 @alf.repr_wrapper
 class NestConcat(NestCombiner):
+
     def __init__(self, nest_mask=None, dim=-1, name="NestConcat"):
         """A combiner for selecting from the tensors in a nest and then
         concatenating them along a specified axis. If nest_mask is None,
@@ -139,6 +140,7 @@ class NestConcat(NestCombiner):
 
 @alf.configurable
 class NestSum(NestCombiner):
+
     def __init__(self, average=False, activation=None, name="NestSum"):
         """Add all tensors in a nest together. It assumes that all tensors have
         the same tensor shape. Can be used as a preprocessing combiner of
@@ -168,6 +170,7 @@ class NestSum(NestCombiner):
 
 @alf.configurable
 class NestMultiply(NestCombiner):
+
     def __init__(self, activation=None, name="NestMultiply"):
         """Element-wise multiply all tensors in a nest. It assumes that all
         tensors have the same shape. Can be used as a preprocessing combiner of
@@ -194,6 +197,7 @@ class NestMultiply(NestCombiner):
 @alf.configurable
 @alf.repr_wrapper
 class NestOuterProduct(NestCombiner):
+
     def __init__(self,
                  activation: Callable = None,
                  batch_dims: int = 1,
@@ -381,8 +385,9 @@ def grad(nested, objective, retain_graph=False):
     return nest.pack_sequence_as(
         nested,
         list(
-            torch.autograd.grad(
-                objective, nest.flatten(nested), retain_graph=retain_graph)))
+            torch.autograd.grad(objective,
+                                nest.flatten(nested),
+                                retain_graph=retain_graph)))
 
 
 def zeros_like(nested):
@@ -423,9 +428,9 @@ def make_nested_module(nested, ignore_non_module_element=True):
     else:
         module = nested
         if not ignore_non_module_element:
-            assert isinstance(
-                nested,
-                torch.nn.Module), ("Unsupported type %s" % type(nested))
+            assert isinstance(nested,
+                              torch.nn.Module), ("Unsupported type %s" %
+                                                 type(nested))
         elif not isinstance(nested, torch.nn.Module):
             module = None
     return module

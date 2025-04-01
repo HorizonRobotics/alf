@@ -300,11 +300,10 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         else:
             prev_reward_sum = ()
         current_steps = torch.zeros(batch_size, dtype=torch.long)
-        model_state = ModelState(
-            state=latent,
-            pred_state=pred_state,
-            step=current_steps,
-            prev_reward_sum=prev_reward_sum)
+        model_state = ModelState(state=latent,
+                                 pred_state=pred_state,
+                                 step=current_steps,
+                                 prev_reward_sum=prev_reward_sum)
         if self._handle_bn:
             self._prediction_net.set_batch_norm_current_step(0)
         return self._predict(model_state)
@@ -343,9 +342,9 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 # reward is assumed to predict the sum of reward over time steps
                 prev_reward_sum = reward
                 if self._reset_reward_sum_period > 0:
-                    need_to_reset = (
-                        state.step - 1 + self._predict_initial_reward
-                    ) % self._reset_reward_sum_period == 0
+                    need_to_reset = (state.step - 1 +
+                                     self._predict_initial_reward
+                                     ) % self._reset_reward_sum_period == 0
                     state.prev_reward_sum[need_to_reset] = 0
                 reward = reward - state.prev_reward_sum
                 model_state = model_state._replace(
@@ -354,8 +353,9 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             reward = ()
         if not self.training:
             model_output = model_output._replace(value_pred=(), reward_pred=())
-        return model_output._replace(
-            value=value, reward=reward, state=model_state)
+        return model_output._replace(value=value,
+                                     reward=reward,
+                                     state=model_state)
 
     def calc_loss(self, model_output: ModelOutput,
                   target: ModelTarget) -> LossInfo:
@@ -373,8 +373,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
         if self._apply_partial_trajectory_mask:
             # [B, unroll_steps + 1]
-            partial_traj_mask = ~(target.beyond_episode_end &
-                                  target.is_partial_trajectory.unsqueeze(-1))
+            partial_traj_mask = ~(target.beyond_episode_end
+                                  & target.is_partial_trajectory.unsqueeze(-1))
             loss_scale = loss_scale * partial_traj_mask
 
         value_loss = self._value_loss(model_output.value_pred, target.value)
@@ -417,8 +417,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 action_log_probs = model_output.action_distribution.log_prob(
                     action)
                 action_log_probs = action_log_probs.permute(1, 2, 0)
-                policy_loss = -(target.action_policy * action_log_probs).sum(
-                    dim=2)
+                policy_loss = -(target.action_policy *
+                                action_log_probs).sum(dim=2)
 
         game_over_loss = ()
         if self._train_game_over_function:
@@ -441,8 +441,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             model_output.action_distribution)
         if self._log_alpha is not None:
             alpha = self._log_alpha.exp().detach()
-            loss = loss - alpha * (loss_scale * entropy_for_gradient).sum(
-                dim=1)
+            loss = loss - alpha * (loss_scale *
+                                   entropy_for_gradient).sum(dim=1)
             if self._target_entropy is not None:
                 # For some unknown reason, there are memory leaks for not using
                 # detach()
@@ -470,9 +470,9 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                                                     target.value[:, 0]))
                 alf.summary.scalar(
                     "explained_variance_of_value1",
-                    tensor_utils.explained_variance(
-                        model_output.value[:, 1:], target.value[:, 1:],
-                        dim=0).mean())
+                    tensor_utils.explained_variance(model_output.value[:, 1:],
+                                                    target.value[:, 1:],
+                                                    dim=0).mean())
                 if self._train_reward_function:
                     alf.summary.scalar(
                         "explained_variance_of_reward0",
@@ -480,8 +480,9 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                             reward[:, 0], target_reward[:, 0]))
                     alf.summary.scalar(
                         "explained_variance_of_reward1",
-                        tensor_utils.explained_variance(
-                            reward[:, 1:], target_reward[:, 1:], dim=0).mean())
+                        tensor_utils.explained_variance(reward[:, 1:],
+                                                        target_reward[:, 1:],
+                                                        dim=0).mean())
                     summary_utils.add_mean_hist_summary(
                         "predicted_reward", reward)
                     summary_utils.add_mean_hist_summary(
@@ -523,15 +524,14 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 if self._target_entropy is not None:
                     alf.summary.scalar("alpha", alpha)
 
-        return LossInfo(
-            loss=loss,
-            extra=dict(
-                value=value_loss,
-                reward=reward_loss,
-                policy=policy_loss,
-                repr_prediction=repr_loss,
-                td_error=(target.value[:, 0] - model_output.value[:, 0]).abs(),
-                game_over=game_over_loss))
+        return LossInfo(loss=loss,
+                        extra=dict(value=value_loss,
+                                   reward=reward_loss,
+                                   policy=policy_loss,
+                                   repr_prediction=repr_loss,
+                                   td_error=(target.value[:, 0] -
+                                             model_output.value[:, 0]).abs(),
+                                   game_over=game_over_loss))
 
     def calc_repr_prediction_loss(self, repr, target_repr):
         """Calculate the loss given the predicted representation and target representation."""
@@ -575,18 +575,18 @@ def create_simple_dynamics_net(input_tensor_spec):
         preproc = nn.Sequential(
             alf.layers.OneHot(num_classes=get_unique_num_actions(action_spec)),
             alf.layers.Reshape([-1]))
-    net = EncodingNetwork(
-        input_tensor_spec,
-        input_preprocessors=(None, preproc),
-        preprocessing_combiner=alf.nest.utils.NestConcat(),
-        fc_layer_params=(256, 256),
-        last_layer_size=input_tensor_spec[0].numel,
-        last_activation=torch.relu_)
+    net = EncodingNetwork(input_tensor_spec,
+                          input_preprocessors=(None, preproc),
+                          preprocessing_combiner=alf.nest.utils.NestConcat(),
+                          fc_layer_params=(256, 256),
+                          last_layer_size=input_tensor_spec[0].numel,
+                          last_activation=torch.relu_)
     return alf.nn.Sequential(net, alf.math.normalize_min_max)
 
 
 @alf.configurable
 class SimplePredictionNet(alf.networks.Network):
+
     def __init__(self,
                  observation_spec,
                  action_spec,
@@ -650,20 +650,21 @@ class SimplePredictionNet(alf.networks.Network):
 
 
 def create_simple_prediction_net(observation_spec, action_spec):
-    return SimplePredictionNet(
-        observation_spec,
-        action_spec,
-        trunk_net_ctor=partial(EncodingNetwork, fc_layer_params=(256, )))
+    return SimplePredictionNet(observation_spec,
+                               action_spec,
+                               trunk_net_ctor=partial(EncodingNetwork,
+                                                      fc_layer_params=(256, )))
 
 
 def create_simple_encoding_net(observation_spec):
-    net = EncodingNetwork(
-        input_tensor_spec=observation_spec, fc_layer_params=(256, 256))
+    net = EncodingNetwork(input_tensor_spec=observation_spec,
+                          fc_layer_params=(256, 256))
     return alf.nn.Sequential(net, alf.math.normalize_min_max)
 
 
 @alf.configurable
 class SimpleMCTSModel(MCTSModel):
+
     def __init__(self,
                  observation_spec,
                  action_spec,
@@ -719,23 +720,22 @@ class SimpleMCTSModel(MCTSModel):
         """
         encoding_net = encoding_net_ctor(observation_spec)
         repr_spec = encoding_net.output_spec
-        dynamics_net = dynamics_net_ctor(
-            input_tensor_spec=(repr_spec, action_spec))
+        dynamics_net = dynamics_net_ctor(input_tensor_spec=(repr_spec,
+                                                            action_spec))
         prediction_net = prediction_net_ctor(repr_spec, action_spec)
-        super().__init__(
-            num_unroll_steps=num_unroll_steps,
-            representation_net=encoding_net,
-            dynamics_net=dynamics_net,
-            prediction_net=prediction_net,
-            train_repr_prediction=train_repr_prediction,
-            train_reward_function=train_reward_function,
-            train_game_over_function=train_game_over_function,
-            train_policy=train_policy,
-            initial_alpha=initial_alpha,
-            target_entropy=target_entropy,
-            alpha_adjust_rate=alpha_adjust_rate,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(num_unroll_steps=num_unroll_steps,
+                         representation_net=encoding_net,
+                         dynamics_net=dynamics_net,
+                         prediction_net=prediction_net,
+                         train_repr_prediction=train_repr_prediction,
+                         train_reward_function=train_reward_function,
+                         train_game_over_function=train_game_over_function,
+                         train_policy=train_policy,
+                         initial_alpha=initial_alpha,
+                         target_entropy=target_entropy,
+                         alpha_adjust_rate=alpha_adjust_rate,
+                         debug_summaries=debug_summaries,
+                         name=name)
         self._num_sampled_actions = num_sampled_actions
 
         self._sample_actions = False
@@ -749,8 +749,8 @@ class SimpleMCTSModel(MCTSModel):
         if not action_spec.is_continuous:
             num_actions = action_spec.maximum - action_spec.minimum + 1
             if num_sampled_actions is None:
-                self._actions = torch.arange(
-                    num_actions, dtype=torch.int64).unsqueeze(0)
+                self._actions = torch.arange(num_actions,
+                                             dtype=torch.int64).unsqueeze(0)
             else:
                 assert num_sampled_actions < num_actions, (
                     "For scalar discrete action"
@@ -787,8 +787,8 @@ class SimpleMCTSModel(MCTSModel):
             else:
                 action_probs, actions = action_probs.topk(
                     self._num_sampled_actions, sorted=False)
-                action_probs = action_probs / action_probs.sum(
-                    dim=-1, keepdim=True)
+                action_probs = action_probs / action_probs.sum(dim=-1,
+                                                               keepdim=True)
 
         if not self._train_reward_function:
             reward = ()
@@ -798,12 +798,11 @@ class SimpleMCTSModel(MCTSModel):
         else:
             game_over = game_over_logit > self._game_over_logit_thresh
 
-        return ModelOutput(
-            value_pred=value_pred,
-            reward_pred=reward_pred,
-            game_over=game_over,
-            actions=actions,
-            action_probs=action_probs,
-            state=ModelState(dyn_state, pred_state),
-            action_distribution=action_distribution,
-            game_over_logit=game_over_logit)
+        return ModelOutput(value_pred=value_pred,
+                           reward_pred=reward_pred,
+                           game_over=game_over,
+                           actions=actions,
+                           action_probs=action_probs,
+                           state=ModelState(dyn_state, pred_state),
+                           action_distribution=action_distribution,
+                           game_over_logit=game_over_logit)

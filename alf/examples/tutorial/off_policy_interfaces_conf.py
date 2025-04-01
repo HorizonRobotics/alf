@@ -25,6 +25,7 @@ MySacInfo = namedtuple("MySacInfo", ["sac", "zeros"])
 
 
 class MySacAlgorithm(SacAlgorithm):
+
     def rollout_step(self, inputs, state):
         alg_step = super().rollout_step(inputs, state)
         action = alg_step.output
@@ -59,18 +60,16 @@ class MySacAlgorithm(SacAlgorithm):
         super().after_train_iter(root_inputs, rollout_info.sac)
 
 
-alf.config(
-    'Agent',
-    rl_algorithm_cls=MySacAlgorithm,
-    optimizer=alf.optimizers.Adam(lr=1e-3))
+alf.config('Agent',
+           rl_algorithm_cls=MySacAlgorithm,
+           optimizer=alf.optimizers.Adam(lr=1e-3))
 
 alf.config('create_environment', num_parallel_environments=10)
 
-alf.config(
-    'TrainerConfig',
-    temporally_independent_train_step=False,
-    mini_batch_length=2,
-    unroll_length=3,
-    mini_batch_size=4,
-    num_updates_per_train_iter=1,
-    num_iterations=1)
+alf.config('TrainerConfig',
+           temporally_independent_train_step=False,
+           mini_batch_length=2,
+           unroll_length=3,
+           mini_batch_size=4,
+           num_updates_per_train_iter=1,
+           num_iterations=1)

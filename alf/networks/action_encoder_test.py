@@ -19,6 +19,7 @@ from alf.networks.action_encoder import SimpleActionEncoder
 
 
 class SimpleActionEncoderTest(alf.test.TestCase):
+
     def test_simple_action_encoder(self):
         action_spec = [
             alf.BoundedTensorSpec((3, )),

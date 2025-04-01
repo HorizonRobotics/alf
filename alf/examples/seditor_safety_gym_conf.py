@@ -20,10 +20,9 @@ from alf.examples import sac_safety_gym_conf
 for env installation.
 """
 
-alf.config(
-    'SEditorAlgorithm',
-    actor_network_ctor=sac_safety_gym_conf.actor_network_cls,
-    critic_network_ctor=sac_safety_gym_conf.critic_network_cls,
-    target_update_tau=0.005)
+alf.config('SEditorAlgorithm',
+           actor_network_ctor=sac_safety_gym_conf.actor_network_cls,
+           critic_network_ctor=sac_safety_gym_conf.critic_network_cls,
+           target_update_tau=0.005)
 
 alf.config('Agent', rl_algorithm_cls=SEditorAlgorithm)

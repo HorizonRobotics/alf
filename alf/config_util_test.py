@@ -22,6 +22,7 @@ from alf.test_configs.source_code import *
 
 
 class ConfigTest(alf.test.TestCase):
+
     def test_config1(self):
 
         # Test simple function
@@ -196,11 +197,10 @@ class ConfigTest(alf.test.TestCase):
         def override_on_immutable_and_sole_init(x):
             pass
 
-        alf.config(
-            "override_on_immutable_and_sole_init",
-            x=0,
-            sole_init=True,
-            mutable=False)
+        alf.config("override_on_immutable_and_sole_init",
+                   x=0,
+                   sole_init=True,
+                   mutable=False)
         alf.override_sole_config("override_on_immutable_and_sole_init", x=1)
         self.assertEqual(
             alf.get_config_value("override_on_immutable_and_sole_init.x"), 0)
@@ -283,17 +283,20 @@ class ConfigTest(alf.test.TestCase):
                 os.path.join(temp_dir, "configs", "base", "base_conf.py"))
 
     def test_config_only_args(self):
+
         @alf.configurable(config_only_args=['y'])
         def func_test(y=0, z=0):
             pass
 
         @alf.configurable(config_only_args=['y'])
         class TestClass:
+
             def __init__(self, y=0, z=0):
                 pass
 
         @alf.configurable(config_only_args=['y'], whitelist=['y'])
         class TestClassWhiteList:
+
             def __init__(self, y=0, z=0):
                 pass
 
@@ -314,11 +317,13 @@ class ConfigTest(alf.test.TestCase):
 
             @alf.configurable(config_only_args=['y'], blacklist=['y'])
             class TestClassBlackList:
+
                 def __init__(self, y=0, z=0):
                     pass
 
         @alf.configurable(config_only_args=['x'])
         class TestPositionalArgs:
+
             def __init__(self, x, y, z=0):
                 pass
 

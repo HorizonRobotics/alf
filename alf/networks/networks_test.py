@@ -21,6 +21,7 @@ from alf.utils.common import zero_tensor_from_nested_spec
 
 
 class NestworksTest(alf.test.TestCase):
+
     def test_temporal_pool_skip(self):
         batch_size = 2
         dim = 3

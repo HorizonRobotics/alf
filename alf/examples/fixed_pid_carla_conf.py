@@ -21,11 +21,10 @@ from alf.environments.carla_controller import VehicleController
 
 alf.config('CameraSensor', image_size_x=200, image_size_y=100, fov=135)
 
-alf.config(
-    'create_environment',
-    env_name='Town01',
-    env_load_fn=suite_carla.load,
-    num_parallel_environments=4)
+alf.config('create_environment',
+           env_name='Town01',
+           env_load_fn=suite_carla.load,
+           num_parallel_environments=4)
 
 alf.config(
     'suite_carla.Player',

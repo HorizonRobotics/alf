@@ -124,19 +124,17 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             name='target_critic_networks')
 
         train_state_spec = MdqState(
-            critic=MdqCriticState(
-                critic=critic_networks.state_spec,
-                target_critic=critic_networks.state_spec))
+            critic=MdqCriticState(critic=critic_networks.state_spec,
+                                  target_critic=critic_networks.state_spec))
 
-        super().__init__(
-            observation_spec,
-            action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=train_state_spec,
-            env=env,
-            config=config,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec,
+                         action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=train_state_spec,
+                         env=env,
+                         config=config,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._critic_networks = critic_networks
         self._target_critic_networks = target_critic_networks
@@ -145,8 +143,8 @@ class MdqAlgorithm(OffPolicyAlgorithm):
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
-        critic_loss_ctor = functools.partial(
-            critic_loss_ctor, debug_summaries=debug_summaries)
+        critic_loss_ctor = functools.partial(critic_loss_ctor,
+                                             debug_summaries=debug_summaries)
 
         flat_action_spec = nest.flatten(self._action_spec)
         self._flat_action_spec = flat_action_spec
@@ -194,8 +192,9 @@ class MdqAlgorithm(OffPolicyAlgorithm):
 
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
 
-        return AlgStep(
-            output=action, state=empty_state, info=MdqInfo(action=action))
+        return AlgStep(output=action,
+                       state=empty_state,
+                       info=MdqInfo(action=action))
 
     def predict_step(self, time_step: TimeStep, state):
         return self._predict(time_step, state, self._epsilon_greedy)
@@ -215,18 +214,17 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         target_critic_input = (inputs.observation, action.detach())
 
         # [B, n]
-        critic, critic_state = self._critic_networks(
-            torch.cat(critic_input, -1),
-            alpha=alpha,
-            state=state.critic,
-            free_form=True)
+        critic, critic_state = self._critic_networks(torch.cat(
+            critic_input, -1),
+                                                     alpha=alpha,
+                                                     state=state.critic,
+                                                     free_form=True)
 
-        noisy_distill_action = self._get_noisy_action(
-            action,
-            self._action_spec,
-            self._distill_noise,
-            noise_clip=0,
-            spec_clip=True)
+        noisy_distill_action = self._get_noisy_action(action,
+                                                      self._action_spec,
+                                                      self._distill_noise,
+                                                      noise_clip=0,
+                                                      spec_clip=True)
 
         critic_distill_input = (inputs.observation,
                                 noisy_distill_action.detach())
@@ -239,12 +237,12 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             free_form=False)
 
         target_critic_input_new = (tensor_utils.tensor_extend_new_dim(
-            target_critic_input[0], dim=1, n=self._num_critic_replicas),
-                                   target_critic_input[1])
+            target_critic_input[0], dim=1,
+            n=self._num_critic_replicas), target_critic_input[1])
 
         distill_critic_input_new = (tensor_utils.tensor_extend_new_dim(
-            critic_distill_input[0], dim=1, n=self._num_critic_replicas),
-                                    critic_distill_input[1])
+            critic_distill_input[0], dim=1,
+            n=self._num_critic_replicas), critic_distill_input[1])
 
         target_critic, target_critic_state = self._target_critic_networks(
             torch.cat(target_critic_input_new, -1),
@@ -263,17 +261,16 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         # keeping the KL of all actions dimensions in case it is useful
         # in some cases in the future, e.g., per-action target correction using
         # the corresponding KL
-        kl_wrt_prior = tensor_utils.reverse_cumsum(
-            kl_wrt_prior_per_dim, dim=-1)
-        info = MdqCriticInfo(
-            critic_free_form=critic,
-            target_critic_free_form=target_critic,
-            distill_target=distill_target,
-            critic_adv_form=critic_adv_form,
-            kl_wrt_prior=kl_wrt_prior)
+        kl_wrt_prior = tensor_utils.reverse_cumsum(kl_wrt_prior_per_dim,
+                                                   dim=-1)
+        info = MdqCriticInfo(critic_free_form=critic,
+                             target_critic_free_form=target_critic,
+                             distill_target=distill_target,
+                             critic_adv_form=critic_adv_form,
+                             kl_wrt_prior=kl_wrt_prior)
 
-        state = MdqCriticState(
-            critic=critic_state, target_critic=target_critic_state)
+        state = MdqCriticState(critic=critic_state,
+                               target_critic=target_critic_state)
 
         return state, info
 
@@ -286,17 +283,17 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         """
 
         log_pi_full = log_pi_per_dim.sum(dim=-1)
-        alpha_loss = self._log_alpha * (
-            -log_pi_full - self._target_entropy).detach()
+        alpha_loss = self._log_alpha * (-log_pi_full -
+                                        self._target_entropy).detach()
 
         # mean over critic
         alpha_loss = torch.mean(alpha_loss, -1).view(-1)
 
         neg_entropy = torch.mean(log_pi_full.squeeze(-1), -1).view(-1)
 
-        info = LossInfo(
-            loss=alpha_loss,
-            extra=MdqAlphaInfo(alpha_loss=alpha_loss, neg_entropy=neg_entropy))
+        info = LossInfo(loss=alpha_loss,
+                        extra=MdqAlphaInfo(alpha_loss=alpha_loss,
+                                           neg_entropy=neg_entropy))
         return info
 
     def train_step(self, inputs: TimeStep, state: MdqState, rollout_info):
@@ -314,12 +311,11 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         alpha_info = self._alpha_train_step(log_pi_per_dim)
 
         state = MdqState(critic=critic_state)
-        info = MdqInfo(
-            reward=inputs.reward,
-            step_type=inputs.step_type,
-            discount=inputs.discount,
-            critic=critic_info,
-            alpha=alpha_info)
+        info = MdqInfo(reward=inputs.reward,
+                       step_type=inputs.step_type,
+                       discount=inputs.discount,
+                       critic=critic_info,
+                       alpha=alpha_info)
         return AlgStep(action, state, info)
 
     def after_update(self, root_inputs, info: MdqInfo):
@@ -334,12 +330,10 @@ class MdqAlgorithm(OffPolicyAlgorithm):
 
         total_loss = critic_loss.loss + distill_loss + alpha_loss.loss.squeeze(
             -1)
-        return LossInfo(
-            loss=total_loss,
-            extra=MdqLossInfo(
-                critic=critic_loss.extra,
-                alpha=alpha_loss.extra,
-                distill=distill_loss))
+        return LossInfo(loss=total_loss,
+                        extra=MdqLossInfo(critic=critic_loss.extra,
+                                          alpha=alpha_loss.extra,
+                                          distill=distill_loss))
 
     def _calc_critic_loss(self, train_info: MdqInfo):
         critic_info = train_info.critic
@@ -363,8 +357,8 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         kl_wrt_prior = kl_wrt_prior[..., 0, 0]
 
         # [t, B, n] -> [t, B]
-        target_critic, min_target_ind = torch.min(
-            target_critic_free_form, dim=2)
+        target_critic, min_target_ind = torch.min(target_critic_free_form,
+                                                  dim=2)
 
         # [t, B, n] -> [t, B]
         distill_target, _ = torch.min(distill_target, dim=2)
@@ -380,14 +374,13 @@ class MdqAlgorithm(OffPolicyAlgorithm):
 
         critic_loss = math_ops.add_n(critic_losses)
 
-        distill_loss = (
-            critic_adv_form[..., -1] - distill_target.unsqueeze(2).detach())**2
+        distill_loss = (critic_adv_form[..., -1] -
+                        distill_target.unsqueeze(2).detach())**2
         # mean over replica
         distill_loss = distill_loss.mean(dim=2)
 
-        return LossInfo(
-            loss=critic_loss,
-            extra=critic_loss / len(critic_losses)), distill_loss
+        return LossInfo(loss=critic_loss,
+                        extra=critic_loss / len(critic_losses)), distill_loss
 
     def _get_noisy_action(self,
                           actions,
@@ -399,8 +392,8 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             max_action = torch.as_tensor(action_specs.maximum)
             noise = torch.randn_like(actions) * noise_level * max_action
             if noise_clip > 0:
-                noise = noise.clamp(
-                    min=-noise_clip * max_action, max=noise_clip * max_action)
+                noise = noise.clamp(min=-noise_clip * max_action,
+                                    max=noise_clip * max_action)
             noisy_action = actions + noise
             if spec_clip:
                 clipped_noisy_action = spec_utils.clip_to_spec(

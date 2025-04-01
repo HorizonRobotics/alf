@@ -63,11 +63,10 @@ def load(game,
         env = FrameSkip(env, frame_skip)
     if frame_stack:
         env = FrameStack(env, stack_size=frame_stack)
-    return suite_gym.wrap_env(
-        env,
-        env_id=env_id,
-        discount=discount,
-        max_episode_steps=max_episode_steps,
-        gym_env_wrappers=gym_env_wrappers,
-        alf_env_wrappers=alf_env_wrappers,
-        auto_reset=True)
+    return suite_gym.wrap_env(env,
+                              env_id=env_id,
+                              discount=discount,
+                              max_episode_steps=max_episode_steps,
+                              gym_env_wrappers=gym_env_wrappers,
+                              alf_env_wrappers=alf_env_wrappers,
+                              auto_reset=True)

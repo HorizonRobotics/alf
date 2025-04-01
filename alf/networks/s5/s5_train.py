@@ -80,9 +80,9 @@ def prep_batch(batch: tuple, seq_len: int,
 
 
 def eval_step(
-        batch_inputs,
-        batch_labels,
-        model,
+    batch_inputs,
+    batch_labels,
+    model,
 ):
     state = common.zero_tensor_from_nested_spec(model.state_spec,
                                                 batch_inputs.shape[0])
@@ -170,17 +170,17 @@ def create_optimizer(model, args, steps_per_epoch):
     else:
         lr_scheduler = LinearScheduler(
             progress_type='iterations',
-            schedule=[(0, args.lr), (steps_per_epoch * args.warmup_end,
-                                     args.lr)],
+            schedule=[(0, args.lr),
+                      (steps_per_epoch * args.warmup_end, args.lr)],
         )
         ssm_lr_scheduler = LinearScheduler(
             progress_type='iterations',
-            schedule=[(0, 0.0), (steps_per_epoch * args.warmup_end,
-                                 args.ssm_lr)],
+            schedule=[(0, 0.0),
+                      (steps_per_epoch * args.warmup_end, args.ssm_lr)],
         )
 
-    optimizer = alf.optimizers.AdamW(
-        lr=lr_scheduler, weight_decay=args.weight_decay)
+    optimizer = alf.optimizers.AdamW(lr=lr_scheduler,
+                                     weight_decay=args.weight_decay)
     optimizer.add_param_group({'params': other_params})
     optimizer.add_param_group({
         'params': ssm_params,
@@ -222,26 +222,24 @@ def train(args):
     trainloader, valloader, testloader, aux_dataloaders, n_classes, seq_len, in_dim, train_size = \
     create_mnist_classification_dataset(args.dir_name, seed=args.seed, bsz=args.bsz)
 
-    ssm_ctor = partial(
-        s5.S5SSM,
-        data_dim=args.d_model,
-        state_dim=args.state_dim,
-        num_blocks=args.num_blocks,
-        dt_min=args.dt_min,
-        dt_max=args.dt_max,
-        step_rescale=args.step_rescale)
+    ssm_ctor = partial(s5.S5SSM,
+                       data_dim=args.d_model,
+                       state_dim=args.state_dim,
+                       num_blocks=args.num_blocks,
+                       dt_min=args.dt_min,
+                       dt_max=args.dt_max,
+                       step_rescale=args.step_rescale)
 
     model = alf.networks.Sequential(
         lambda x: x.transpose(0, 1),
-        s5.create_stacked_s5_encoder(
-            in_dim,
-            ssm_ctor,
-            num_layers=args.num_layers,
-            activation=args.activation_fn,
-            dropout=args.dropout,
-            prenorm=args.prenorm,
-            batchnorm=args.batchnorm,
-            bn_momentum=args.bn_momentum),
+        s5.create_stacked_s5_encoder(in_dim,
+                                     ssm_ctor,
+                                     num_layers=args.num_layers,
+                                     activation=args.activation_fn,
+                                     dropout=args.dropout,
+                                     prenorm=args.prenorm,
+                                     batchnorm=args.batchnorm,
+                                     bn_momentum=args.bn_momentum),
         lambda x: x.mean(dim=0),
         alf.layers.FC(args.d_model, n_classes),
         input_tensor_spec=alf.TensorSpec((
@@ -274,6 +272,7 @@ def train(args):
 
 
 class Args:
+
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 

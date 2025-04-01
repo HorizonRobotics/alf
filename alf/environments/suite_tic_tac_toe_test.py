@@ -20,6 +20,7 @@ from alf.environments.suite_tic_tac_toe import load
 
 
 class TicTacToeTest(alf.test.TestCase):
+
     def test_tic_tac_toe(self):
         env = load(batch_size=2)
         time_step = env.reset()

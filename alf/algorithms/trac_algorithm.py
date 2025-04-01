@@ -76,25 +76,23 @@ class TracAlgorithm(RLAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
         """
-        ac_algorithm = ac_algorithm_cls(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            debug_summaries=debug_summaries)
+        ac_algorithm = ac_algorithm_cls(observation_spec=observation_spec,
+                                        action_spec=action_spec,
+                                        debug_summaries=debug_summaries)
 
         assert hasattr(ac_algorithm, '_actor_network')
 
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            env=env,
-            is_on_policy=ac_algorithm.on_policy,
-            config=config,
-            train_state_spec=ac_algorithm.train_state_spec,
-            predict_state_spec=ac_algorithm.predict_state_spec,
-            checkpoint=checkpoint,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         env=env,
+                         is_on_policy=ac_algorithm.on_policy,
+                         config=config,
+                         train_state_spec=ac_algorithm.train_state_spec,
+                         predict_state_spec=ac_algorithm.predict_state_spec,
+                         checkpoint=checkpoint,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._ac_algorithm = ac_algorithm
         self._trusted_updater = None
@@ -125,13 +123,12 @@ class TracAlgorithm(RLAlgorithm):
         ac_info = policy_step.info._replace(action_distribution=())
         # EntropyTargetAlgorithm need info.action_distribution
         return policy_step._replace(
-            info=TracInfo(
-                action_distribution=action_distribution,
-                observation=time_step.observation,
-                prev_action=time_step.prev_action,
-                state=self._ac_algorithm.convert_train_state_to_predict_state(
-                    state),
-                ac=ac_info))
+            info=TracInfo(action_distribution=action_distribution,
+                          observation=time_step.observation,
+                          prev_action=time_step.prev_action,
+                          state=self._ac_algorithm.
+                          convert_train_state_to_predict_state(state),
+                          ac=ac_info))
 
     def rollout_step(self, time_step: TimeStep, state):
         """Rollout for one step."""
@@ -156,12 +153,11 @@ class TracAlgorithm(RLAlgorithm):
         """Adjust actor parameter according to KL-divergence."""
         action_param = dist_utils.distributions_to_params(
             info.action_distribution)
-        exp_array = TracExperience(
-            observation=info.observation,
-            step_type=root_inputs.step_type,
-            action_param=action_param,
-            prev_action=info.prev_action,
-            state=info.state)
+        exp_array = TracExperience(observation=info.observation,
+                                   step_type=root_inputs.step_type,
+                                   action_param=action_param,
+                                   prev_action=info.prev_action,
+                                   state=info.state)
         dists, steps = self._trusted_updater.adjust_step(
             lambda: self._calc_change(exp_array), self._action_dist_clips)
 
@@ -207,8 +203,9 @@ class TracAlgorithm(RLAlgorithm):
                 exp.action_param, self._action_distribution_spec)
             valid_masks = (exp.step_type != StepType.LAST).to(torch.float32)
             return nest_map(
-                lambda d1, d2, total_dist: (_dist(d1, d2) * valid_masks).sum()
-                + total_dist, old_action, new_action, total_dists)
+                lambda d1, d2, total_dist:
+                (_dist(d1, d2) * valid_masks).sum() + total_dist, old_action,
+                new_action, total_dists)
 
         num_steps, batch_size = exp_array.step_type.shape
         state = nest_map(lambda x: x[0], exp_array.state)
@@ -220,10 +217,9 @@ class TracAlgorithm(RLAlgorithm):
             exp = nest_map(lambda x: x[t], exp_array)
             state = common.reset_state_if_necessary(
                 state, initial_state, exp.step_type == StepType.FIRST)
-            time_step = TimeStep(
-                observation=exp.observation,
-                step_type=exp.step_type,
-                prev_action=exp.prev_action)
+            time_step = TimeStep(observation=exp.observation,
+                                 step_type=exp.step_type,
+                                 prev_action=exp.prev_action)
             policy_step = self._ac_algorithm.predict_step(time_step, state)
             assert (
                 alf.nest.is_namedtuple(policy_step.info)

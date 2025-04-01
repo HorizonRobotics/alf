@@ -47,6 +47,7 @@ class OUProcess(Network):
         self._stddev = stddev
 
     def forward(self, state):
+
         def _forward(x):
             return self._1_sub_damping * x + torch.randn_like(x) * self._stddev
 

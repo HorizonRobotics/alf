@@ -70,12 +70,11 @@ class AdamTF(Optimizer):
         if not 0.0 <= weight_decay:
             raise ValueError(
                 "Invalid weight_decay value: {}".format(weight_decay))
-        defaults = dict(
-            lr=lr,
-            betas=betas,
-            eps=eps,
-            weight_decay=weight_decay,
-            amsgrad=amsgrad)
+        defaults = dict(lr=lr,
+                        betas=betas,
+                        eps=eps,
+                        weight_decay=weight_decay,
+                        amsgrad=amsgrad)
         super().__init__(params, defaults)
         self._state_ready = False
 
@@ -159,8 +158,8 @@ class AdamTF(Optimizer):
                 else:
                     denom = exp_avg_sq.sqrt().add_(group['eps'])
 
-                step_size = group['lr'] * (
-                    math.sqrt(bias_correction2) / bias_correction1)
+                step_size = group['lr'] * (math.sqrt(bias_correction2) /
+                                           bias_correction1)
                 p.addcdiv_(exp_avg, denom, value=-step_size)
 
         return loss

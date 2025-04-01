@@ -21,6 +21,7 @@ from alf.environments.alf_wrappers import TimeLimit
 
 
 class SuiteBabyAITest(alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         if not suite_babyai.is_available():
@@ -61,8 +62,9 @@ class SuiteBabyAITest(alf.test.TestCase):
         self.assertEqual(obs['mission'], ord(' '))
 
     def test_one_instruction_per_step(self):
-        env = suite_babyai.load(
-            "BabyAI-GoToRedBall-v0", max_instruction_length=10, mode='sent')
+        env = suite_babyai.load("BabyAI-GoToRedBall-v0",
+                                max_instruction_length=10,
+                                mode='sent')
         vocab = suite_babyai.BabyAIWrapper.VOCAB
         self.assertEqual(env.observation_spec()['mission'].shape, (10, ))
         self.assertEqual(env.observation_spec()['mission'].minimum, 0)

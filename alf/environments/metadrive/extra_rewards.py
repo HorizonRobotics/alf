@@ -236,8 +236,8 @@ class EgoKinematicReward(ExtraReward):
         lat_jerk = _estimate_derivative_3(self._history_heading, is_angle=True)
 
         speed = self._history_speed[-1]
-        lon_acc_cost = self._harsh_brake_cost_func(
-            lon_acc=lon_acc, speed=speed)
+        lon_acc_cost = self._harsh_brake_cost_func(lon_acc=lon_acc,
+                                                   speed=speed)
         lon_jerk_cost = self._lon_jerk_cost_func(jerk=lon_jerk, speed=speed)
         lat_jerk_cost = self._lat_jerk_cost_func(jerk=lat_jerk, speed=speed)
 

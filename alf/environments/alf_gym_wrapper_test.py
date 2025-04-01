@@ -27,6 +27,7 @@ from alf.tensor_specs import torch_dtype_to_str
 
 
 class GymWrapperSpecTest(alf.test.TestCase):
+
     def test_tensor_spec_from_gym_space_discrete(self):
         discrete_space = gym.spaces.Discrete(3)
         spec = alf_gym_wrapper.tensor_spec_from_gym_space(discrete_space)
@@ -42,10 +43,10 @@ class GymWrapperSpecTest(alf.test.TestCase):
 
         self.assertEqual((4, ), spec.shape)
         self.assertEqual(torch.int64, spec.dtype)
-        np.testing.assert_array_equal(
-            np.array([0], dtype=np.int64), spec.minimum)
-        np.testing.assert_array_equal(
-            np.array([0, 1, 2, 3], dtype=np.int64), spec.maximum)
+        np.testing.assert_array_equal(np.array([0], dtype=np.int64),
+                                      spec.minimum)
+        np.testing.assert_array_equal(np.array([0, 1, 2, 3], dtype=np.int64),
+                                      spec.maximum)
 
     def test_tensor_spec_from_gym_space_multi_binary(self):
         multi_binary_space = gym.spaces.MultiBinary(4)
@@ -53,10 +54,10 @@ class GymWrapperSpecTest(alf.test.TestCase):
 
         self.assertEqual((4, ), spec.shape)
         self.assertEqual(torch.int8, spec.dtype)
-        np.testing.assert_array_equal(
-            np.array([0], dtype=np.int64), spec.minimum)
-        np.testing.assert_array_equal(
-            np.array([1], dtype=np.int64), spec.maximum)
+        np.testing.assert_array_equal(np.array([0], dtype=np.int64),
+                                      spec.minimum)
+        np.testing.assert_array_equal(np.array([1], dtype=np.int64),
+                                      spec.maximum)
 
     def test_tensor_spec_from_gym_space_box_scalars(self):
         for dtype in (np.float32, np.float64):
@@ -64,8 +65,8 @@ class GymWrapperSpecTest(alf.test.TestCase):
 
             # test if float_dtype is not specified, the spec's dtype
             # will match that of the space
-            spec = alf_gym_wrapper.tensor_spec_from_gym_space(
-                box_space, float_dtype=None)
+            spec = alf_gym_wrapper.tensor_spec_from_gym_space(box_space,
+                                                              float_dtype=None)
 
             torch_dtype = getattr(torch, np.dtype(dtype).name)
             self.assertEqual((3, 4), spec.shape)
@@ -88,10 +89,10 @@ class GymWrapperSpecTest(alf.test.TestCase):
 
         self.assertEqual((3, 4), spec.shape)
         self.assertEqual(torch.float32, spec.dtype)
-        np.testing.assert_array_equal(
-            np.array([-1], dtype=np.int64), spec.minimum)
-        np.testing.assert_array_equal(
-            np.array([1], dtype=np.int64), spec.maximum)
+        np.testing.assert_array_equal(np.array([-1], dtype=np.int64),
+                                      spec.minimum)
+        np.testing.assert_array_equal(np.array([1], dtype=np.int64),
+                                      spec.maximum)
 
     def test_tensor_spec_from_gym_space_when_simplify_box_bounds_false(self):
         # testing on gym.spaces.Dict which makes recursive calls to
@@ -105,24 +106,25 @@ class GymWrapperSpecTest(alf.test.TestCase):
         self.assertEqual((2, ), spec['box2'].shape)
         self.assertEqual(torch.float32, spec['box1'].dtype)
         self.assertEqual(torch.float32, spec['box2'].dtype)
-        np.testing.assert_array_equal(
-            np.array([-1, -1], dtype=np.int64), spec['box1'].minimum)
-        np.testing.assert_array_equal(
-            np.array([1, 1], dtype=np.int64), spec['box1'].maximum)
-        np.testing.assert_array_equal(
-            np.array([-1, -1], dtype=np.int64), spec['box2'].minimum)
-        np.testing.assert_array_equal(
-            np.array([1, 1], dtype=np.int64), spec['box2'].maximum)
+        np.testing.assert_array_equal(np.array([-1, -1], dtype=np.int64),
+                                      spec['box1'].minimum)
+        np.testing.assert_array_equal(np.array([1, 1], dtype=np.int64),
+                                      spec['box1'].maximum)
+        np.testing.assert_array_equal(np.array([-1, -1], dtype=np.int64),
+                                      spec['box2'].minimum)
+        np.testing.assert_array_equal(np.array([1, 1], dtype=np.int64),
+                                      spec['box2'].maximum)
 
     def test_tensor_spec_from_gym_space_box_array(self):
         for dtype in (np.float32, np.float64):
-            box_space = gym.spaces.Box(
-                np.array([-1.0, -2.0]), np.array([2.0, 4.0]), dtype=dtype)
+            box_space = gym.spaces.Box(np.array([-1.0, -2.0]),
+                                       np.array([2.0, 4.0]),
+                                       dtype=dtype)
 
             # test if float_dtype is not specified, the spec's dtype
             # will match that of the space
-            spec = alf_gym_wrapper.tensor_spec_from_gym_space(
-                box_space, float_dtype=None)
+            spec = alf_gym_wrapper.tensor_spec_from_gym_space(box_space,
+                                                              float_dtype=None)
 
             torch_dtype = getattr(torch, np.dtype(dtype).name)
             self.assertEqual((2, ), spec.shape)
@@ -139,8 +141,8 @@ class GymWrapperSpecTest(alf.test.TestCase):
                 self.assertEqual(torch_float_dtype, spec.dtype)
 
     def test_tensor_spec_from_gym_space_tuple(self):
-        tuple_space = gym.spaces.Tuple((gym.spaces.Discrete(2),
-                                        gym.spaces.Discrete(3)))
+        tuple_space = gym.spaces.Tuple(
+            (gym.spaces.Discrete(2), gym.spaces.Discrete(3)))
         spec = alf_gym_wrapper.tensor_spec_from_gym_space(tuple_space)
 
         self.assertEqual(2, len(spec))
@@ -163,8 +165,8 @@ class GymWrapperSpecTest(alf.test.TestCase):
                 'spec_1':
                     gym.spaces.Discrete(2),
                 'spec_2':
-                    gym.spaces.Tuple((gym.spaces.Discrete(2),
-                                      gym.spaces.Discrete(3))),
+                    gym.spaces.Tuple(
+                        (gym.spaces.Discrete(2), gym.spaces.Discrete(3))),
             }),
         ))
         spec = alf_gym_wrapper.tensor_spec_from_gym_space(tuple_space)
@@ -243,6 +245,7 @@ class GymWrapperSpecTest(alf.test.TestCase):
 
 
 class GymWrapperOnCartpoleTest(alf.test.TestCase):
+
     def test_wrapped_cartpole_specs(self):
         # Note we use spec.make on gym envs to avoid getting a TimeLimit wrapper on
         # the environment.
@@ -365,9 +368,8 @@ class GymWrapperOnCartpoleTest(alf.test.TestCase):
         cartpole_env = gym.spec('CartPole-v1').make()
         env = alf_gym_wrapper.AlfGymWrapper(cartpole_env)
         time_step = env.reset()
-        self.assertEqual(
-            torch_dtype_to_str(env.observation_spec().dtype),
-            str(time_step.observation.dtype))
+        self.assertEqual(torch_dtype_to_str(env.observation_spec().dtype),
+                         str(time_step.observation.dtype))
 
 
 if __name__ == '__main__':

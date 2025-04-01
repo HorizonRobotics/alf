@@ -21,6 +21,7 @@ from alf.initializers import _is_elementwise_op
 
 
 class InitializerTest(alf.test.TestCase):
+
     def test_is_elementwise_op(self):
         self.assertFalse(_is_elementwise_op(torch.nn.Softmax(dim=-1)))
         self.assertTrue(_is_elementwise_op(torch.relu))

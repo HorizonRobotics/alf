@@ -51,21 +51,18 @@ def get_exp_batch(env_ids, dim, t, x):
         torch.abs(a - g) < .05,
         torch.zeros(batch_size, dtype=torch.float32, device="cpu"),
         -torch.ones(batch_size, dtype=torch.float32, device="cpu"))
-    return ds.Experience(
-        time_step=TimestepItem(
-            env_id=torch.tensor(env_ids, dtype=torch.int64, device="cpu"),
-            x=ox,
-            step_type=t *
-            torch.ones(batch_size, dtype=torch.int32, device="cpu"),
-            o=dict({
-                "a": a,
-                "g": g
-            }),
-            discount=torch.tensor(
-                t != alf.data_structures.StepType.LAST,
-                dtype=torch.float32,
-                device="cpu"),
-            reward=r))
+    return ds.Experience(time_step=TimestepItem(
+        env_id=torch.tensor(env_ids, dtype=torch.int64, device="cpu"),
+        x=ox,
+        step_type=t * torch.ones(batch_size, dtype=torch.int32, device="cpu"),
+        o=dict({
+            "a": a,
+            "g": g
+        }),
+        discount=torch.tensor(t != alf.data_structures.StepType.LAST,
+                              dtype=torch.float32,
+                              device="cpu"),
+        reward=r))
 
 
 class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
@@ -79,29 +76,27 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
     def __init__(self, *args):
         super().__init__(*args)
         alf.set_default_device("cpu")  # spawn forking is required to use cuda.
-        self.data_spec = ds.Experience(
-            time_step=TimestepItem(
-                env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
-                x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
-                step_type=alf.TensorSpec(shape=(), dtype=torch.int32),
-                o=dict({
-                    "a": alf.TensorSpec(shape=(), dtype=torch.float32),
-                    "g": alf.TensorSpec(shape=(), dtype=torch.float32)
-                }),
-                discount=alf.TensorSpec(shape=(), dtype=torch.float32),
-                reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
+        self.data_spec = ds.Experience(time_step=TimestepItem(
+            env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
+            x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
+            step_type=alf.TensorSpec(shape=(), dtype=torch.int32),
+            o=dict({
+                "a": alf.TensorSpec(shape=(), dtype=torch.float32),
+                "g": alf.TensorSpec(shape=(), dtype=torch.float32)
+            }),
+            discount=alf.TensorSpec(shape=(), dtype=torch.float32),
+            reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
 
     def test_replay_with_hindsight_relabel(self):
         self.max_length = 8
         torch.manual_seed(0)
 
-        replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
-            num_environments=2,
-            max_length=self.max_length,
-            keep_episodic_info=True,
-            record_episodic_return=True,
-            with_replacement=True)
+        replay_buffer = ReplayBuffer(data_spec=self.data_spec,
+                                     num_environments=2,
+                                     max_length=self.max_length,
+                                     keep_episodic_info=True,
+                                     record_episodic_return=True,
+                                     with_replacement=True)
 
         transform = HindsightExperienceTransformer(
             self.data_spec,
@@ -321,9 +316,9 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         ends = (torch.arange(segs) * (1. / end_prob)).type(torch.int64)
         ends += (torch.rand(segs) * (1. / end_prob - 1) + 1).type(torch.int64)
         steps[ends] = torch.tensor([ds.StepType.LAST]).expand(segs)
-        valid_starts, = torch.where(
-            ends +
-            1 != torch.arange(max_steps, num_envs * max_steps, max_steps))
+        valid_starts, = torch.where(ends +
+                                    1 != torch.arange(max_steps, num_envs *
+                                                      max_steps, max_steps))
         steps[(ends + 1)[valid_starts]] = torch.tensor(
             [ds.StepType.FIRST]).expand(valid_starts.shape[0])
         return steps
@@ -334,11 +329,10 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         (True, False),
     ])
     def test_replay_buffer(self, allow_multiprocess, with_replacement):
-        replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
-            num_environments=self.num_envs,
-            max_length=self.max_length,
-            allow_multiprocess=allow_multiprocess)
+        replay_buffer = ReplayBuffer(data_spec=self.data_spec,
+                                     num_environments=self.num_envs,
+                                     max_length=self.max_length,
+                                     allow_multiprocess=allow_multiprocess)
 
         batch1 = get_exp_batch([0, 4, 7], self.dim, t=0, x=0.1)
         replay_buffer.add_batch(batch1, batch1.env_id)
@@ -458,13 +452,12 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
     def test_recent_data_and_without_replacement(self):
         num_envs = 4
         max_length = 100
-        replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
-            num_environments=num_envs,
-            max_length=max_length,
-            with_replacement=False,
-            recent_data_ratio=0.5,
-            recent_data_steps=4)
+        replay_buffer = ReplayBuffer(data_spec=self.data_spec,
+                                     num_environments=num_envs,
+                                     max_length=max_length,
+                                     with_replacement=False,
+                                     recent_data_ratio=0.5,
+                                     recent_data_steps=4)
         replay_buffer.add_batch(
             get_exp_batch([0, 1, 2, 3], self.dim, t=0, x=0.))
         batch, info = replay_buffer.get_batch(4, 1)
@@ -489,12 +482,11 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
     def test_num_earliest_frames_ignored_uniform(self):
         num_envs = 4
         max_length = 100
-        replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
-            num_environments=num_envs,
-            max_length=max_length,
-            keep_episodic_info=False,
-            num_earliest_frames_ignored=2)
+        replay_buffer = ReplayBuffer(data_spec=self.data_spec,
+                                     num_environments=num_envs,
+                                     max_length=max_length,
+                                     keep_episodic_info=False,
+                                     num_earliest_frames_ignored=2)
 
         replay_buffer.add_batch(
             get_exp_batch([0, 1, 2, 3], self.dim, t=0, x=0.))
@@ -513,13 +505,12 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(batch.step_type, torch.tensor([[2]]))
 
     def test_num_earliest_frames_ignored_priortized(self):
-        replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
-            num_environments=self.num_envs,
-            max_length=self.max_length,
-            num_earliest_frames_ignored=2,
-            keep_episodic_info=False,
-            prioritized_sampling=True)
+        replay_buffer = ReplayBuffer(data_spec=self.data_spec,
+                                     num_environments=self.num_envs,
+                                     max_length=self.max_length,
+                                     num_earliest_frames_ignored=2,
+                                     keep_episodic_info=False,
+                                     prioritized_sampling=True)
 
         batch1 = get_exp_batch([1], self.dim, x=0.25, t=0)
         replay_buffer.add_batch(batch1, batch1.env_id)
@@ -542,11 +533,10 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(batch.step_type, torch.tensor([[2]]))
 
     def test_prioritized_replay(self):
-        replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
-            num_environments=self.num_envs,
-            max_length=self.max_length,
-            prioritized_sampling=True)
+        replay_buffer = ReplayBuffer(data_spec=self.data_spec,
+                                     num_environments=self.num_envs,
+                                     max_length=self.max_length,
+                                     prioritized_sampling=True)
         self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
 
         batch1 = get_exp_batch([1], self.dim, x=0.25, t=0)
@@ -573,10 +563,11 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         n1 = (replay_buffer.circular(batch_info.positions) == 1).sum()
         self.assertEqual(n0, 500)
         self.assertEqual(n1, 500)
-        replay_buffer.update_priority(
-            env_ids=torch.tensor([1, 1], dtype=torch.int64),
-            positions=torch.tensor([0, 1], dtype=torch.int64),
-            priorities=torch.tensor([0.5, 1.5]))
+        replay_buffer.update_priority(env_ids=torch.tensor([1, 1],
+                                                           dtype=torch.int64),
+                                      positions=torch.tensor(
+                                          [0, 1], dtype=torch.int64),
+                                      priorities=torch.tensor([0.5, 1.5]))
         batch, batch_info = replay_buffer.get_batch(1000, 1)
         n0 = (replay_buffer.circular(batch_info.positions) == 0).sum()
         n1 = (replay_buffer.circular(batch_info.positions) == 1).sum()
@@ -590,8 +581,8 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         def _get(env_id, pos):
             flag = ((batch_info.env_ids == env_id) *
                     (batch_info.positions == replay_buffer._pad(pos, env_id)))
-            w = batch_info.importance_weights[torch.nonzero(
-                flag, as_tuple=True)[0]]
+            w = batch_info.importance_weights[torch.nonzero(flag,
+                                                            as_tuple=True)[0]]
             return flag.sum(), w
 
         n0, w0 = _get(0, 0)
@@ -607,10 +598,11 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue(torch.all(w2 == 1.2))
         self.assertTrue(torch.all(w3 == 1.2))
 
-        replay_buffer.update_priority(
-            env_ids=torch.tensor([1, 2], dtype=torch.int64),
-            positions=torch.tensor([1, 0], dtype=torch.int64),
-            priorities=torch.tensor([1.0, 1.0]))
+        replay_buffer.update_priority(env_ids=torch.tensor([1, 2],
+                                                           dtype=torch.int64),
+                                      positions=torch.tensor(
+                                          [1, 0], dtype=torch.int64),
+                                      priorities=torch.tensor([1.0, 1.0]))
         batch, batch_info = replay_buffer.get_batch(1000, 1)
 
         n0, w0 = _get(0, 0)
@@ -631,12 +623,11 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         all_env_ids: List[int] = [0, 1, 2, 3]
         max_length = 9
 
-        replay_buffer = ReplayBuffer(
-            data_spec=self.data_spec,
-            num_environments=num_envs,
-            max_length=max_length,
-            num_earliest_frames_ignored=2,
-            keep_episodic_info=False)
+        replay_buffer = ReplayBuffer(data_spec=self.data_spec,
+                                     num_environments=num_envs,
+                                     max_length=max_length,
+                                     num_earliest_frames_ignored=2,
+                                     keep_episodic_info=False)
 
         replay_buffer.add_batch(
             get_exp_batch(all_env_ids, self.dim, t=1, x=0.1))
@@ -664,8 +655,8 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
 
         self.assertEqual(torch.tensor([0, 1, 2, 3]), batch_info.env_ids)
         self.assertEqual(torch.tensor([2, 2, 2, 2]), batch_info.positions)
-        self.assertEqual(
-            torch.tensor([[3, 4, 5, 6, 7, 8]] * 4), experience.step_type)
+        self.assertEqual(torch.tensor([[3, 4, 5, 6, 7, 8]] * 4),
+                         experience.step_type)
 
         replay_buffer.add_batch(
             get_exp_batch(all_env_ids, self.dim, t=9, x=5.9))
@@ -693,9 +684,8 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(torch.tensor([0, 1, 2, 3]), batch_info.env_ids)
         # Note that the position of t = 8 never change and remains as 7.
         self.assertEqual(torch.tensor([7, 7, 7, 7]), batch_info.positions)
-        self.assertEqual(
-            torch.tensor([[8, 9, 10, 11, 12, 13, 14]] * 4),
-            experience.step_type)
+        self.assertEqual(torch.tensor([[8, 9, 10, 11, 12, 13, 14]] * 4),
+                         experience.step_type)
 
 
 def _write_to_buffer(buffer):
@@ -707,12 +697,15 @@ def _write_to_buffer(buffer):
 
 
 class ReplayBufferSharingTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(['fork', 'spawn'])
     def test_spawned_process_sharing(self, start_method):
         spec = alf.TensorSpec((10, ), dtype=torch.uint8)
 
-        buffer = ReplayBuffer(
-            data_spec=spec, num_environments=1, max_length=10, device='cpu')
+        buffer = ReplayBuffer(data_spec=spec,
+                              num_environments=1,
+                              max_length=10,
+                              device='cpu')
 
         original_start_method = mp.get_start_method()
         mp.set_start_method(start_method, force=True)

@@ -26,16 +26,14 @@ from alf.utils.math_ops import clipped_exp
 from alf.algorithms.data_transformer import RewardNormalizer, ObservationNormalizer
 from alf.optimizers import AdamTF
 
-alf.config(
-    "create_environment",
-    num_parallel_environments=10,
-    env_load_fn=suite_dmc.load)
+alf.config("create_environment",
+           num_parallel_environments=10,
+           env_load_fn=suite_dmc.load)
 
-alf.config(
-    "suite_dmc.load",
-    from_pixels=False,
-    gym_env_wrappers=(partial(FrameSkip, skip=2), ),
-    max_episode_steps=500)
+alf.config("suite_dmc.load",
+           from_pixels=False,
+           gym_env_wrappers=(partial(FrameSkip, skip=2), ),
+           max_episode_steps=500)
 
 hidden_layers = (256, 256)
 
@@ -48,26 +46,25 @@ actor_distribution_network_cls = partial(
         scale_distribution=True,
         std_transform=clipped_exp))
 
-critic_network_cls = partial(
-    alf.networks.CriticNetwork, joint_fc_layer_params=hidden_layers)
+critic_network_cls = partial(alf.networks.CriticNetwork,
+                             joint_fc_layer_params=hidden_layers)
 
 optimizer = AdamTF(lr=3e-4)
 
-alf.config(
-    "TrainerConfig",
-    temporally_independent_train_step=True,
-    use_rollout_state=True,
-    initial_collect_steps=10000,
-    unroll_length=1,
-    mini_batch_length=6,
-    mini_batch_size=256,
-    num_updates_per_train_iter=1,
-    num_env_steps=int(3e6),
-    num_iterations=0,
-    num_checkpoints=1,
-    evaluate=True,
-    num_evals=100,
-    debug_summaries=True,
-    summarize_grads_and_vars=0,
-    num_summaries=100,
-    replay_buffer_length=int(1e5))
+alf.config("TrainerConfig",
+           temporally_independent_train_step=True,
+           use_rollout_state=True,
+           initial_collect_steps=10000,
+           unroll_length=1,
+           mini_batch_length=6,
+           mini_batch_size=256,
+           num_updates_per_train_iter=1,
+           num_env_steps=int(3e6),
+           num_iterations=0,
+           num_checkpoints=1,
+           evaluate=True,
+           num_evals=100,
+           debug_summaries=True,
+           summarize_grads_and_vars=0,
+           num_summaries=100,
+           replay_buffer_length=int(1e5))

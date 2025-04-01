@@ -19,6 +19,7 @@ import alf.networks.memory as memory
 
 
 class MemoryTest(alf.test.TestCase):
+
     def assertArrayEqual(self, x, y, epsilon=1e-6):
         self.assertEqual(x.shape, y.shape)
         self.assertLess((x - y).abs().max(), epsilon)
@@ -32,8 +33,11 @@ class MemoryTest(alf.test.TestCase):
         self._test_memory(mem)
 
     def test_snapshot_memory(self):
-        mem = memory.MemoryWithUsage(
-            2, 3, snapshot_only=True, usage_decay=1., scale=20)
+        mem = memory.MemoryWithUsage(2,
+                                     3,
+                                     snapshot_only=True,
+                                     usage_decay=1.,
+                                     scale=20)
         self.assertEqual(mem.dim, 2)
         self.assertEqual(mem.size, 3)
         self._test_memory(mem)

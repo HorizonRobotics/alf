@@ -143,8 +143,10 @@ class MemoryWithUsage(Memory):
         self._usage_decay = usage_decay
         state_spec = (alf.TensorSpec((size, dim), dtype=torch.float32),
                       alf.TensorSpec((size, ), dtype=torch.float32))
-        super(MemoryWithUsage, self).__init__(
-            dim, size, state_spec=state_spec, name=name)
+        super(MemoryWithUsage, self).__init__(dim,
+                                              size,
+                                              state_spec=state_spec,
+                                              name=name)
 
     def build(self, batch_size):
         """Build the memory for batch_size.
@@ -172,9 +174,9 @@ class MemoryWithUsage(Memory):
         Returns:
             Callable: a function which calculates ``num_keys`` keys given query.
         """
-        assert isinstance(
-            query_spec, alf.TensorSpec), ("Wrong type for "
-                                          "query_spec: %s" % type(query_spec))
+        assert isinstance(query_spec, alf.TensorSpec), ("Wrong type for "
+                                                        "query_spec: %s" %
+                                                        type(query_spec))
         assert query_spec.ndim == 1, (
             "Query mush be a rank-1 tensor. Got: %s" % query_spec.ndim)
         return alf.layers.FC(query_spec.shape[0], num_keys * (self.dim + 1))

@@ -36,6 +36,7 @@ def _make_alg_experience(experience, name):
 
 
 class AgentHelper(object):
+
     def __init__(self, state_ctor):
         """Create three state specs given the state creator."""
         self._train_state_spec = state_ctor()
@@ -71,10 +72,9 @@ class AgentHelper(object):
 
     def state_specs(self):
         """Return the state specs collected from child algorithms."""
-        return dict(
-            train_state_spec=self._train_state_spec,
-            rollout_state_spec=self._rollout_state_spec,
-            predict_state_spec=self._predict_state_spec)
+        return dict(train_state_spec=self._train_state_spec,
+                    rollout_state_spec=self._rollout_state_spec,
+                    predict_state_spec=self._predict_state_spec)
 
     @staticmethod
     def accumulate_algorithm_rewards(rewards, weights, names, summary_prefix,

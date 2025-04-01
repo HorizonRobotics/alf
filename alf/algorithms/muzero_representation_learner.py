@@ -21,9 +21,10 @@ import inspect
 import torch
 
 import alf
-from alf.algorithms.data_transformer import (
-    create_data_transformer, IdentityDataTransformer, RewardTransformer,
-    SequentialDataTransformer)
+from alf.algorithms.data_transformer import (create_data_transformer,
+                                             IdentityDataTransformer,
+                                             RewardTransformer,
+                                             SequentialDataTransformer)
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep, make_experience
@@ -106,9 +107,10 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             reanalyze_td_steps_func=None,
             reanalyze_batch_size=None,
             full_reanalyze=False,
-            priority_func: Union[
-                Callable,
-                str] = "lambda loss_info: loss_info.extra['value'].sqrt().sum(dim=0)",
+            priority_func:
+        Union[
+            Callable,
+            str] = "lambda loss_info: loss_info.extra['value'].sqrt().sum(dim=0)",
             data_transformer_ctor=None,
             data_augmenter: Optional[Callable] = None,
             target_update_tau=1.,
@@ -210,11 +212,10 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             name (str):
 
         """
-        model = model_ctor(
-            observation_spec,
-            action_spec,
-            num_unroll_steps=num_unroll_steps,
-            debug_summaries=debug_summaries)
+        model = model_ctor(observation_spec,
+                           action_spec,
+                           num_unroll_steps=num_unroll_steps,
+                           debug_summaries=debug_summaries)
         if calculate_priority is None:
             if config is not None:
                 calculate_priority = config.priority_replay
@@ -225,16 +226,15 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             priority_func) == str else priority_func
         self._device = alf.get_default_device()
 
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=(),
-            config=config,
-            optimizer=optimizer,
-            checkpoint=checkpoint,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=(),
+                         config=config,
+                         optimizer=optimizer,
+                         checkpoint=checkpoint,
+                         debug_summaries=debug_summaries,
+                         name=name)
         self._enable_amp = enable_amp
         self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
         self._model = model
@@ -264,11 +264,10 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             assert reanalyze_algorithm_ctor is not None, (
                 'Must specify reanalyze_algorithm_ctor when reanalyze_ratio > 0'
             )
-            self._target_model = model_ctor(
-                observation_spec,
-                action_spec,
-                num_unroll_steps=num_unroll_steps,
-                debug_summaries=debug_summaries)
+            self._target_model = model_ctor(observation_spec,
+                                            action_spec,
+                                            num_unroll_steps=num_unroll_steps,
+                                            debug_summaries=debug_summaries)
             self._update_target = common.TargetUpdater(
                 models=[self._model],
                 target_models=[self._target_model],
@@ -307,19 +306,19 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
 
     def predict_step(self, time_step: TimeStep, state):
         with torch.cuda.amp.autocast(self._enable_amp, dtype=self._amp_dtype):
-            return AlgStep(
-                output=self._model.initial_representation(
-                    time_step.observation),
-                state=(),
-                info=())
+            return AlgStep(output=self._model.initial_representation(
+                time_step.observation),
+                           state=(),
+                           info=())
 
     def rollout_step(self, time_step: TimeStep, state):
-        return AlgStep(
-            output=self._model.initial_representation(time_step.observation),
-            state=(),
-            info=())
+        return AlgStep(output=self._model.initial_representation(
+            time_step.observation),
+                       state=(),
+                       info=())
 
     def train_step(self, exp: TimeStep, state, rollout_info: MuzeroInfo):
+
         def _hook(grad, name):
             alf.summary.scalar("MCTS_state_grad_norm/" + name, grad.norm())
 
@@ -337,11 +336,10 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                 model_output.state.state.register_hook(
                     partial(_hook, name="s" + str(i + 1)))
             model_output = model_output._replace(
-                state=model_output.state._replace(
-                    state=alf.nest.map_structure(
-                        lambda x: scale_gradient(
-                            x, self._recurrent_gradient_scaling_factor),
-                        model_output.state.state)))
+                state=model_output.state._replace(state=alf.nest.map_structure(
+                    lambda x: scale_gradient(
+                        x, self._recurrent_gradient_scaling_factor),
+                    model_output.state.state)))
             model_outputs.append(
                 dist_utils.distributions_to_params(model_output))
 
@@ -354,16 +352,15 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             obs = alf.nest.map_structure(lambda x: x.reshape(-1, *x.shape[2:]),
                                          info.target.observation)
             with torch.no_grad():
-                with torch.cuda.amp.autocast(
-                        self._enable_amp, dtype=self._amp_dtype):
+                with torch.cuda.amp.autocast(self._enable_amp,
+                                             dtype=self._amp_dtype):
                     target_repr = self._model._representation_net(obs)[0]
             # [B, R+1, ...]
             target_repr = target_repr.reshape(-1, self._num_unroll_steps + 1,
                                               *target_repr.shape[1:])
             info_target = info.target._replace(observation=target_repr)
-        return AlgStep(
-            info=info._replace(
-                loss=self._model.calc_loss(model_outputs, info_target)))
+        return AlgStep(info=info._replace(
+            loss=self._model.calc_loss(model_outputs, info_target)))
 
     @torch.no_grad()
     def preprocess_experience(self, root_inputs: TimeStep,
@@ -383,8 +380,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         info_path += "." + self.path if self.path else ""
         value_field = info_path + '.value'
         candidate_actions_field = info_path + '.candidate_actions'
-        candidate_action_policy_field = (
-            info_path + '.candidate_action_policy')
+        candidate_action_policy_field = (info_path +
+                                         '.candidate_action_policy')
 
         # Create aliases for mini_batch_size (B), mini_batch_length(T) and
         # predictive unroll steps (R) to make the implementation below more
@@ -448,8 +445,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                         replay_buffer, start_env_ids, start_positions,
                         policy_state_field, T + R - 1)
             # [B, T]
-            last_discount = replay_buffer.get_field(
-                'discount', env_ids[:, :, 0], positions[:, :, -1])
+            last_discount = replay_buffer.get_field('discount', env_ids[:, :,
+                                                                        0],
+                                                    positions[:, :, -1])
             # [B, T]
             is_partial_trajectory = last_discount != 0
 
@@ -489,9 +487,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
 
             capped_unfold1_index = (
                 torch.arange(B)[:, None, None],  # [B, 1, 1]
-                torch.arange(T)[:, None] + torch.min(
-                    steps_to_episode_end.unsqueeze(-1),
-                    torch.arange(R + 1))  # [T, R + 1]
+                torch.arange(T)[:, None] +
+                torch.min(steps_to_episode_end.unsqueeze(-1),
+                          torch.arange(R + 1))  # [T, R + 1]
             )  # [B, T, R + 1]
 
             def _unfold1_adapting_episode_ends(x):
@@ -541,8 +539,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         observation = ()
         if self._train_repr_prediction:
             if type(self._data_transformer) == IdentityDataTransformer:
-                observation = replay_buffer.get_field(
-                    'observation', folded_env_ids, folded_positions)
+                observation = replay_buffer.get_field('observation',
+                                                      folded_env_ids,
+                                                      folded_positions)
                 # [B, T, R + 1, ...]
                 observation = alf.nest.map_structure(
                     _unfold1_adapting_episode_ends, observation)
@@ -576,13 +575,13 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
                     # Note that positions are already capped by episode ends.
                     positions=positions[:, :, 0].reshape(-1))
 
-                exp = alf.data_structures.make_experience(
-                    root_inputs, AlgStep(), state=())
-                exp = exp._replace(
-                    time_step=root_inputs._replace(
-                        step_type=step_type, observation=observation),
-                    batch_info=transformed_batch_info,
-                    replay_buffer=replay_buffer)
+                exp = alf.data_structures.make_experience(root_inputs,
+                                                          AlgStep(),
+                                                          state=())
+                exp = exp._replace(time_step=root_inputs._replace(
+                    step_type=step_type, observation=observation),
+                                   batch_info=transformed_batch_info,
+                                   replay_buffer=replay_buffer)
                 # [B*T, R+1, ...]
                 observation = self._data_transformer.transform_experience(
                     exp).observation
@@ -609,15 +608,14 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
 
         rollout_info = MuzeroInfo(
             action=action,
-            target=ModelTarget(
-                is_partial_trajectory=is_partial_trajectory,
-                beyond_episode_end=beyond_episode_end,
-                reward=rewards,
-                action=candidate_actions,
-                action_policy=candidate_action_policy,
-                value=values,
-                game_over=game_overs,
-                observation=observation))
+            target=ModelTarget(is_partial_trajectory=is_partial_trajectory,
+                               beyond_episode_end=beyond_episode_end,
+                               reward=rewards,
+                               action=candidate_actions,
+                               action_policy=candidate_action_policy,
+                               value=values,
+                               game_over=game_overs,
+                               observation=observation))
 
         if self._reward_transformer:
             root_inputs = root_inputs._replace(
@@ -699,9 +697,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         value = replay_buffer.get_field(value_field, env_ids,
                                         episode_end_positions)
         reward = reward + self._discount * discount * value
-        return reward * (self._discount**
-                         (steps_to_episode_end - 1).clamp(min=0).to(
-                             torch.float32))
+        return reward * (self._discount**(steps_to_episode_end -
+                                          1).clamp(min=0).to(torch.float32))
 
     def _get_reward(self, replay_buffer, env_ids, positions):
         reward = replay_buffer.get_field('reward', env_ids, positions)
@@ -752,9 +749,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             exp = replay_buffer.get_field(None, env_ids, positions)
             if type(self._data_transformer) != IdentityDataTransformer:
                 # The shape of BatchInfo should be [B]
-                exp = exp._replace(
-                    batch_info=BatchInfo(env_ids[:, 0], positions[:, 0]),
-                    replay_buffer=replay_buffer)
+                exp = exp._replace(batch_info=BatchInfo(
+                    env_ids[:, 0], positions[:, 0]),
+                                   replay_buffer=replay_buffer)
                 exp = self._data_transformer.transform_experience(exp)
                 exp = exp._replace(batch_info=(), replay_buffer=())
 
@@ -842,12 +839,12 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             game_overs = convert_device(game_overs)
 
             # 1. Reanalyze the first n1 steps to get both the updated value and policy
-            with torch.cuda.amp.autocast(
-                    self._enable_amp, dtype=self._amp_dtype):
+            with torch.cuda.amp.autocast(self._enable_amp,
+                                         dtype=self._amp_dtype):
                 latent = self._target_model.initial_representation(
                     exp1.observation)
-                exp1 = exp1._replace(
-                    time_step=exp1.time_step._replace(observation=latent))
+                exp1 = exp1._replace(time_step=exp1.time_step._replace(
+                    observation=latent))
                 policy_step = self._reanalyze_algorithm.rollout_step(
                     exp1, alf.nest.get_field(exp1, policy_state_field))
 
@@ -868,8 +865,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             # 2. Calculate the value of the next n2 steps so that n2-step return
             # can be computed.
             if not self._full_reanalyze:
-                with torch.cuda.amp.autocast(
-                        self._enable_amp, dtype=self._amp_dtype):
+                with torch.cuda.amp.autocast(self._enable_amp,
+                                             dtype=self._amp_dtype):
                     model_output = self._target_model.initial_inference(
                         exp2.observation)
                 values2 = model_output.value.reshape(batch_size, n2)
@@ -878,8 +875,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
             # 3. Calculate n2-step return
             # [B, n1]
             bootstrap_pos = torch.arange(n1).unsqueeze(0) + bootstrap_n
-            values = values[torch.arange(batch_size).
-                            unsqueeze(-1), bootstrap_pos]
+            values = values[torch.arange(batch_size).unsqueeze(-1),
+                            bootstrap_pos]
             values = values * discount * (self._discount**bootstrap_n.to(
                 torch.float32))
             values = values + sum_reward
@@ -920,8 +917,9 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
         else:
             priority = ()
 
-        return LossInfo(
-            loss=info.loss.loss, extra=info.loss.extra, priority=priority)
+        return LossInfo(loss=info.loss.loss,
+                        extra=info.loss.extra,
+                        priority=priority)
 
     def after_update(self, root_inputs, info):
         if self._update_target is not None:
@@ -1010,14 +1008,13 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
             name:
 
         """
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=(),
-            config=None,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=(),
+                         config=None,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._training_options = training_options
 
@@ -1039,12 +1036,11 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
             updated.priority_replay_beta = as_scheduler(
                 training_options.priority_replay_beta)
 
-        self._impl = impl_cls(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            config=updated,
-            debug_summaries=debug_summaries)
+        self._impl = impl_cls(observation_spec=observation_spec,
+                              action_spec=action_spec,
+                              reward_spec=reward_spec,
+                              config=updated,
+                              debug_summaries=debug_summaries)
         self._impl.force_params_visible_to_parent = True
         assert self._impl._reanalyze_ratio in [
             0.0, 1.0

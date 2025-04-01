@@ -44,17 +44,16 @@ class _NormBase(nn.Module):
             self._weight = nn.Parameter(torch.Tensor(num_features))
             use_bias = True
             if fixed_weight_norm:
-                self._weight.opt_args = dict(
-                    max_norm=math.sqrt(num_features),
-                    fixed_norm=fixed_weight_norm)
+                self._weight.opt_args = dict(max_norm=math.sqrt(num_features),
+                                             fixed_norm=fixed_weight_norm)
         else:
             self._weight = None
         if use_bias:
             if self._weight is None:
                 # pytorch has a bug which cannot handle the case that weight is
                 # None but bias is not. So we have to provide a fixed weight.
-                self._weight = nn.Parameter(
-                    torch.Tensor(num_features), requires_grad=False)
+                self._weight = nn.Parameter(torch.Tensor(num_features),
+                                            requires_grad=False)
             self._bias = nn.Parameter(torch.Tensor(num_features))
         else:
             self._bias = None
@@ -171,10 +170,10 @@ class _NormBase(nn.Module):
                 exponential_average_factor,
                 self._eps)
         else:  # not training and tracking running stats
-            running_means = torch.stack(
-                self._running_means, dim=0)[self._current_step]
-            running_vars = torch.stack(
-                self._running_vars, dim=0)[self._current_step]
+            running_means = torch.stack(self._running_means,
+                                        dim=0)[self._current_step]
+            running_vars = torch.stack(self._running_vars,
+                                       dim=0)[self._current_step]
             if running_means.ndim == 1:
                 running_means = running_means[None, :].expand(input.shape[:2])
                 running_vars = running_vars[None, :].expand(input.shape[:2])
@@ -446,10 +445,11 @@ class ParamLayerNorm(nn.Module):
         """
         if theta.ndim == 1:
             theta = theta.unsqueeze(0)
-        assert (theta.ndim == 2 and theta.shape[0] == self._n_groups
-                and (theta.shape[1] == self.param_length)), (
-                    "Input theta has wrong shape %s. Expecting shape (%d, %d)"
-                    % (theta.shape, self._n_groups, self.param_length))
+        assert (
+            theta.ndim == 2 and theta.shape[0] == self._n_groups
+            and (theta.shape[1] == self.param_length)), (
+                "Input theta has wrong shape %s. Expecting shape (%d, %d)" %
+                (theta.shape, self._n_groups, self.param_length))
 
         weight = theta[:, :self.weight_length]
         self._set_weight(weight, reinitialize=reinitialize)
@@ -464,10 +464,11 @@ class ParamLayerNorm(nn.Module):
                 - ``D``: length of weight vector, should be self.weight_length
             reinitialize: whether to reinitialize self._weight
         """
-        assert (weight.ndim == 2 and weight.shape[0] == self._n_groups
-                and (weight.shape[1] == self.weight_length)), (
-                    "Input weight has wrong shape %s. Expecting shape (%d, %d)"
-                    % (weight.shape, self._n_groups, self.weight_length))
+        assert (
+            weight.ndim == 2 and weight.shape[0] == self._n_groups
+            and (weight.shape[1] == self.weight_length)), (
+                "Input weight has wrong shape %s. Expecting shape (%d, %d)" %
+                (weight.shape, self._n_groups, self.weight_length))
         if reinitialize:
             weight = torch.ones(self._n_groups, self.weight_length)
 
@@ -515,6 +516,7 @@ class ParamLayerNorm(nn.Module):
 
 
 class ParamLayerNorm1d(ParamLayerNorm):
+
     def _preprocess_input(self, inputs: torch.Tensor):
         """Check inputs shape and preprocess for LayerNorm1d.
         Args:
@@ -553,6 +555,7 @@ class ParamLayerNorm1d(ParamLayerNorm):
 
 
 class ParamLayerNorm2d(ParamLayerNorm):
+
     def _preprocess_input(self, inputs: torch.Tensor):
         """Check inputs shape and preprocess for LayerNorm2d.
         Args:
@@ -573,10 +576,11 @@ class ParamLayerNorm2d(ParamLayerNorm):
         """
         if self._n_groups == 1:
             # non-parallel layer
-            assert (inputs.ndim == 4
-                    and inputs.shape[1] == self.output_channels), (
-                        "Input img has wrong shape %s. Expecting (B, %d, H, W)"
-                        % (inputs.shape, self.output_channels))
+            assert (
+                inputs.ndim == 4
+                and inputs.shape[1] == self.output_channels), (
+                    "Input img has wrong shape %s. Expecting (B, %d, H, W)" %
+                    (inputs.shape, self.output_channels))
         else:
             # parallel layer
             if inputs.ndim == 4:

@@ -21,6 +21,7 @@ from alf.optimizers.trusted_updater import TrustedUpdater
 
 
 class TrustedUpdaterTest(alf.test.TestCase):
+
     def test_trusted_updater(self):
         v1 = nn.Parameter(torch.tensor([1.0, 2.0]))
         v2 = nn.Parameter(torch.ones(8))

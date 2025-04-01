@@ -29,16 +29,15 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common, math_ops
 from alf.utils.schedulers import Scheduler
 
-RlpdInfo = namedtuple(
-    "RlpdInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "alpha", "log_pi", "discounted_return", "repr",
-        "bootstrap_mask"
-    ],
-    default_value=())
+RlpdInfo = namedtuple("RlpdInfo", [
+    "reward", "step_type", "discount", "action", "action_distribution",
+    "actor", "critic", "alpha", "log_pi", "discounted_return", "repr",
+    "bootstrap_mask"
+],
+                      default_value=())
 
-RlpdCriticInfo = namedtuple(
-    "RlpdCriticInfo", ["critics", "target_critic"], default_value=())
+RlpdCriticInfo = namedtuple("RlpdCriticInfo", ["critics", "target_critic"],
+                            default_value=())
 
 TrainMode = Enum('TrainMode', ('standard', 'critic', 'actor'))
 
@@ -144,38 +143,37 @@ class RlpdAlgorithm(SacAlgorithm):
             critic_utd: the update-to-data (UTD) ratio of critic update. If not None,
                 has to be an integer less than the ``num_updates_per_iter``.
         """
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            actor_network_cls=actor_network_cls,
-            critic_network_cls=critic_network_cls,
-            repr_alg_ctor=repr_alg_ctor,
-            reward_weights=reward_weights,
-            train_eps_greedy=train_eps_greedy,
-            epsilon_greedy=epsilon_greedy,
-            use_entropy_reward=use_entropy_reward,
-            normalize_entropy_reward=normalize_entropy_reward,
-            calculate_priority=calculate_priority,
-            num_critic_replicas=num_critic_replicas,
-            env=env,
-            config=config,
-            critic_loss_ctor=critic_loss_ctor,
-            target_entropy=target_entropy,
-            prior_actor_ctor=prior_actor_ctor,
-            target_kld_per_dim=target_kld_per_dim,
-            initial_log_alpha=initial_log_alpha,
-            max_log_alpha=max_log_alpha,
-            target_update_tau=target_update_tau,
-            target_update_period=target_update_period,
-            parameter_reset_period=parameter_reset_period,
-            dqda_clipping=dqda_clipping,
-            actor_optimizer=actor_optimizer,
-            critic_optimizer=critic_optimizer,
-            alpha_optimizer=alpha_optimizer,
-            checkpoint=checkpoint,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         actor_network_cls=actor_network_cls,
+                         critic_network_cls=critic_network_cls,
+                         repr_alg_ctor=repr_alg_ctor,
+                         reward_weights=reward_weights,
+                         train_eps_greedy=train_eps_greedy,
+                         epsilon_greedy=epsilon_greedy,
+                         use_entropy_reward=use_entropy_reward,
+                         normalize_entropy_reward=normalize_entropy_reward,
+                         calculate_priority=calculate_priority,
+                         num_critic_replicas=num_critic_replicas,
+                         env=env,
+                         config=config,
+                         critic_loss_ctor=critic_loss_ctor,
+                         target_entropy=target_entropy,
+                         prior_actor_ctor=prior_actor_ctor,
+                         target_kld_per_dim=target_kld_per_dim,
+                         initial_log_alpha=initial_log_alpha,
+                         max_log_alpha=max_log_alpha,
+                         target_update_tau=target_update_tau,
+                         target_update_period=target_update_period,
+                         parameter_reset_period=parameter_reset_period,
+                         dqda_clipping=dqda_clipping,
+                         actor_optimizer=actor_optimizer,
+                         critic_optimizer=critic_optimizer,
+                         alpha_optimizer=alpha_optimizer,
+                         checkpoint=checkpoint,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         assert self._act_type == ActionType.Continuous, (
             "RLPD algorithm only supports continuous action spaces.")
@@ -337,8 +335,8 @@ class RlpdAlgorithm(SacAlgorithm):
 
         target_critic = target_critic.detach()
 
-        state = SacCriticState(
-            critics=critics_state, target_critics=target_critics_state)
+        state = SacCriticState(critics=critics_state,
+                               target_critics=target_critics_state)
         info = RlpdCriticInfo(critics=critics, target_critic=target_critic)
 
         return state, info
@@ -375,14 +373,12 @@ class RlpdAlgorithm(SacAlgorithm):
         observation, new_state, info = self._repr_step("train", inputs, state,
                                                        rollout_info.repr)
         (action_distribution, action, critics,
-         action_state) = self._predict_action(
-             observation, state=state.action)
+         action_state) = self._predict_action(observation, state=state.action)
 
-        new_state = new_state._replace(
-            action=action_state,
-            actor=state.actor,
-            critic=state.critic,
-            target_repr=target_repr_state)
+        new_state = new_state._replace(action=action_state,
+                                       actor=state.actor,
+                                       critic=state.critic,
+                                       target_repr=target_repr_state)
 
         log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
                                     action_distribution, action)
@@ -412,18 +408,17 @@ class RlpdAlgorithm(SacAlgorithm):
             new_state = new_state._replace(critic=critic_state)
             self._critic_update_counter += 1
 
-        info = info._replace(
-            reward=inputs.reward,
-            step_type=inputs.step_type,
-            discount=inputs.discount,
-            action=rollout_info.action,
-            action_distribution=action_distribution,
-            actor=actor_info,
-            critic=critic_info,
-            alpha=alpha_loss,
-            log_pi=log_pi,
-            discounted_return=rollout_info.discounted_return,
-            bootstrap_mask=rollout_info.bootstrap_mask)
+        info = info._replace(reward=inputs.reward,
+                             step_type=inputs.step_type,
+                             discount=inputs.discount,
+                             action=rollout_info.action,
+                             action_distribution=action_distribution,
+                             actor=actor_info,
+                             critic=critic_info,
+                             alpha=alpha_loss,
+                             log_pi=log_pi,
+                             discounted_return=rollout_info.discounted_return,
+                             bootstrap_mask=rollout_info.bootstrap_mask)
         return AlgStep(action, new_state, info)
 
     def _calc_critic_loss(self, info: RlpdInfo):
@@ -448,16 +443,16 @@ class RlpdAlgorithm(SacAlgorithm):
                 entropy_reward = sum(nest.flatten(entropy_reward))
                 discount = self._critic_losses[0].gamma * info.discount
                 info = info._replace(
-                    reward=(info.reward + common.expand_dims_as(
-                        entropy_reward * discount, info.reward)))
+                    reward=(info.reward +
+                            common.expand_dims_as(entropy_reward *
+                                                  discount, info.reward)))
 
         critic_info = info.critic
         critic_losses = []
         for i, l in enumerate(self._critic_losses):
-            critic_loss = l(
-                info=info,
-                value=critic_info.critics[:, :, i, ...],
-                target_value=critic_info.target_critic).loss
+            critic_loss = l(info=info,
+                            value=critic_info.critics[:, :, i, ...],
+                            target_value=critic_info.target_critic).loss
             if self._use_bootstrap_critics:
                 bootstrap_mask = info.bootstrap_mask[:, :,
                                                      i] / self._bootstrap_mask_prob
@@ -469,15 +464,14 @@ class RlpdAlgorithm(SacAlgorithm):
         if self._calculate_priority:
             valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
             valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
-            priority = (
-                (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
+            priority = ((critic_loss * valid_masks).sum(dim=0) /
+                        valid_n).sqrt()
         else:
             priority = ()
 
-        return LossInfo(
-            loss=critic_loss,
-            priority=priority,
-            extra=critic_loss / float(self._num_critic_replicas))
+        return LossInfo(loss=critic_loss,
+                        priority=priority,
+                        extra=critic_loss / float(self._num_critic_replicas))
 
     def after_update(self, root_inputs, info: RlpdInfo):
         self._update_train_mode()

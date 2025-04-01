@@ -26,6 +26,7 @@ from alf.optimizers import Adam
 
 class LagrangianRewardWeightAlgorithmTest(parameterized.TestCase,
                                           alf.test.TestCase):
+
     @parameterized.parameters((False, ), (True, ))
     def test_lagrangian_algorithm(self, reward_weight_normalization):
         batch_size = 2

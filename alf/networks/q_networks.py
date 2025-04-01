@@ -198,8 +198,8 @@ class ParallelQNetwork(Network):
                 parameter initializations.
             name (str):
         """
-        super().__init__(
-            input_tensor_spec=q_network.input_tensor_spec, name=name)
+        super().__init__(input_tensor_spec=q_network.input_tensor_spec,
+                         name=name)
         self._encoding_net = q_network._encoding_net.make_parallel(n, True)
         self._final_layer = q_network._final_layer.make_parallel(n)
         self._output_spec = TensorSpec((n, ) +

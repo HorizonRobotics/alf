@@ -29,10 +29,11 @@ from alf.networks.preprocessors import EmbeddingPreprocessor
 
 
 class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
+
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
-            network_ctor = functools.partial(
-                ValueRNNNetwork, lstm_hidden_size=lstm_hidden_size)
+            network_ctor = functools.partial(ValueRNNNetwork,
+                                             lstm_hidden_size=lstm_hidden_size)
             if isinstance(lstm_hidden_size, int):
                 lstm_hidden_size = [lstm_hidden_size]
             state = [()]
@@ -59,15 +60,15 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
 
         network_ctor, state = self._init(lstm_hidden_size)
 
-        value_net = network_ctor(
-            input_tensor_spec=[input_spec1, input_spec2],
-            input_preprocessors=[
-                EmbeddingPreprocessor(
-                    input_spec1,
-                    embedding_dim=embedding_dim,
-                    conv_layer_params=conv_layer_params), None
-            ],
-            preprocessing_combiner=NestConcat())
+        value_net = network_ctor(input_tensor_spec=[input_spec1, input_spec2],
+                                 input_preprocessors=[
+                                     EmbeddingPreprocessor(
+                                         input_spec1,
+                                         embedding_dim=embedding_dim,
+                                         conv_layer_params=conv_layer_params),
+                                     None
+                                 ],
+                                 preprocessing_combiner=NestConcat())
 
         value, state = value_net([image, vector], state)
 
@@ -94,8 +95,8 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
                 optimizer.zero_grad()
                 cost.backward()
                 optimizer.step()
-            logging.info(
-                "%s time=%s cost=%s" % (name, time.time() - t0, float(cost)))
+            logging.info("%s time=%s cost=%s" %
+                         (name, time.time() - t0, float(cost)))
 
         pnet = value_net.make_parallel(replicas)
         _train(pnet, "ParallelValueNetwork")
@@ -105,8 +106,9 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
 
     def test_rnn_make_parallel(self):
         obs_spec = TensorSpec((20, ), torch.float32)
-        value_net = ValueRNNNetwork(
-            obs_spec, fc_layer_params=(256, ), lstm_hidden_size=100)
+        value_net = ValueRNNNetwork(obs_spec,
+                                    fc_layer_params=(256, ),
+                                    lstm_hidden_size=100)
         batch_size = 4
         state = [(), (torch.randn(
             (batch_size, 100), dtype=torch.float32), ) * 2, ()]

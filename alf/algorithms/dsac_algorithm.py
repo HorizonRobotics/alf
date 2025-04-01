@@ -29,19 +29,17 @@ from alf.networks import CriticQuantileNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 
-DSacInfo = namedtuple(
-    "DSacInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "alpha", "log_pi", "discounted_return", "tau_info"
-    ],
-    default_value=())
+DSacInfo = namedtuple("DSacInfo", [
+    "reward", "step_type", "discount", "action", "action_distribution",
+    "actor", "critic", "alpha", "log_pi", "discounted_return", "tau_info"
+],
+                      default_value=())
 
-TauInfo = namedtuple(
-    "TauInfo", [
-        "actor_tau_hat", "actor_delta_tau", "tau_hat", "delta_tau",
-        "next_tau_hat", "next_delta_tau"
-    ],
-    default_value=())
+TauInfo = namedtuple("TauInfo", [
+    "actor_tau_hat", "actor_delta_tau", "tau_hat", "delta_tau", "next_tau_hat",
+    "next_delta_tau"
+],
+                     default_value=())
 
 
 @alf.configurable
@@ -121,34 +119,33 @@ class DSacAlgorithm(SacAlgorithm):
         self._num_quantiles = num_quantiles
         self._tau_spec = TensorSpec((num_quantiles, ))
 
-        super().__init__(
-            observation_spec,
-            action_spec,
-            reward_spec=reward_spec,
-            actor_network_cls=actor_network_cls,
-            critic_network_cls=critic_network_cls,
-            repr_alg_ctor=repr_alg_ctor,
-            epsilon_greedy=epsilon_greedy,
-            use_entropy_reward=use_entropy_reward,
-            normalize_entropy_reward=normalize_entropy_reward,
-            calculate_priority=calculate_priority,
-            num_critic_replicas=num_critic_replicas,
-            env=env,
-            config=config,
-            critic_loss_ctor=critic_loss_ctor,
-            target_entropy=target_entropy,
-            target_kld_per_dim=target_kld_per_dim,
-            initial_log_alpha=initial_log_alpha,
-            max_log_alpha=max_log_alpha,
-            target_update_tau=target_update_tau,
-            target_update_period=target_update_period,
-            dqda_clipping=dqda_clipping,
-            actor_optimizer=actor_optimizer,
-            critic_optimizer=critic_optimizer,
-            alpha_optimizer=alpha_optimizer,
-            debug_summaries=debug_summaries,
-            reproduce_locomotion=False,
-            name=name)
+        super().__init__(observation_spec,
+                         action_spec,
+                         reward_spec=reward_spec,
+                         actor_network_cls=actor_network_cls,
+                         critic_network_cls=critic_network_cls,
+                         repr_alg_ctor=repr_alg_ctor,
+                         epsilon_greedy=epsilon_greedy,
+                         use_entropy_reward=use_entropy_reward,
+                         normalize_entropy_reward=normalize_entropy_reward,
+                         calculate_priority=calculate_priority,
+                         num_critic_replicas=num_critic_replicas,
+                         env=env,
+                         config=config,
+                         critic_loss_ctor=critic_loss_ctor,
+                         target_entropy=target_entropy,
+                         target_kld_per_dim=target_kld_per_dim,
+                         initial_log_alpha=initial_log_alpha,
+                         max_log_alpha=max_log_alpha,
+                         target_update_tau=target_update_tau,
+                         target_update_period=target_update_period,
+                         dqda_clipping=dqda_clipping,
+                         actor_optimizer=actor_optimizer,
+                         critic_optimizer=critic_optimizer,
+                         alpha_optimizer=alpha_optimizer,
+                         debug_summaries=debug_summaries,
+                         reproduce_locomotion=False,
+                         name=name)
 
         assert self._act_type == ActionType.Continuous, (
             "Only continuous action space is supported for dsac algorithm.")
@@ -242,12 +239,12 @@ class DSacAlgorithm(SacAlgorithm):
                     "Input delta_tau is required for computing replica_min"
                     "by critic_mean.")
                 # [B, replicas] or [B, replicas, reward_dim]
-                critic_mean = (
-                    critic_quantiles * delta_tau.unsqueeze(1)).sum(-1)
-                idx = torch.min(
-                    critic_mean, dim=1)[1]  # [B] or [B, reward_dim]
-                critic_quantiles = critic_quantiles[torch.
-                                                    arange(len(idx)), idx]
+                critic_mean = (critic_quantiles *
+                               delta_tau.unsqueeze(1)).sum(-1)
+                idx = torch.min(critic_mean,
+                                dim=1)[1]  # [B] or [B, reward_dim]
+                critic_quantiles = critic_quantiles[torch.arange(len(idx)),
+                                                    idx]
             else:
                 # Compute the min quantile distribution by taking a minimum value
                 # across all critic replicas for each quantile value
@@ -282,21 +279,20 @@ class DSacAlgorithm(SacAlgorithm):
 
         target_critic = target_critics.detach()
 
-        state = SacCriticState(
-            critics=critics_state, target_critics=target_critics_state)
+        state = SacCriticState(critics=critics_state,
+                               target_critics=target_critics_state)
         info = SacCriticInfo(critics=critics, target_critic=target_critic)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             bs = tau_info.tau_hat.shape[0]
             eval_tau = self._get_tau(bs, tau_type="fixed")[0]
             with torch.no_grad():
-                critics_eval = self._compute_critics(
-                    self._critic_networks,
-                    inputs.observation,
-                    rollout_info.action,
-                    eval_tau,
-                    state.critics,
-                    replica_min=False)[0]
+                critics_eval = self._compute_critics(self._critic_networks,
+                                                     inputs.observation,
+                                                     rollout_info.action,
+                                                     eval_tau,
+                                                     state.critics,
+                                                     replica_min=False)[0]
                 critics_eval = critics_eval.mean(dim=(0, 1))
 
             with alf.summary.scope(self._name):
@@ -354,9 +350,9 @@ class DSacAlgorithm(SacAlgorithm):
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
         actor_loss = math_ops.add_n(nest.flatten(actor_loss))
-        actor_info = LossInfo(
-            loss=actor_loss + entropy_loss,
-            extra=SacActorInfo(actor_loss=actor_loss, neg_entropy=neg_entropy))
+        actor_info = LossInfo(loss=actor_loss + entropy_loss,
+                              extra=SacActorInfo(actor_loss=actor_loss,
+                                                 neg_entropy=neg_entropy))
         return critics_state, actor_info
 
     def _get_tau_info(self, batch_size):
@@ -387,8 +383,9 @@ class DSacAlgorithm(SacAlgorithm):
         assert not self._is_eval
         self._training_started = True
 
-        (action_distribution, action, _, action_state) = self._predict_action(
-            inputs.observation, state=state.action)
+        (action_distribution, action, _,
+         action_state) = self._predict_action(inputs.observation,
+                                              state=state.action)
 
         log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
                                     action_distribution, action)
@@ -403,19 +400,19 @@ class DSacAlgorithm(SacAlgorithm):
             inputs, state.critic, rollout_info, action, tau_info)
         alpha_loss = self._alpha_train_step(log_pi)
 
-        state = SacState(
-            action=action_state, actor=actor_state, critic=critic_state)
-        info = DSacInfo(
-            reward=inputs.reward,
-            step_type=inputs.step_type,
-            discount=inputs.discount,
-            action=rollout_info.action,
-            action_distribution=action_distribution,
-            actor=actor_loss,
-            critic=critic_info,
-            alpha=alpha_loss,
-            log_pi=log_pi,
-            tau_info=tau_info)
+        state = SacState(action=action_state,
+                         actor=actor_state,
+                         critic=critic_state)
+        info = DSacInfo(reward=inputs.reward,
+                        step_type=inputs.step_type,
+                        discount=inputs.discount,
+                        action=rollout_info.action,
+                        action_distribution=action_distribution,
+                        actor=actor_loss,
+                        critic=critic_info,
+                        alpha=alpha_loss,
+                        log_pi=log_pi,
+                        tau_info=tau_info)
         return AlgStep(action, state, info)
 
     def _update_info_with_entropy_reward(self, info: DSacInfo):
@@ -427,9 +424,9 @@ class DSacAlgorithm(SacAlgorithm):
                 lambda la, lp: -torch.exp(la) * lp, self._log_alpha, log_pi)
             entropy_reward = sum(nest.flatten(entropy_reward))
             discount = self._critic_losses[0].gamma * info.discount
-            info = info._replace(
-                reward=(info.reward + common.expand_dims_as(
-                    entropy_reward * discount, info.reward)))
+            info = info._replace(reward=(
+                info.reward +
+                common.expand_dims_as(entropy_reward * discount, info.reward)))
             return info
 
     def _calc_critic_loss(self, info: DSacInfo):
@@ -440,13 +437,12 @@ class DSacAlgorithm(SacAlgorithm):
         critic_info = info.critic
         critic_losses = []
         for i, l in enumerate(self._critic_losses):
-            critic_loss = l(
-                info=info,
-                value=critic_info.critics[:, :, i, ...],
-                target_value=critic_info.target_critic,
-                tau_hat=tau_info.tau_hat,
-                delta_tau=tau_info.delta_tau,
-                next_delta_tau=tau_info.next_delta_tau)
+            critic_loss = l(info=info,
+                            value=critic_info.critics[:, :, i, ...],
+                            target_value=critic_info.target_critic,
+                            tau_hat=tau_info.tau_hat,
+                            delta_tau=tau_info.delta_tau,
+                            next_delta_tau=tau_info.next_delta_tau)
             critic_losses.append(critic_loss.loss)
 
         critic_loss = math_ops.add_n(critic_losses)
@@ -454,12 +450,11 @@ class DSacAlgorithm(SacAlgorithm):
         if self._calculate_priority:
             valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
             valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
-            priority = (
-                (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
+            priority = ((critic_loss * valid_masks).sum(dim=0) /
+                        valid_n).sqrt()
         else:
             priority = ()
 
-        return LossInfo(
-            loss=critic_loss,
-            priority=priority,
-            extra=critic_loss / float(self._num_critic_replicas))
+        return LossInfo(loss=critic_loss,
+                        priority=priority,
+                        extra=critic_loss / float(self._num_critic_replicas))

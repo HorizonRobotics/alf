@@ -225,10 +225,9 @@ def _visualize_alf_tree(module: Algorithm):
             edge = (f'{node_index}:{field}', f'{child_idx}:caption')
             edges.append(edge)
 
-        dot.node(
-            str(node_index),
-            label='|'.join(node_records),
-            **_visual_style(node))
+        dot.node(str(node_index),
+                 label='|'.join(node_records),
+                 **_visual_style(node))
 
         if isinstance(node, Algorithm):
             # NOTE: the subgraph name needs to begin with 'cluster' (all lowercase)
@@ -304,9 +303,9 @@ class Trainer(object):
         self._pid = None
         # Run server in a separate thread
         if self._rank <= 0 and hasattr(flags.FLAGS, "port"):
-            self._server_thread = threading.Thread(
-                target=partial(start_server, port=flags.FLAGS.port),
-                daemon=True)
+            self._server_thread = threading.Thread(target=partial(
+                start_server, port=flags.FLAGS.port),
+                                                   daemon=True)
             logging.info(
                 f"Server port for request handling : {flags.FLAGS.port}.")
             self._server_thread.start()
@@ -347,8 +346,8 @@ class Trainer(object):
             # stdin.
             # kill -10 PID
             signal.signal(signal.SIGUSR1, self._request_debug)
-            logging.info("Use `kill -%s %s` to request debugging." % (int(
-                signal.SIGUSR1), self._pid))
+            logging.info("Use `kill -%s %s` to request debugging." %
+                         (int(signal.SIGUSR1), self._pid))
 
         checkpoint_saved = False
         try:
@@ -461,10 +460,10 @@ class Trainer(object):
                 if algorithm_structure_graph is not None:
                     import graphviz
                     try:
-                        algorithm_structure_graph.render(
-                            Path(self._root_dir, 'algorithm_sturcture'),
-                            format='png',
-                            quiet=True)
+                        algorithm_structure_graph.render(Path(
+                            self._root_dir, 'algorithm_sturcture'),
+                                                         format='png',
+                                                         quiet=True)
                     except graphviz.backend.CalledProcessError as e:
                         # graphviz will treat any warning in the rendering as error
                         # and panic. We should just warn instead.
@@ -473,11 +472,10 @@ class Trainer(object):
                                       'algorithm_sturcture.png')
                     if image_path.exists():
                         img = np.array(Image.open(image_path))
-                        alf.summary.images(
-                            'algorithm_structure',
-                            img,
-                            dataformat='HWC',
-                            step=0)
+                        alf.summary.images('algorithm_structure',
+                                           img,
+                                           dataformat='HWC',
+                                           step=0)
 
             if self._config.code_snapshots is not None:
                 for f in self._config.code_snapshots:
@@ -607,8 +605,8 @@ class RLTrainer(Trainer):
         alf.summary.should_summarize_output(config.summarize_output)
 
         env = alf.get_env()
-        logging.info(
-            "observation_spec=\n%s" % pformat_pycolor(env.observation_spec())),
+        logging.info("observation_spec=\n%s" %
+                     pformat_pycolor(env.observation_spec())),
         logging.info("action_spec=\n%s" % pformat_pycolor(env.action_spec()))
 
         # for offline buffer construction
@@ -638,12 +636,12 @@ class RLTrainer(Trainer):
             config=self._config,
             debug_summaries=self._debug_summaries)
 
-        logging.info("predict_state_spec=\n%s" % pformat_pycolor(
-            self._algorithm.predict_state_spec))
-        logging.info("rollout_state_spec=\n%s" % pformat_pycolor(
-            self._algorithm.rollout_state_spec))
-        logging.info("train_state_spec=\n%s" % pformat_pycolor(
-            self._algorithm.train_state_spec))
+        logging.info("predict_state_spec=\n%s" %
+                     pformat_pycolor(self._algorithm.predict_state_spec))
+        logging.info("rollout_state_spec=\n%s" %
+                     pformat_pycolor(self._algorithm.rollout_state_spec))
+        logging.info("train_state_spec=\n%s" %
+                     pformat_pycolor(self._algorithm.train_state_spec))
 
         # recover offline buffer
         self._algorithm.load_offline_replay_buffer(
@@ -681,11 +679,10 @@ class RLTrainer(Trainer):
         # See ``alf/docs/notes/knowledge_base.rst```
         # (ParallelAlfEnvironment and ThreadEnvironment) for details.
         if not config.no_thread_env_for_conf and _env_in_subprocess(env):
-            self._thread_env = create_environment(
-                nonparallel=True,
-                seed=self._random_seed,
-                num_parallel_environments=1,
-                batch_size_per_env=1)
+            self._thread_env = create_environment(nonparallel=True,
+                                                  seed=self._random_seed,
+                                                  num_parallel_environments=1,
+                                                  batch_size_per_env=1)
 
         if self._evaluate:
             self._evaluator = Evaluator(self._config, common.get_conf_file())
@@ -704,8 +701,8 @@ class RLTrainer(Trainer):
         training_setting_summarized = False
 
         checkpoint_interval = math.ceil(
-            (self._num_iterations
-             or self._num_env_steps) / self._num_checkpoints)
+            (self._num_iterations or self._num_env_steps) /
+            self._num_checkpoints)
 
         if self._num_iterations:
             time_to_checkpoint = self._trainer_progress._iter_num + checkpoint_interval
@@ -719,8 +716,8 @@ class RLTrainer(Trainer):
             if self._config.num_evals is None:
                 self._num_evals_performed = iter_num // self._eval_interval
             else:
-                self._num_evals_performed = int(
-                    self.progress() * self._config.num_evals)
+                self._num_evals_performed = int(self.progress() *
+                                                self._config.num_evals)
 
         while True:
             t0 = time.time()
@@ -912,8 +909,8 @@ class SLTrainer(Trainer):
         begin_epoch_num = int(self._trainer_progress._iter_num)
         epoch_num = begin_epoch_num
 
-        checkpoint_interval = math.ceil(
-            self._num_epochs / self._num_checkpoints)
+        checkpoint_interval = math.ceil(self._num_epochs /
+                                        self._num_checkpoints)
         time_to_checkpoint = begin_epoch_num + checkpoint_interval
 
         logging.info("==> Begin Training")
@@ -960,10 +957,10 @@ class SLTrainer(Trainer):
                 self._checkpoint_requested = False
 
     def _restore_checkpoint(self):
-        checkpointer = Checkpointer(
-            ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
-            algorithm=self._algorithm,
-            trainer_progress=self._trainer_progress)
+        checkpointer = Checkpointer(ckpt_dir=os.path.join(
+            self._train_dir, 'algorithm'),
+                                    algorithm=self._algorithm,
+                                    trainer_progress=self._trainer_progress)
 
         super()._restore_checkpoint(checkpointer)
 
@@ -1144,8 +1141,8 @@ def play(root_dir,
         alf.get_config_value('TrainerConfig.num_iterations'),
         alf.get_config_value('TrainerConfig.num_env_steps'))
     Trainer.get_trainer_progress().update()
-    logging.info("global_step=%s TrainerProgress=%s" % (recovered_global_step,
-                                                        Trainer.progress()))
+    logging.info("global_step=%s TrainerProgress=%s" %
+                 (recovered_global_step, Trainer.progress()))
 
     batch_size = env.batch_size
     recorder = None
@@ -1156,11 +1153,10 @@ def play(root_dir,
         # This is incompatible with RLBench parallel envs >1 (or other
         # envs requiring xserver) for some unknown reasons, so we have a lazy import here.
         from alf.utils.video_recorder import VideoRecorder
-        recorder = VideoRecorder(
-            env,
-            last_step_repeats=last_step_repeats,
-            append_blank_frames=append_blank_frames,
-            path=record_file)
+        recorder = VideoRecorder(env,
+                                 last_step_repeats=last_step_repeats,
+                                 append_blank_frames=append_blank_frames,
+                                 path=record_file)
     elif render:
         if batch_size > 1:
             env.envs[0].render(mode='human')
@@ -1180,14 +1176,14 @@ def play(root_dir,
     episodes = 0
     metrics = [
         alf.metrics.NumberOfEpisodes(),
-        alf.metrics.AverageReturnMetric(
-            buffer_size=num_episodes, example_time_step=time_step),
-        alf.metrics.AverageEpisodeLengthMetric(
-            example_time_step=time_step, buffer_size=num_episodes),
-        alf.metrics.AverageEnvInfoMetric(
-            example_time_step=time_step, buffer_size=num_episodes),
-        alf.metrics.AverageDiscountedReturnMetric(
-            buffer_size=num_episodes, example_time_step=time_step)
+        alf.metrics.AverageReturnMetric(buffer_size=num_episodes,
+                                        example_time_step=time_step),
+        alf.metrics.AverageEpisodeLengthMetric(example_time_step=time_step,
+                                               buffer_size=num_episodes),
+        alf.metrics.AverageEnvInfoMetric(example_time_step=time_step,
+                                         buffer_size=num_episodes),
+        alf.metrics.AverageDiscountedReturnMetric(buffer_size=num_episodes,
+                                                  example_time_step=time_step)
     ]
 
     if selective_mode:

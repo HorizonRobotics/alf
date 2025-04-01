@@ -150,8 +150,9 @@ class DeepmindLabEnv(gym.Env):
 
         self._action_repeat = action_repeat
         self._observation = observation
-        self._lab = deepmind_lab.Lab(
-            scene, [self._observation], config=config, renderer=renderer)
+        self._lab = deepmind_lab.Lab(scene, [self._observation],
+                                     config=config,
+                                     renderer=renderer)
 
         self._lab.reset()
         action_spec = self._lab.action_spec()
@@ -160,13 +161,15 @@ class DeepmindLabEnv(gym.Env):
         self._action_list = action_list
 
         obs = self._lab.observations()[observation]
-        self.observation_space = gym.spaces.Box(
-            0, 255, obs.shape, dtype=np.uint8)
+        self.observation_space = gym.spaces.Box(0,
+                                                255,
+                                                obs.shape,
+                                                dtype=np.uint8)
         self._last_obs = obs
 
     def step(self, action):
-        reward = self._lab.step(
-            self._action_list[action], num_steps=self._action_repeat)
+        reward = self._lab.step(self._action_list[action],
+                                num_steps=self._action_repeat)
         terminal = not self._lab.is_running()
         obs = None if terminal else self._lab.observations()[self._observation]
         self._last_obs = obs if obs is not None else np.copy(self._last_obs)
@@ -221,13 +224,13 @@ def load(scene,
         max_episode_steps = 0
 
     def env_ctor(env_id=None):
-        return suite_gym.wrap_env(
-            DeepmindLabEnv(scene=scene, action_repeat=frame_skip),
-            env_id=env_id,
-            discount=discount,
-            max_episode_steps=max_episode_steps,
-            gym_env_wrappers=gym_env_wrappers,
-            alf_env_wrappers=alf_env_wrappers)
+        return suite_gym.wrap_env(DeepmindLabEnv(scene=scene,
+                                                 action_repeat=frame_skip),
+                                  env_id=env_id,
+                                  discount=discount,
+                                  max_episode_steps=max_episode_steps,
+                                  gym_env_wrappers=gym_env_wrappers,
+                                  alf_env_wrappers=alf_env_wrappers)
 
     if wrap_with_process:
         process_env = process_environment.ProcessEnvironment(

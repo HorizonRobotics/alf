@@ -38,19 +38,20 @@ class TicTacToeModel(MCTSModel):
     """
 
     def __init__(self):
-        super().__init__(
-            num_unroll_steps=5,
-            representation_net=torch.nn.Module(),
-            dynamics_net=torch.nn.Module(),
-            prediction_net=torch.nn.Module(),
-            train_reward_function=True,
-            train_game_over_function=True)
-        self._line_x = torch.tensor(
-            [[0, 0, 0], [1, 1, 1], [2, 2, 2], [0, 1, 2], [0, 1, 2], [0, 1, 2],
-             [0, 1, 2], [0, 1, 2]]).unsqueeze(0)
-        self._line_y = torch.tensor(
-            [[0, 1, 2], [0, 1, 2], [0, 1, 2], [0, 0, 0], [1, 1, 1], [2, 2, 2],
-             [0, 1, 2], [2, 1, 0]]).unsqueeze(0)
+        super().__init__(num_unroll_steps=5,
+                         representation_net=torch.nn.Module(),
+                         dynamics_net=torch.nn.Module(),
+                         prediction_net=torch.nn.Module(),
+                         train_reward_function=True,
+                         train_game_over_function=True)
+        self._line_x = torch.tensor([[0, 0, 0], [1, 1, 1], [2, 2,
+                                                            2], [0, 1, 2],
+                                     [0, 1, 2], [0, 1, 2], [0, 1, 2],
+                                     [0, 1, 2]]).unsqueeze(0)
+        self._line_y = torch.tensor([[0, 1, 2], [0, 1, 2], [0, 1,
+                                                            2], [0, 0, 0],
+                                     [1, 1, 1], [2, 2, 2], [0, 1, 2],
+                                     [2, 1, 0]]).unsqueeze(0)
         self._actions = torch.arange(9, dtype=torch.int64).unsqueeze(0)
 
     def initial_representation(self, observation):
@@ -67,13 +68,12 @@ class TicTacToeModel(MCTSModel):
         prob[game_over] = 1. / 9
         value = torch.zeros((batch_size, ))
 
-        return ModelOutput(
-            value=value,
-            reward=reward,
-            state=latent,
-            actions=self._actions.expand(batch_size, -1),
-            action_probs=prob,
-            game_over=game_over)
+        return ModelOutput(value=value,
+                           reward=reward,
+                           state=latent,
+                           actions=self._actions.expand(batch_size, -1),
+                           action_probs=prob,
+                           game_over=game_over)
 
     def recurrent_inference(self, state, action):
         batch_size = state.shape[0]
@@ -94,13 +94,12 @@ class TicTacToeModel(MCTSModel):
         prob = self._get_action_probs(board)
         prob[game_over] = 1. / 9
         value = torch.zeros((batch_size, ))
-        return ModelOutput(
-            value=value,
-            reward=reward,
-            state=board,
-            actions=self._actions.expand(batch_size, -1),
-            action_probs=prob,
-            game_over=game_over)
+        return ModelOutput(value=value,
+                           reward=reward,
+                           state=board,
+                           actions=self._actions.expand(batch_size, -1),
+                           action_probs=prob,
+                           game_over=game_over)
 
     def _check_player_win(self, board, player):
         B = torch.arange(board.shape[0]).unsqueeze(-1).unsqueeze(-1)
@@ -125,6 +124,7 @@ class TicTacToeModel(MCTSModel):
 
 
 class TicTacToeModelTest(alf.test.TestCase):
+
     def test_tic_tac_toe(self):
         model = TicTacToeModel()
         observation = torch.tensor([[[ 1,  0, -1.],
@@ -172,15 +172,15 @@ class TicTacToeModelTest(alf.test.TestCase):
 
 
 class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(
         dict(), dict(num_parallel_sims=4), dict(with_exploration_policy=True),
         dict(with_exploration_policy=True, num_parallel_sims=4),
         dict(expand_all_children=True, with_exploration_policy=True),
         dict(expand_all_root_children=True, with_exploration_policy=True),
-        dict(
-            expand_all_root_children=True,
-            with_exploration_policy=True,
-            num_parallel_sims=4))
+        dict(expand_all_root_children=True,
+             with_exploration_policy=True,
+             num_parallel_sims=4))
     def test_mcts_algorithm(self,
                             expand_all_children=False,
                             expand_all_root_children=False,
@@ -236,8 +236,9 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                 learn_with_exploration_policy=with_exploration_policy,
                 pb_c_init=0.25,
                 pb_c_base=19652,
-                visit_softmax_temperature_fn=VisitSoftmaxTemperatureByMoves(
-                    [(0, 1.0), (10, 0.0001)]),
+                visit_softmax_temperature_fn=VisitSoftmaxTemperatureByMoves([
+                    (0, 1.0), (10, 0.0001)
+                ]),
                 known_value_bounds=(-1, 1),
                 num_parallel_sims=num_parallel_sims,
                 is_two_player_game=True)
@@ -249,8 +250,9 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             # We use varying num_simulations instead of a fixed large number such
             # as 2000 to make the test faster.
             num_simulations = int((observation == 0).sum().cpu()) * 200
-            mcts = _create_mcts(
-                observation_spec, action_spec, num_simulations=num_simulations)
+            mcts = _create_mcts(observation_spec,
+                                action_spec,
+                                num_simulations=num_simulations)
             mcts.set_model(model)
             alg_step = mcts.predict_step(
                 time_step._replace(
@@ -266,8 +268,9 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         observation = torch.tensor([case[0] for case in cases],
                                    dtype=torch.float32)
         state = MCTSState(steps=(observation != 0).sum(dim=(1, 2)))
-        mcts = _create_mcts(
-            observation_spec, action_spec, num_simulations=2500)
+        mcts = _create_mcts(observation_spec,
+                            action_spec,
+                            num_simulations=2500)
         mcts.set_model(model)
         alg_step = mcts.predict_step(
             time_step._replace(
@@ -281,6 +284,7 @@ class MCTSAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
 
 class CalculateExplorationPolicyTest(alf.test.TestCase):
+
     def test_calculate_exploration_policy(self):
         dim = 400
         batch_size = 1000

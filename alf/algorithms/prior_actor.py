@@ -30,6 +30,7 @@ def normcdf(a, b):
 
 
 class TruncatedNormal(td.Distribution):
+
     def __init__(self, loc, scale, low, high, validate_args=None):
         """Normal distribution truncated to the range between ``low`` and ``high``.
 
@@ -75,6 +76,7 @@ class TruncatedNormal(td.Distribution):
 
 @alf.configurable
 class SameActionPriorActor(Algorithm):
+
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
@@ -108,8 +110,9 @@ class SameActionPriorActor(Algorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
-        super().__init__(
-            train_state_spec=(), debug_summaries=debug_summaries, name=name)
+        super().__init__(train_state_spec=(),
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         def _prepare_spec(action_spec):
             spec = {}
@@ -122,8 +125,8 @@ class SameActionPriorActor(Algorithm):
                 np.broadcast_to(action_spec.maximum,
                                 action_spec.shape)).reshape(
                                     1, *action_spec.shape, 1)
-            spec['background_loc'] = 0.5 * (
-                spec['minimum'] + spec['maximum']).squeeze(-1)
+            spec['background_loc'] = 0.5 * (spec['minimum'] +
+                                            spec['maximum']).squeeze(-1)
             spec['scale'] = torch.cat([
                 spec['maximum'] - spec['minimum'],
                 (spec['maximum'] - spec['minimum']) * same_action_noise
@@ -152,9 +155,9 @@ class SameActionPriorActor(Algorithm):
             dim=-1)
         components = TruncatedNormal(loc, spec['scale'], spec['minimum'],
                                      spec['maximum'])
-        return Independent(
-            base_distribution=td.MixtureSameFamily(mix, components),
-            reinterpreted_batch_ndims=prev_action.ndim - 1)
+        return Independent(base_distribution=td.MixtureSameFamily(
+            mix, components),
+                           reinterpreted_batch_ndims=prev_action.ndim - 1)
 
     def predict_step(self, inputs: TimeStep, state):
         """Calculate the distribution of the next action.
@@ -173,10 +176,10 @@ class SameActionPriorActor(Algorithm):
                             spec) for prev_action, spec in zip(
                                 flat_prev_action, self._prepared_specs)
         ]
-        return AlgStep(
-            output=alf.nest.pack_sequence_as(self._action_spec, dists),
-            state=(),
-            info=())
+        return AlgStep(output=alf.nest.pack_sequence_as(
+            self._action_spec, dists),
+                       state=(),
+                       info=())
 
     def rollout_step(self, inputs: TimeStep, state):
         return self.predict_step(inputs, state)
@@ -187,6 +190,7 @@ class SameActionPriorActor(Algorithm):
 
 @alf.configurable
 class UniformPriorActor(Algorithm):
+
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
@@ -206,8 +210,9 @@ class UniformPriorActor(Algorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
-        super().__init__(
-            train_state_spec=(), debug_summaries=debug_summaries, name=name)
+        super().__init__(train_state_spec=(),
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         def _prepare_spec(action_spec):
             spec = {}
@@ -231,9 +236,8 @@ class UniformPriorActor(Algorithm):
     def _make_dist(self, step_type, prev_action, spec):
         low = spec['minimum'].expand_as(prev_action)
         high = spec['maximum'].expand_as(prev_action)
-        return Independent(
-            base_distribution=Uniform(low, high),
-            reinterpreted_batch_ndims=prev_action.ndim - 1)
+        return Independent(base_distribution=Uniform(low, high),
+                           reinterpreted_batch_ndims=prev_action.ndim - 1)
 
     def predict_step(self, inputs: TimeStep, state):
         flat_prev_action = alf.nest.flatten(inputs.prev_action)
@@ -242,10 +246,10 @@ class UniformPriorActor(Algorithm):
                             spec) for prev_action, spec in zip(
                                 flat_prev_action, self._prepared_specs)
         ]
-        return AlgStep(
-            output=alf.nest.pack_sequence_as(self._action_spec, dists),
-            state=(),
-            info=())
+        return AlgStep(output=alf.nest.pack_sequence_as(
+            self._action_spec, dists),
+                       state=(),
+                       info=())
 
     def rollout_step(self, inputs: TimeStep, state):
         return self.predict_step(inputs, state)

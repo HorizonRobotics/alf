@@ -31,9 +31,9 @@ from alf.data_structures import AlgStep, Experience
 from alf.data_structures import TimeStep, namedtuple
 from alf.tensor_specs import TensorSpec
 
-AgentState = namedtuple(
-    "AgentState", ["rl", "irm", "goal_generator", "repr", "rw"],
-    default_value=())
+AgentState = namedtuple("AgentState",
+                        ["rl", "irm", "goal_generator", "repr", "rw"],
+                        default_value=())
 
 AgentInfo = namedtuple(
     "AgentInfo",
@@ -147,12 +147,11 @@ class Agent(RLAlgorithm):
             ]
 
         ## 2. rl algorithm
-        rl_algorithm = rl_algorithm_cls(
-            observation_spec=rl_observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            config=config,
-            debug_summaries=debug_summaries)
+        rl_algorithm = rl_algorithm_cls(observation_spec=rl_observation_spec,
+                                        action_spec=action_spec,
+                                        reward_spec=reward_spec,
+                                        config=config,
+                                        debug_summaries=debug_summaries)
         agent_helper.register_algorithm(rl_algorithm, "rl")
 
         if isinstance(rl_algorithm, LatentMbrlAlgorithm):
@@ -190,17 +189,16 @@ class Agent(RLAlgorithm):
             rl_algorithm.set_reward_weights(
                 reward_weight_algorithm.reward_weights)
 
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            optimizer=optimizer,
-            is_on_policy=rl_algorithm.on_policy,
-            env=env,
-            config=config,
-            debug_summaries=debug_summaries,
-            name=name,
-            **agent_helper.state_specs())
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         optimizer=optimizer,
+                         is_on_policy=rl_algorithm.on_policy,
+                         env=env,
+                         config=config,
+                         debug_summaries=debug_summaries,
+                         name=name,
+                         **agent_helper.state_specs())
 
         for alg in (representation_learner, goal_generator,
                     intrinsic_reward_module, entropy_target_algorithm,
@@ -296,8 +294,8 @@ class Agent(RLAlgorithm):
         else:
             overall_reward = time_step.reward
 
-        rl_time_step = time_step._replace(
-            observation=observation, reward=overall_reward)
+        rl_time_step = time_step._replace(observation=observation,
+                                          reward=overall_reward)
         rl_step = self._rl_algorithm.rollout_step(rl_time_step, state.rl)
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
@@ -513,7 +511,7 @@ class Agent(RLAlgorithm):
         """
         super(Agent, self).summarize_rollout(experience)
         if (hasattr(self._rl_algorithm, "summarize_rollout")
-                and super(Agent, self).summarize_rollout.__func__ !=
-                self._rl_algorithm.summarize_rollout.__func__):
+                and super(Agent, self).summarize_rollout.__func__
+                != self._rl_algorithm.summarize_rollout.__func__):
             self._rl_algorithm.summarize_rollout(
                 experience._replace(rollout_info=experience.rollout_info.rl))

@@ -94,6 +94,7 @@ class Scheduler(object):
 
 
 class ConstantScheduler(object):
+
     def __init__(self, value):
         self._value = value
 
@@ -191,8 +192,8 @@ class LinearScheduler(Scheduler):
         while index < len(progresses) and progress >= progresses[index]:
             index += 1
         if index < len(progresses):
-            w = (progress - progresses[index - 1]) / (
-                progresses[index] - progresses[index - 1])
+            w = (progress - progresses[index - 1]) / (progresses[index] -
+                                                      progresses[index - 1])
             value = (1 - w) * self._values[index - 1] + w * self._values[index]
         else:
             index -= 1
@@ -228,8 +229,8 @@ class ExponentialScheduler(Scheduler):
 
     def __call__(self):
         progress = self.progress()
-        return self._initial_value * self._decay_rate**(
-            progress / self._decay_time)
+        return self._initial_value * self._decay_rate**(progress /
+                                                        self._decay_time)
 
     def __repr__(self):
         return "ExponentialScheduler('%s', initial_value=%s, decay_rate=%s, decay_time=%s)" % (

@@ -351,8 +351,9 @@ def wrap_optimizer(cls):
                     alf.summary.scalar("global_grad_norm/%s" % self.name,
                                        global_norm)
             else:
-                tensor_utils.clip_by_norms(
-                    grads, self._gradient_clipping, in_place=True)
+                tensor_utils.clip_by_norms(grads,
+                                           self._gradient_clipping,
+                                           in_place=True)
 
         if self._parvi is not None:
             self._parvi_step()
@@ -378,8 +379,8 @@ def wrap_optimizer(cls):
             for param in params:
                 if param.grad is not None and get_opt_arg(
                         param, 'fixed_norm', False):
-                    param.data.mul_(
-                        self._norms[param] / (param.norm() + 1e-30))
+                    param.data.mul_(self._norms[param] /
+                                    (param.norm() + 1e-30))
 
         self._adjust_capacity(capacity_ratio, param_values)
 
@@ -475,9 +476,8 @@ def wrap_optimizer(cls):
 
         if len(alf.nest.flatten(ensemble_param_groups)) > 0:
             if len(std_param_group) > 0:
-                super(NewCls, self).add_param_group({
-                    'params': std_param_group
-                })
+                super(NewCls,
+                      self).add_param_group({'params': std_param_group})
             for ensemble_param_group in ensemble_param_groups:
                 if len(ensemble_param_group) > 0:
                     super(NewCls, self).add_param_group({

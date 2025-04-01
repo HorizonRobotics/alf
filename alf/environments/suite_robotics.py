@@ -157,14 +157,13 @@ def load(environment_name,
             max_episode_steps = 0
 
     def env_ctor(env_id=None):
-        return suite_gym.wrap_env(
-            env,
-            env_id=env_id,
-            discount=discount,
-            max_episode_steps=max_episode_steps,
-            gym_env_wrappers=gym_env_wrappers,
-            alf_env_wrappers=alf_env_wrappers,
-            image_channel_first=False)
+        return suite_gym.wrap_env(env,
+                                  env_id=env_id,
+                                  discount=discount,
+                                  max_episode_steps=max_episode_steps,
+                                  gym_env_wrappers=gym_env_wrappers,
+                                  alf_env_wrappers=alf_env_wrappers,
+                                  image_channel_first=False)
 
     # concat robot's observation and the goal location
     if concat_desired_goal:

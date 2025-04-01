@@ -26,46 +26,42 @@ from alf.examples import atari_conf
 #   while v4 has 0 (always follow your issued action)
 # Because we already implements frame_skip in AtariPreprocessing, we should always
 # use 'NoFrameSkip' Atari environments from OpenAI gym
-alf.config(
-    'create_environment',
-    env_name='BreakoutNoFrameskip-v4',
-    num_parallel_environments=64)
+alf.config('create_environment',
+           env_name='BreakoutNoFrameskip-v4',
+           num_parallel_environments=64)
 
 # Neural Network Configuration
 CONV_LAYER_PARAMS = ((32, 8, 4), (64, 4, 2), (64, 3, 1))
-actor_network_cls = functools.partial(
-    ActorDistributionNetwork,
-    fc_layer_params=(512, ),
-    conv_layer_params=CONV_LAYER_PARAMS)
-value_network_cls = functools.partial(
-    ValueNetwork, fc_layer_params=(512, ), conv_layer_params=CONV_LAYER_PARAMS)
+actor_network_cls = functools.partial(ActorDistributionNetwork,
+                                      fc_layer_params=(512, ),
+                                      conv_layer_params=CONV_LAYER_PARAMS)
+value_network_cls = functools.partial(ValueNetwork,
+                                      fc_layer_params=(512, ),
+                                      conv_layer_params=CONV_LAYER_PARAMS)
 
 alf.config('CategoricalProjectionNetwork', logits_init_output_factor=1e-10)
 
 # Algorithm Configuration
-alf.config(
-    'ActorCriticLoss',
-    entropy_regularization=0.01,
-    use_gae=True,
-    use_td_lambda_return=True,
-    td_lambda=0.95,
-    td_loss_weight=0.5,
-    advantage_clip=None)
+alf.config('ActorCriticLoss',
+           entropy_regularization=0.01,
+           use_gae=True,
+           use_td_lambda_return=True,
+           td_lambda=0.95,
+           td_loss_weight=0.5,
+           advantage_clip=None)
 
-alf.config(
-    'ActorCriticAlgorithm',
-    actor_network_ctor=actor_network_cls,
-    value_network_ctor=value_network_cls,
-    optimizer=alf.optimizers.Adam(lr=1e-3))
+alf.config('ActorCriticAlgorithm',
+           actor_network_ctor=actor_network_cls,
+           value_network_ctor=value_network_cls,
+           optimizer=alf.optimizers.Adam(lr=1e-3))
 alf.config('Agent', rl_algorithm_cls=ActorCriticAlgorithm)
 
-alf.config(
-    'TrainerConfig',
-    unroll_length=8,
-    algorithm_ctor=Agent,
-    num_iterations=0,
-    num_env_steps=5000000,
-    evaluate=False,
-    debug_summaries=1,
-    summarize_grads_and_vars=1,
-    summary_interval=10)
+alf.config('TrainerConfig',
+           unroll_length=8,
+           algorithm_ctor=Agent,
+           num_iterations=0,
+           num_env_steps=5000000,
+           evaluate=False,
+           debug_summaries=1,
+           summarize_grads_and_vars=1,
+           summary_interval=10)

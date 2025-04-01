@@ -273,13 +273,12 @@ def make_data_loader(dset,
         collate_fn = dobj._collate_fn
 
     # Generate the dataloaders.
-    return torch.utils.data.DataLoader(
-        dataset=dset,
-        collate_fn=collate_fn,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        drop_last=drop_last,
-        generator=rng)
+    return torch.utils.data.DataLoader(dataset=dset,
+                                       collate_fn=collate_fn,
+                                       batch_size=batch_size,
+                                       shuffle=shuffle,
+                                       drop_last=drop_last,
+                                       generator=rng)
 
 
 def create_mnist_classification_dataset(
@@ -298,22 +297,22 @@ def create_mnist_classification_dataset(
     dataset_obj = MNIST(name, data_dir=cache_dir)
     dataset_obj.setup()
 
-    trn_loader = make_data_loader(
-        dataset_obj.dataset_train, dataset_obj, seed=seed, batch_size=bsz)
-    val_loader = make_data_loader(
-        dataset_obj.dataset_val,
-        dataset_obj,
-        seed=seed,
-        batch_size=bsz,
-        drop_last=False,
-        shuffle=False)
-    tst_loader = make_data_loader(
-        dataset_obj.dataset_test,
-        dataset_obj,
-        seed=seed,
-        batch_size=bsz,
-        drop_last=False,
-        shuffle=False)
+    trn_loader = make_data_loader(dataset_obj.dataset_train,
+                                  dataset_obj,
+                                  seed=seed,
+                                  batch_size=bsz)
+    val_loader = make_data_loader(dataset_obj.dataset_val,
+                                  dataset_obj,
+                                  seed=seed,
+                                  batch_size=bsz,
+                                  drop_last=False,
+                                  shuffle=False)
+    tst_loader = make_data_loader(dataset_obj.dataset_test,
+                                  dataset_obj,
+                                  seed=seed,
+                                  batch_size=bsz,
+                                  drop_last=False,
+                                  shuffle=False)
 
     N_CLASSES = dataset_obj.d_output
     SEQ_LENGTH = 28 * 28

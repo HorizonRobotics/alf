@@ -23,12 +23,13 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 
 class AlfEnvironmentTest(alf.test.TestCase):
+
     def testResetSavesCurrentTimeStep(self):
         obs_spec = BoundedTensorSpec((1, ), torch.int32)
         action_spec = BoundedTensorSpec((1, ), torch.int64)
 
-        random_env = RandomAlfEnvironment(
-            observation_spec=obs_spec, action_spec=action_spec)
+        random_env = RandomAlfEnvironment(observation_spec=obs_spec,
+                                          action_spec=action_spec)
 
         time_step = random_env.reset()
         current_time_step = random_env.current_time_step()
@@ -38,8 +39,8 @@ class AlfEnvironmentTest(alf.test.TestCase):
         obs_spec = BoundedTensorSpec((1, ), torch.int32)
         action_spec = BoundedTensorSpec((1, ), torch.int64)
 
-        random_env = RandomAlfEnvironment(
-            observation_spec=obs_spec, action_spec=action_spec)
+        random_env = RandomAlfEnvironment(observation_spec=obs_spec,
+                                          action_spec=action_spec)
 
         random_env.reset()
         time_step = random_env.step(action=torch.ones((1, )))

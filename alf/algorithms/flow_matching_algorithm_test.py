@@ -31,8 +31,8 @@ class _VectorFieldNetwork(alf.networks.Network):
     """
 
     def __init__(self, input_tensor_spec):
-        super().__init__(
-            input_tensor_spec=input_tensor_spec, name="VectorFieldNetwork")
+        super().__init__(input_tensor_spec=input_tensor_spec,
+                         name="VectorFieldNetwork")
         self._img_spec = input_tensor_spec[0]
         label_spec = None
         in_channels = self._img_spec.shape[0] + 1
@@ -43,11 +43,11 @@ class _VectorFieldNetwork(alf.networks.Network):
                 num_embeddings=label_spec.maximum + 1, embedding_dim=4)
             in_channels += 4
         self._unet_input_resize = Resize((32, 32))
-        self._unet = MoNetUNet(
-            input_tensor_spec=alf.TensorSpec((in_channels, 32, 32)),
-            filters=(32, 64, 64, 128, 256),
-            nonskip_fc_layers=(512, ),
-            output_channels=self._img_spec.shape[0])
+        self._unet = MoNetUNet(input_tensor_spec=alf.TensorSpec(
+            (in_channels, 32, 32)),
+                               filters=(32, 64, 64, 128, 256),
+                               nonskip_fc_layers=(512, ),
+                               output_channels=self._img_spec.shape[0])
         self._unet_output_resize = Resize(self._img_spec.shape[-2:])
 
     def forward(self, inputs, state=()):
@@ -71,6 +71,7 @@ class _VectorFieldNetwork(alf.networks.Network):
 
 
 class FlowMatchingAlgorithmTest(alf.test.TestCase):
+
     def test_cond_gen_images(self, name="mnist"):
         """Test the conditional generation of images using flow matching.
 
@@ -97,8 +98,8 @@ class FlowMatchingAlgorithmTest(alf.test.TestCase):
             integration_steps=30)
 
         # Train
-        optimizer = torch.optim.Adam(
-            list(flow_match_alg.parameters()), lr=1e-2)
+        optimizer = torch.optim.Adam(list(flow_match_alg.parameters()),
+                                     lr=1e-2)
         if name == "mnist":
             train_loader, test_loader = load_mnist(train_bs=128)
         else:
@@ -134,8 +135,8 @@ class FlowMatchingAlgorithmTest(alf.test.TestCase):
             classes = torch.tensor(list(range(10)), dtype=torch.int64)
             classes = torch.repeat_interleave(classes, samples_per_class)
             # [B,1,H,W]
-            imgs = flow_match_alg.generate(
-                classes, return_intermediate_steps=True)
+            imgs = flow_match_alg.generate(classes,
+                                           return_intermediate_steps=True)
             # take the denoising steps every two
             imgs = imgs[::2]
 

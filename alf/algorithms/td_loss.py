@@ -127,11 +127,11 @@ class TDLoss(nn.Module):
             td_target
         """
         if self._lambda == 1.0:
-            returns = value_ops.discounted_return(
-                rewards=info.reward,
-                values=target_value,
-                step_types=info.step_type,
-                discounts=info.discount * self._gamma)
+            returns = value_ops.discounted_return(rewards=info.reward,
+                                                  values=target_value,
+                                                  step_types=info.step_type,
+                                                  discounts=info.discount *
+                                                  self._gamma)
         elif self._lambda == 0.0:
             returns = value_ops.one_step_discounted_return(
                 rewards=info.reward,
@@ -265,16 +265,15 @@ class TDQRLoss(TDLoss):
         """
         assert td_lambda in (0, 1), (
             "Currently GAE is not supported, so td_lambda has to be 0 or 1.")
-        super().__init__(
-            gamma=gamma,
-            td_error_loss_fn=td_error_loss_fn,
-            td_lambda=td_lambda,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(gamma=gamma,
+                         td_error_loss_fn=td_error_loss_fn,
+                         td_lambda=td_lambda,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._num_quantiles = num_quantiles
-        self._cdf_midpoints = (torch.arange(
-            num_quantiles, dtype=torch.float32) + 0.5) / num_quantiles
+        self._cdf_midpoints = (torch.arange(num_quantiles, dtype=torch.float32)
+                               + 0.5) / num_quantiles
         self._sum_over_quantiles = sum_over_quantiles
 
     def forward(self,
@@ -319,9 +318,10 @@ class TDQRLoss(TDLoss):
         returns = self.compute_td_target(info, target_value)
         value = value[:-1]
 
-        loss, diff = self._td_error_loss_fn(
-            value, returns, tau_hat[:-1], next_delta_tau[1:],
-            self._cdf_midpoints, self._sum_over_quantiles)
+        loss, diff = self._td_error_loss_fn(value, returns, tau_hat[:-1],
+                                            next_delta_tau[1:],
+                                            self._cdf_midpoints,
+                                            self._sum_over_quantiles)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             mask = info.step_type[:-1] != StepType.LAST
@@ -360,8 +360,8 @@ class TDQRLoss(TDLoss):
                     for i in range(value.shape[-2]):
                         suffix = '/' + str(i)
                         _summarize(v[..., i], r[..., i], td[..., i],
-                                   diff[..., i, :, :], self._num_quantiles,
-                                   suffix)
+                                   diff[...,
+                                        i, :, :], self._num_quantiles, suffix)
 
         if loss.ndim == 3:
             # Multidimensional reward. Average over the critic loss for all dimensions
@@ -370,8 +370,8 @@ class TDQRLoss(TDLoss):
         # The shape of the loss expected by Algorithm.update_with_gradient is
         # [T, B], so we need to augment it with additional zeros.
         loss = tensor_utils.tensor_extend_zero(loss)
-        return LossInfo(
-            loss=loss, extra={
-                'value': value,
-                'returns': returns,
-            })
+        return LossInfo(loss=loss,
+                        extra={
+                            'value': value,
+                            'returns': returns,
+                        })

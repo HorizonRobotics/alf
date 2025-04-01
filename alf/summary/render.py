@@ -16,6 +16,7 @@ import functools
 import io
 import numpy as np
 import matplotlib
+
 matplotlib.use('Agg')  # 'Agg' no need for xserver!
 import matplotlib.pyplot as plt
 from typing import Optional
@@ -124,12 +125,11 @@ class Image(object):
             scale = float(height) / self._img.shape[0]
         else:
             raise ValueError('At least width or height should be provided.')
-        self._img = cv2.resize(
-            self._img,
-            dsize=(0, 0),
-            fx=scale,
-            fy=scale,
-            interpolation=interpolation)
+        self._img = cv2.resize(self._img,
+                               dsize=(0, 0),
+                               fx=scale,
+                               fy=scale,
+                               interpolation=interpolation)
         return self
 
     @classmethod
@@ -187,8 +187,9 @@ class Image(object):
         sizes = [(i.shape[1], i.shape[0]) for i in imgs]
         # call rpack for an approximate solution: [(x,y),...] positions
         try:
-            positions = rpack.pack(
-                sizes, max_width=max_width, max_height=max_height)
+            positions = rpack.pack(sizes,
+                                   max_width=max_width,
+                                   max_height=max_height)
         except rpack.PackingImpossibleError:
             # If a solution cannot be found with the given constraints, rerun with constraints dropped.
             positions = rpack.pack(sizes)
@@ -204,8 +205,8 @@ class Image(object):
 
         packed_img = np.full((H, W, 3), 255, dtype=np.uint8)
         for pos, img in zip(positions, imgs):
-            packed_img[pos[1]:pos[1] + img.shape[0], pos[0]:pos[0] +
-                       img.shape[1], :] = img.data
+            packed_img[pos[1]:pos[1] + img.shape[0],
+                       pos[0]:pos[0] + img.shape[1], :] = img.data
         return cls(packed_img)
 
     @classmethod
@@ -228,8 +229,8 @@ class Image(object):
             stacked_img = np.full((H, W, 3), 255, dtype=np.uint8)
             offset_w = 0
             for i in imgs:
-                stacked_img[:i.shape[0], offset_w:offset_w +
-                            i.shape[1], :] = i.data
+                stacked_img[:i.shape[0],
+                            offset_w:offset_w + i.shape[1], :] = i.data
                 offset_w += i.shape[1]
         else:
             H = sum([i.shape[0] for i in imgs])
@@ -371,8 +372,10 @@ def _heatmap(data,
     ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
 
     # Rotate the tick labels and set their alignment.
-    plt.setp(
-        ax.get_xticklabels(), rotation=-30, ha="right", rotation_mode="anchor")
+    plt.setp(ax.get_xticklabels(),
+             rotation=-30,
+             ha="right",
+             rotation_mode="anchor")
 
     # Turn spines off and create white grid.
     ax.spines[:].set_visible(False)
@@ -481,16 +484,15 @@ def render_heatmap(name,
     else:
         array = data
     fig, ax = plt.subplots(figsize=figsize)
-    im, _ = _heatmap(
-        array,
-        row_ticks,
-        col_ticks,
-        row_labels,
-        col_labels,
-        ax,
-        cbar_kw=cbar_kw,
-        cbarlabel=val_label,
-        **kwargs)
+    im, _ = _heatmap(array,
+                     row_ticks,
+                     col_ticks,
+                     row_labels,
+                     col_labels,
+                     ax,
+                     cbar_kw=cbar_kw,
+                     cbarlabel=val_label,
+                     **kwargs)
     if annotate_format != '':
         _annotate_heatmap(im, valfmt=annotate_format, size=font_size)
     return _convert_to_image(name, fig, dpi, img_height, img_width)
@@ -837,8 +839,8 @@ def render_text(name: str,
         img_width (int): width of the output image
         **kwargs: extra arguments forwarded to ``ax.text``.
     """
-    fig, ax = plt.subplots(
-        figsize=(len(data) * fig_width_per_char, fig_height))
+    fig, ax = plt.subplots(figsize=(len(data) * fig_width_per_char,
+                                    fig_height))
     kwargs['fontsize'] = font_size
     ax.text(0, 0, data, **kwargs)
     ax.axis('off')
@@ -874,13 +876,12 @@ def render_action(name, action, action_spec, **kwargs):
             fmt = "%.2f"
         x_ticks = range(act.shape[-1])
         name_ = name if path == '' else name + '/' + path
-        return render_bar(
-            name_,
-            act,
-            y_range=y_range,
-            annotate_format=fmt,
-            x_ticks=x_ticks,
-            **kwargs)
+        return render_bar(name_,
+                          act,
+                          y_range=y_range,
+                          annotate_format=fmt,
+                          x_ticks=x_ticks,
+                          **kwargs)
 
     return nest.py_map_structure_with_path(_render_action, action, action_spec)
 
@@ -927,8 +928,10 @@ def render_action_distribution(name,
         points = np.reshape(points, (-1, dim))
         probs = []
         for d in range(dim):
-            hist, _ = np.histogram(
-                points[:, d], bins=n_bins, density=True, range=x_range)
+            hist, _ = np.histogram(points[:, d],
+                                   bins=n_bins,
+                                   density=True,
+                                   range=x_range)
             probs.append(hist)
         return np.stack(probs)
 
@@ -943,14 +946,20 @@ def render_action_distribution(name,
             legends = ["d%s" % i for i in range(probs.shape[0])]
 
         name_ = name if path == '' else name + '/' + path
-        return render_curve(
-            name=name_, data=probs, legends=legends, x_range=x_range, **kwargs)
+        return render_curve(name=name_,
+                            data=probs,
+                            legends=legends,
+                            x_range=x_range,
+                            **kwargs)
 
     return nest.py_map_structure_with_path(_render_act_dist, act_dist,
                                            action_spec)
 
 
-def render_heatmap_fast(imgs, min_value, max_value, pixel_size=10,
+def render_heatmap_fast(imgs,
+                        min_value,
+                        max_value,
+                        pixel_size=10,
                         bar_size=20):
     """Render a heatmap for each image in ``imgs``
 
@@ -971,7 +980,10 @@ def render_heatmap_fast(imgs, min_value, max_value, pixel_size=10,
         Image: [H * pixel_size, B * (W * pixel_size + bar_size)]
     """
     if imgs.ndim == 2:
-        imgs = imgs[None, ..., ]
+        imgs = imgs[
+            None,
+            ...,
+        ]
     low = torch.maximum(imgs.min(1)[0].min(1)[0], min_value)
     high = torch.minimum(imgs.max(1)[0].max(1)[0], max_value)
     mid = (low + high) / 2
@@ -994,7 +1006,6 @@ def render_heatmap_fast(imgs, min_value, max_value, pixel_size=10,
     bars = (bars - low) / (high - low)
     bars = torch.clamp(bars, 0, 1)
     bars = (bars * 255).to(torch.uint8)
-    imgs = torch.cat(
-        sum([[bar, img] for bar, img in zip(bars, imgs)], []),
-        dim=-1).cpu().numpy()
+    imgs = torch.cat(sum([[bar, img] for bar, img in zip(bars, imgs)], []),
+                     dim=-1).cpu().numpy()
     return Image(imgs)

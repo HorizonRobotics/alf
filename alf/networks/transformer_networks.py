@@ -114,11 +114,10 @@ class TransformerNetwork(PreprocessorNetwork):
         preprocessing_combiner = None
         if input_preprocessors is not None:
             preprocessing_combiner = NestConcat(dim=-2)
-        super().__init__(
-            input_tensor_spec,
-            input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
-            name=name)
+        super().__init__(input_tensor_spec,
+                         input_preprocessors,
+                         preprocessing_combiner=preprocessing_combiner,
+                         name=name)
 
         assert self._processed_input_tensor_spec.ndim == 2
 
@@ -205,8 +204,9 @@ class TransformerNetwork(PreprocessorNetwork):
             for i in range(self._num_memory_layers):
                 transformer = self._transformers[self._num_prememory_layers +
                                                  i]
-                query = transformer.forward(
-                    memory=torch.cat([mem, query], dim=-2), query=query)
+                query = transformer.forward(memory=torch.cat([mem, query],
+                                                             dim=-2),
+                                            query=query)
             memory.write(query[:, :self._core_size, :])
         else:
             for i in range(self._num_memory_layers):
@@ -214,9 +214,9 @@ class TransformerNetwork(PreprocessorNetwork):
                 memory.from_states(state[i])
                 transformer = self._transformers[self._num_prememory_layers +
                                                  i]
-                new_query = transformer.forward(
-                    memory=torch.cat([memory.memory(), query], dim=-2),
-                    query=query)
+                new_query = transformer.forward(memory=torch.cat(
+                    [memory.memory(), query], dim=-2),
+                                                query=query)
                 memory.write(query[:, :self._core_size, :])
                 query = new_query
 
@@ -285,11 +285,10 @@ class SocialAttentionNetwork(PreprocessorNetwork):
             last_use_fc_bn (None): not used; for interface compatibility
             name (str):
         """
-        super().__init__(
-            input_tensor_spec,
-            input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
-            name=name)
+        super().__init__(input_tensor_spec,
+                         input_preprocessors,
+                         preprocessing_combiner=preprocessing_combiner,
+                         name=name)
 
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
@@ -305,12 +304,11 @@ class SocialAttentionNetwork(PreprocessorNetwork):
         input_size = self._processed_input_tensor_spec.shape[-1]
         for size in fc_layer_params:
             embedding_layers.append(
-                layers.FC(
-                    input_size,
-                    size,
-                    activation=activation,
-                    use_bn=use_fc_bn,
-                    kernel_initializer=kernel_initializer))
+                layers.FC(input_size,
+                          size,
+                          activation=activation,
+                          use_bn=use_fc_bn,
+                          kernel_initializer=kernel_initializer))
             input_size = size
         self._embedding_layers = embedding_layers
 
@@ -320,21 +318,18 @@ class SocialAttentionNetwork(PreprocessorNetwork):
         self._fea_dim_per_head = fea_dim // num_of_heads
 
         # attention related layers
-        self._value_proj = layers.FC(
-            fea_dim,
-            fea_dim,
-            use_bias=False,
-            kernel_initializer=kernel_initializer)
-        self._key_proj = layers.FC(
-            fea_dim,
-            fea_dim,
-            use_bias=False,
-            kernel_initializer=kernel_initializer)
-        self._query_proj = layers.FC(
-            fea_dim,
-            fea_dim,
-            use_bias=False,
-            kernel_initializer=kernel_initializer)
+        self._value_proj = layers.FC(fea_dim,
+                                     fea_dim,
+                                     use_bias=False,
+                                     kernel_initializer=kernel_initializer)
+        self._key_proj = layers.FC(fea_dim,
+                                   fea_dim,
+                                   use_bias=False,
+                                   kernel_initializer=kernel_initializer)
+        self._query_proj = layers.FC(fea_dim,
+                                     fea_dim,
+                                     use_bias=False,
+                                     kernel_initializer=kernel_initializer)
 
         self._simple_attention = alf.layers.SimpleAttention()
 

@@ -21,20 +21,21 @@ from gym.envs.robotics import robot_env, rotations, utils
 
 
 class AdvFetchEnv(FetchEnv):
+
     def __init__(
-            self,
-            model_path: str,
-            n_substeps: int,
-            gripper_extra_height: float,
-            block_gripper: bool,
-            has_object: bool,
-            target_in_the_air: bool,
-            target_offset: Union[float, np.ndarray],
-            obj_range: float,
-            target_range: float,
-            distance_threshold: float,
-            initial_qpos: dict,
-            reward_type: str,
+        self,
+        model_path: str,
+        n_substeps: int,
+        gripper_extra_height: float,
+        block_gripper: bool,
+        has_object: bool,
+        target_in_the_air: bool,
+        target_offset: Union[float, np.ndarray],
+        obj_range: float,
+        target_range: float,
+        distance_threshold: float,
+        initial_qpos: dict,
+        reward_type: str,
     ):
         """Class copied from OpenAI ``FetchEnv``. Almost the same with ``FetchEnv``.
         The only change is from 4 to 7 for ``n_actions`` where the extra 3 dims
@@ -78,12 +79,11 @@ class AdvFetchEnv(FetchEnv):
         self.reward_type = reward_type
         self._quat = None
 
-        robot_env.RobotEnv.__init__(
-            self,
-            model_path=model_path,
-            n_substeps=n_substeps,
-            n_actions=7,
-            initial_qpos=initial_qpos)
+        robot_env.RobotEnv.__init__(self,
+                                    model_path=model_path,
+                                    n_substeps=n_substeps,
+                                    n_actions=7,
+                                    initial_qpos=initial_qpos)
 
     def _reset_sim(self):
         # reset to the upright orientation

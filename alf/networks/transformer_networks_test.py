@@ -21,6 +21,7 @@ import alf
 
 
 class TransformerNetworkTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(True, False)
     def test_transformer_network(self, centralized_memory=True):
         d_model = 32
@@ -32,11 +33,11 @@ class TransformerNetworkTest(parameterized.TestCase, alf.test.TestCase):
             alf.TensorSpec((3, 7, 7), dtype=torch.float32)
         ]
         input_preprocessors = [
-            nn.Sequential(
-                nn.Embedding(100, d_model), alf.layers.Reshape((1, d_model))),
-            nn.Sequential(
-                alf.layers.Conv2D(3, d_model, kernel_size=1),
-                alf.layers.Reshape((d_model, 49)), alf.layers.Transpose())
+            nn.Sequential(nn.Embedding(100, d_model),
+                          alf.layers.Reshape((1, d_model))),
+            nn.Sequential(alf.layers.Conv2D(3, d_model, kernel_size=1),
+                          alf.layers.Reshape((d_model, 49)),
+                          alf.layers.Transpose())
         ]
         transformer = TransformerNetwork(
             input_tensor_spec,

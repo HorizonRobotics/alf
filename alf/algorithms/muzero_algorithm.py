@@ -53,21 +53,21 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
     """
 
-    def __init__(
-            self,
-            observation_spec,
-            action_spec,
-            discount: float,
-            reward_spec=TensorSpec(()),
-            representation_learner_ctor: Callable[
-                ..., MuzeroRepresentationImpl] = MuzeroRepresentationImpl,
-            mcts_algorithm_ctor: Callable[..., MCTSAlgorithm] = MCTSAlgorithm,
-            reward_transformer=None,
-            config: Optional[TrainerConfig] = None,
-            enable_amp: bool = True,
-            checkpoint=None,
-            debug_summaries=False,
-            name="MuZero"):
+    def __init__(self,
+                 observation_spec,
+                 action_spec,
+                 discount: float,
+                 reward_spec=TensorSpec(()),
+                 representation_learner_ctor: Callable[
+                     ..., MuzeroRepresentationImpl] = MuzeroRepresentationImpl,
+                 mcts_algorithm_ctor: Callable[...,
+                                               MCTSAlgorithm] = MCTSAlgorithm,
+                 reward_transformer=None,
+                 config: Optional[TrainerConfig] = None,
+                 enable_amp: bool = True,
+                 checkpoint=None,
+                 debug_summaries=False,
+                 name="MuZero"):
         """
         Args:
             observation_spec (TensorSpec): representing the observations.
@@ -121,17 +121,16 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name="muzero_policy")
 
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=mcts.train_state_spec,
-            predict_state_spec=mcts.predict_state_spec,
-            rollout_state_spec=mcts.rollout_state_spec,
-            config=config,
-            debug_summaries=debug_summaries,
-            checkpoint=checkpoint,
-            name=name)
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=mcts.train_state_spec,
+                         predict_state_spec=mcts.predict_state_spec,
+                         rollout_state_spec=mcts.rollout_state_spec,
+                         config=config,
+                         debug_summaries=debug_summaries,
+                         checkpoint=checkpoint,
+                         name=name)
 
         self._config = config
         self._repr_learner = representation_learner
@@ -161,8 +160,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             time_step = time_step._replace(
                 reward=self._reward_transformer(time_step.reward))
         latent = self._repr_learner.rollout_step(time_step, state).output
-        return self._mcts.rollout_step(
-            time_step._replace(observation=latent), state)
+        return self._mcts.rollout_step(time_step._replace(observation=latent),
+                                       state)
 
     def train_step(self, exp: TimeStep, state, rollout_info: MuzeroInfo):
         return self._repr_learner.train_step(exp, state, rollout_info)

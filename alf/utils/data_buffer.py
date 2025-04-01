@@ -40,6 +40,7 @@ def atomic(func):
     """
 
     def atomic_deco(func):
+
         @functools.wraps(func)
         def atomic_wrapper(self, *args, **kwargs):
             lock = getattr(self, '_lock')
@@ -142,8 +143,8 @@ class RingBuffer(nn.Module):
             # These pos always increases. To get the index in the RingBuffer,
             # use ``circular()``, e.g. ``last_idx = self.circular(pos - 1)``.
             self.register_buffer(
-                "_current_pos", torch.zeros(
-                    num_environments, dtype=torch.int64))
+                "_current_pos", torch.zeros(num_environments,
+                                            dtype=torch.int64))
 
             self._buffer = alf.nest.py_map_structure_with_path(
                 _create_buffer, data_spec)
@@ -172,8 +173,8 @@ class RingBuffer(nn.Module):
             else:
                 env_ids = env_ids.to(torch.int64)
             env_ids = convert_device(env_ids)
-            assert len(env_ids.
-                       shape) == 1, "env_ids {}, should be a 1D tensor".format(
+            assert len(env_ids.shape
+                       ) == 1, "env_ids {}, should be a 1D tensor".format(
                            env_ids.shape)
             return env_ids
 
@@ -263,8 +264,8 @@ class RingBuffer(nn.Module):
 
                 alf.nest.map_structure(_set, self._buffer, batch)
                 self._current_pos.fill_(current_pos + 1)
-                self._current_size.fill_(
-                    min(current_pos + 1, self._max_length))
+                self._current_size.fill_(min(current_pos + 1,
+                                             self._max_length))
             else:
                 # Make sure that there is no duplicate in `env_id`
                 # torch.unique(env_ids, return_counts=True)[1] is the counts for each unique item
@@ -281,8 +282,8 @@ class RingBuffer(nn.Module):
 
                 self._current_pos[env_ids] += 1
                 current_size = self._current_size[env_ids]
-                self._current_size[env_ids] = torch.clamp(
-                    current_size + 1, max=self._max_length)
+                self._current_size[env_ids] = torch.clamp(current_size + 1,
+                                                          max=self._max_length)
             # set flags if they exist to unblock potential consumers
             if self._enqueued:
                 self._enqueued.set()
@@ -386,8 +387,8 @@ class RingBuffer(nn.Module):
         """
         with alf.device(self._device):
             env_ids = self.check_convert_env_ids(env_ids)
-            n = torch.min(
-                torch.as_tensor([n] * self._num_envs), self._current_size)
+            n = torch.min(torch.as_tensor([n] * self._num_envs),
+                          self._current_size)
             self._current_size[env_ids] = self._current_size[env_ids] - n
 
     @atomic
@@ -473,15 +474,15 @@ class DataBuffer(RingBuffer):
             device (str): which device to store the data
             name (str): name of the buffer
         """
-        super().__init__(
-            data_spec=data_spec,
-            num_environments=1,
-            max_length=capacity,
-            device=device,
-            allow_multiprocess=False,
-            name=name)
-        self._capacity = torch.as_tensor(
-            self._max_length, dtype=torch.int64, device=device)
+        super().__init__(data_spec=data_spec,
+                         num_environments=1,
+                         max_length=capacity,
+                         device=device,
+                         allow_multiprocess=False,
+                         name=name)
+        self._capacity = torch.as_tensor(self._max_length,
+                                         dtype=torch.int64,
+                                         device=device)
         self._derived_buffer = alf.nest.map_structure(lambda buf: buf[0],
                                                       self._buffer)
 
@@ -518,11 +519,10 @@ class DataBuffer(RingBuffer):
             Tensor of shape ``[batch_size] + tensor_spec.shape``
         """
         with alf.device(self._device):
-            indices = torch.randint(
-                low=0,
-                high=self.current_size,
-                size=(batch_size, ),
-                dtype=torch.int64)
+            indices = torch.randint(low=0,
+                                    high=self.current_size,
+                                    size=(batch_size, ),
+                                    dtype=torch.int64)
             result = self.get_batch_by_indices(indices)
         return convert_device(result)
 

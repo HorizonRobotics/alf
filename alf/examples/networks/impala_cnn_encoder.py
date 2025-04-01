@@ -60,15 +60,16 @@ def _create_residual_cnn_block(
         torch.nn.ReLU(inplace=False),
         # TODO(breakds): Normalized initialization in openai's
         # original implementation
-        alf.layers.Conv2D(
-            input_channels, input_channels, kernel_size=3, padding=1),
-        residual=alf.layers.Conv2D(
-            input_channels,
-            input_channels,
-            kernel_size=3,
-            padding=1,
-            activation=identity,
-            kernel_initializer=kernel_initializer),
+        alf.layers.Conv2D(input_channels,
+                          input_channels,
+                          kernel_size=3,
+                          padding=1),
+        residual=alf.layers.Conv2D(input_channels,
+                                   input_channels,
+                                   kernel_size=3,
+                                   padding=1,
+                                   activation=identity,
+                                   kernel_initializer=kernel_initializer),
         final=(('input', 'residual'), lambda x: x[0] + x[1]),
         input_tensor_spec=input_tensor_spec)
 
@@ -112,18 +113,17 @@ def _create_downsampling_cnn_stack(
         input_tensor_spec.dtype)
     return alf.nn.Sequential(
         # NOTE: this Conv2D layer does not have activation
-        alf.layers.Conv2D(
-            input_channels,
-            output_channels,
-            kernel_size=3,
-            padding=1,
-            activation=identity,
-            kernel_initializer=kernel_initializer),
+        alf.layers.Conv2D(input_channels,
+                          output_channels,
+                          kernel_size=3,
+                          padding=1,
+                          activation=identity,
+                          kernel_initializer=kernel_initializer),
         # Downsample via a max pooling filter
         torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
         *[
-            _create_residual_cnn_block(
-                output_tensor_spec, kernel_initializer=kernel_initializer)
+            _create_residual_cnn_block(output_tensor_spec,
+                                       kernel_initializer=kernel_initializer)
             for _ in range(num_residual_blocks)
         ],
         input_tensor_spec=input_tensor_spec)
@@ -182,11 +182,10 @@ def create(input_tensor_spec,
         scale_factor = 1.0 / 255.0
         stacks.append(alf.layers.Cast(dtype=torch.float32))
         stacks.append(lambda x: x * scale_factor)
-        last_output_spec = alf.BoundedTensorSpec(
-            input_tensor_spec.shape,
-            dtype=torch.float32,
-            minimum=0.0,
-            maximum=1.0)
+        last_output_spec = alf.BoundedTensorSpec(input_tensor_spec.shape,
+                                                 dtype=torch.float32,
+                                                 minimum=0.0,
+                                                 maximum=1.0)
     else:
         last_output_spec = input_tensor_spec
 
@@ -206,12 +205,12 @@ def create(input_tensor_spec,
             # Flatten the images
             alf.layers.Reshape((-1, )),
             torch.nn.ReLU(inplace=True),
-            alf.layers.FC(
-                input_size=stack_output_spec.numel,
-                output_size=flatten_output_size,
-                activation=output_activation,
-                kernel_initializer=kernel_initializer),
+            alf.layers.FC(input_size=stack_output_spec.numel,
+                          output_size=flatten_output_size,
+                          activation=output_activation,
+                          kernel_initializer=kernel_initializer),
             input_tensor_spec=input_tensor_spec)
     else:
-        return alf.nn.Sequential(
-            *stacks, output_activation, input_tensor_spec=input_tensor_spec)
+        return alf.nn.Sequential(*stacks,
+                                 output_activation,
+                                 input_tensor_spec=input_tensor_spec)

@@ -74,6 +74,7 @@ def sleep_a_bit(n_secs):
 
 
 class CoordinatorTest(test.TestCase):
+
     def testStopAPI(self):
         coord = coordinator.Coordinator()
         self.assertFalse(coord.should_stop())
@@ -88,9 +89,8 @@ class CoordinatorTest(test.TestCase):
         self.assertFalse(coord.wait_for_stop(0.1))
         wait_for_stop_ev = Event()
         has_stopped_ev = Event()
-        t = Process(
-            target=stop_on_event,
-            args=(coord, wait_for_stop_ev, has_stopped_ev))
+        t = Process(target=stop_on_event,
+                    args=(coord, wait_for_stop_ev, has_stopped_ev))
         t.start()
         self.assertFalse(coord.should_stop())
         self.assertFalse(coord.wait_for_stop(0.01))
@@ -144,14 +144,14 @@ class CoordinatorTest(test.TestCase):
             self.assertFalse(t.is_alive())
 
     def testJoinGraceExpires(self):
+
         def TestWithGracePeriod(stop_grace_period):
             coord = coordinator.Coordinator()
             wait_for_stop_ev = Event()
             has_stopped_ev = Event()
             processes = [
-                Process(
-                    target=stop_on_event,
-                    args=(coord, wait_for_stop_ev, has_stopped_ev)),
+                Process(target=stop_on_event,
+                        args=(coord, wait_for_stop_ev, has_stopped_ev)),
                 Process(target=sleep_a_bit, args=(10.0, ))
             ]
             for t in processes:
@@ -172,9 +172,8 @@ class CoordinatorTest(test.TestCase):
         wait_for_stop_ev = Event()
         has_stopped_ev = Event()
         processes = [
-            Process(
-                target=stop_on_event,
-                args=(coord, wait_for_stop_ev, has_stopped_ev)),
+            Process(target=stop_on_event,
+                    args=(coord, wait_for_stop_ev, has_stopped_ev)),
             Process(target=sleep_a_bit, args=(10.0, ))
         ]
         for t in processes:
@@ -182,20 +181,19 @@ class CoordinatorTest(test.TestCase):
             t.start()
         wait_for_stop_ev.set()
         has_stopped_ev.wait()
-        coord.join(
-            processes, stop_grace_period_secs=1., ignore_live_processes=True)
+        coord.join(processes,
+                   stop_grace_period_secs=1.,
+                   ignore_live_processes=True)
 
     def testJoinRaiseReportExcInfo(self):
         coord = coordinator.Coordinator()
         ev_1 = Event()
         ev_2 = Event()
         processes = [
-            Process(
-                target=raise_on_event,
-                args=(coord, ev_1, ev_2, RuntimeError("First"), False)),
-            Process(
-                target=raise_on_event,
-                args=(coord, ev_2, None, RuntimeError("Too late"), False))
+            Process(target=raise_on_event,
+                    args=(coord, ev_1, ev_2, RuntimeError("First"), False)),
+            Process(target=raise_on_event,
+                    args=(coord, ev_2, None, RuntimeError("Too late"), False))
         ]
         for t in processes:
             t.start()
@@ -216,12 +214,10 @@ class CoordinatorTest(test.TestCase):
         ev_1 = Event()
         ev_2 = Event()
         processes = [
-            Process(
-                target=raise_on_event,
-                args=(coord, ev_1, ev_2, RuntimeError("First"), True)),
-            Process(
-                target=raise_on_event,
-                args=(coord, ev_2, None, RuntimeError("Too late"), True))
+            Process(target=raise_on_event,
+                    args=(coord, ev_1, ev_2, RuntimeError("First"), True)),
+            Process(target=raise_on_event,
+                    args=(coord, ev_2, None, RuntimeError("Too late"), True))
         ]
         for t in processes:
             t.start()
@@ -235,12 +231,10 @@ class CoordinatorTest(test.TestCase):
         ev_1 = Event()
         ev_2 = Event()
         processes = [
-            Process(
-                target=raise_on_event_using_context_handler,
-                args=(coord, ev_1, ev_2, RuntimeError("First"))),
-            Process(
-                target=raise_on_event_using_context_handler,
-                args=(coord, ev_2, None, RuntimeError("Too late")))
+            Process(target=raise_on_event_using_context_handler,
+                    args=(coord, ev_1, ev_2, RuntimeError("First"))),
+            Process(target=raise_on_event_using_context_handler,
+                    args=(coord, ev_2, None, RuntimeError("Too late")))
         ]
         for t in processes:
             t.start()
@@ -253,9 +247,8 @@ class CoordinatorTest(test.TestCase):
         coord = coordinator.Coordinator()
         ev_1 = Event()
         processes = [
-            Process(
-                target=raise_on_event,
-                args=(coord, ev_1, None, RuntimeError("First"), True)),
+            Process(target=raise_on_event,
+                    args=(coord, ev_1, None, RuntimeError("First"), True)),
         ]
         for t in processes:
             t.start()
@@ -266,9 +259,8 @@ class CoordinatorTest(test.TestCase):
 
         coord.clear_stop()
         processes = [
-            Process(
-                target=raise_on_event,
-                args=(coord, ev_1, None, RuntimeError("Second"), True)),
+            Process(target=raise_on_event,
+                    args=(coord, ev_1, None, RuntimeError("Second"), True)),
         ]
         for t in processes:
             t.start()
@@ -330,6 +322,7 @@ def _stop_at_0(coord, n, m=None):
 
 
 class ProcessTest(test.TestCase):
+
     def testTargetArgs(self):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
@@ -341,11 +334,12 @@ class ProcessTest(test.TestCase):
     def testTargetKwargs(self):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
-        p = coordinator.Process(
-            coord, target=_stop_at_0, kwargs={
-                "coord": coord,
-                "n": n
-            })
+        p = coordinator.Process(coord,
+                                target=_stop_at_0,
+                                kwargs={
+                                    "coord": coord,
+                                    "n": n
+                                })
         p.start()
         coord.join()
         self.assertEqual(0, n.value)
@@ -353,14 +347,18 @@ class ProcessTest(test.TestCase):
     def testTargetMixedArgs(self):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
-        p = coordinator.Process(
-            coord, target=_stop_at_0, args=(coord, ), kwargs={"n": n})
+        p = coordinator.Process(coord,
+                                target=_stop_at_0,
+                                args=(coord, ),
+                                kwargs={"n": n})
         p.start()
         coord.join()
         self.assertEqual(0, n.value)
 
     def testInheritedTarget(self):
+
         class MyProcess(coordinator.Process):
+
             def __init__(self, coord, args=(), kwargs={}):
                 super().__init__(coord, args=args, kwargs=kwargs)
 
@@ -375,7 +373,9 @@ class ProcessTest(test.TestCase):
         self.assertEqual(0, n.value)
 
     def testModelSharing(self):
+
         class MyProcess(coordinator.Process):
+
             def __init__(self, coord, args=(), kwargs={}):
                 super().__init__(coord, args=args, kwargs=kwargs)
                 self.n = Value(ctypes.c_int, 3)
@@ -387,6 +387,7 @@ class ProcessTest(test.TestCase):
         from alf.algorithms.algorithm import Algorithm
 
         class MyAlgorithm(Algorithm):
+
             def __init__(self):
                 super().__init__()
                 self.register_buffer('_m', torch.tensor(0, dtype=torch.int32))

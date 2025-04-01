@@ -105,12 +105,11 @@ def _run_steps(algorithm, env, nsteps, time_steps=[]):
     policy_steps = []
 
     for i in range(1, nsteps + 1):
-        policy_step, trans_state = _step(
-            algorithm,
-            time_step,
-            policy_state,
-            trans_state,
-            epsilon_greedy=FLAGS.epsilon_greedy)
+        policy_step, trans_state = _step(algorithm,
+                                         time_step,
+                                         policy_state,
+                                         trans_state,
+                                         epsilon_greedy=FLAGS.epsilon_greedy)
         if run_env:
             time_step = env.step(policy_step.output)
             time_steps.append(time_step)
@@ -161,12 +160,11 @@ def _create_algorithm_and_env(root_dir, old_configs=None):
     common.set_transformed_observation_spec(observation_spec)
 
     algorithm_ctor = config.algorithm_ctor
-    algorithm = algorithm_ctor(
-        observation_spec=observation_spec,
-        action_spec=env.action_spec(),
-        reward_spec=env.reward_spec(),
-        config=config,
-        env=env)
+    algorithm = algorithm_ctor(observation_spec=observation_spec,
+                               action_spec=env.action_spec(),
+                               reward_spec=env.reward_spec(),
+                               config=config,
+                               env=env)
     algorithm.set_path('')
     return algorithm, env, new_configs
 

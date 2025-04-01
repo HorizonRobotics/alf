@@ -82,13 +82,12 @@ class EncodingAlgorithm(Algorithm):
             encoder = encoder_cls(input_tensor_spec=time_step_spec)
         else:
             encoder = encoder_cls(input_tensor_spec=observation_spec)
-        super().__init__(
-            train_state_spec=encoder.state_spec,
-            optimizer=optimizer,
-            config=config,
-            checkpoint=checkpoint,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(train_state_spec=encoder.state_spec,
+                         optimizer=optimizer,
+                         config=config,
+                         checkpoint=checkpoint,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._time_step_as_input = time_step_as_input
         self._encoder = encoder
@@ -101,8 +100,10 @@ class EncodingAlgorithm(Algorithm):
             loss_specs = get_nested_field(output_spec, loss_fields)
             assert all(
                 flatten(
-                    map_structure(lambda spec: spec.shape == (), loss_specs))
-            ), ("The losses should be scalars. Got: %s" % str(loss_specs))
+                    map_structure(lambda spec: spec.shape == (),
+                                  loss_specs))), (
+                                      "The losses should be scalars. Got: %s" %
+                                      str(loss_specs))
         if loss_weights is not None:
             alf.nest.assert_same_structure(loss_weights, loss_fields)
         self._output_fields = output_fields

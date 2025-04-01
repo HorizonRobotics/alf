@@ -32,6 +32,7 @@ from alf.utils.tensor_utils import tensor_extend_new_dim
 
 @alf.configurable
 class CategoricalProjectionNetwork(Network):
+
     def __init__(self,
                  input_size,
                  action_spec,
@@ -61,18 +62,16 @@ class CategoricalProjectionNetwork(Network):
         unique_num_actions = np.unique(action_spec.maximum -
                                        action_spec.minimum + 1)
         output_shape = action_spec.shape + (int(unique_num_actions), )
-        projection_layer = fc_ctor(
-            input_size,
-            np.prod(output_shape),
-            weight_opt_args=weight_opt_args,
-            bias_opt_args=bias_opt_args,
-            kernel_init_gain=logits_init_output_factor)
+        projection_layer = fc_ctor(input_size,
+                                   np.prod(output_shape),
+                                   weight_opt_args=weight_opt_args,
+                                   bias_opt_args=bias_opt_args,
+                                   kernel_init_gain=logits_init_output_factor)
         projection_layer = wrap_as_network(projection_layer, None)
 
-        super().__init__(
-            input_tensor_spec=TensorSpec((input_size, )),
-            state_spec=projection_layer.state_spec,
-            name=name)
+        super().__init__(input_tensor_spec=TensorSpec((input_size, )),
+                         state_spec=projection_layer.state_spec,
+                         name=name)
 
         if len(unique_num_actions) > 1 or np.any(unique_num_actions <= 0):
             raise ValueError(
@@ -115,6 +114,7 @@ class CategoricalProjectionNetwork(Network):
 
 @alf.configurable
 class ParallelCategoricalProjectionNetwork(Network):
+
     def __init__(self,
                  input_size,
                  action_spec,
@@ -134,8 +134,9 @@ class ParallelCategoricalProjectionNetwork(Network):
             name (str): name of this network.
         """
         assert fc_ctor == alf.layers.FC, "fc_ctor must be alf.layers.FC"
-        super(ParallelCategoricalProjectionNetwork, self).__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
+        super(ParallelCategoricalProjectionNetwork,
+              self).__init__(input_tensor_spec=TensorSpec((input_size, )),
+                             name=name)
 
         assert isinstance(action_spec, TensorSpec)
 
@@ -172,6 +173,7 @@ class ParallelCategoricalProjectionNetwork(Network):
 
 @alf.configurable
 class NormalProjectionNetwork(Network):
+
     def __init__(self,
                  input_size,
                  action_spec,
@@ -226,8 +228,9 @@ class NormalProjectionNetwork(Network):
             disable_amp (bool): If True, disable automatic mixed precision.
             name (str): name of this network.
         """
-        super(NormalProjectionNetwork, self).__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
+        super(NormalProjectionNetwork,
+              self).__init__(input_tensor_spec=TensorSpec((input_size, )),
+                             name=name)
 
         assert isinstance(action_spec, TensorSpec)
         assert len(action_spec.shape) == 1, "Only support 1D action spec!"
@@ -253,8 +256,8 @@ class NormalProjectionNetwork(Network):
             else:
                 self._transforms = [
                     dist_squashing_transform,
-                    dist_utils.AffineTransform(
-                        loc=self._action_means, scale=self._action_magnitudes)
+                    dist_utils.AffineTransform(loc=self._action_means,
+                                               scale=self._action_magnitudes)
                 ]
         if mean_transform is not None:
             self._mean_transform = mean_transform
@@ -280,10 +283,9 @@ class NormalProjectionNetwork(Network):
                 bias_init_value=std_bias_initializer_value)
         else:
             outer_dims = None if parallelism is None else (parallelism, )
-            self._std = nn.Parameter(
-                action_spec.constant(
-                    std_bias_initializer_value, outer_dims=outer_dims),
-                requires_grad=True)
+            self._std = nn.Parameter(action_spec.constant(
+                std_bias_initializer_value, outer_dims=outer_dims),
+                                     requires_grad=True)
             self._std_projection_layer = lambda x: tensor_extend_new_dim(
                 self._std, 0, x.shape[0])
         self._disable_amp = disable_amp
@@ -323,8 +325,8 @@ class NormalProjectionNetwork(Network):
         original_parallelism = parallel_proj_net_args.get("parallelism", None)
         assert original_parallelism is None, (
             "Calling make_parallel on a network that is already parallelized")
-        parallel_proj_net_args.update(
-            parallelism=n, name="parallel_" + self.name)
+        parallel_proj_net_args.update(parallelism=n,
+                                      name="parallel_" + self.name)
         return type(self)(**parallel_proj_net_args)
 
 
@@ -413,8 +415,8 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             std_transform = nn.functional.softplus
             std_bias_initializer_value = math.log(math.exp(c) - 1)
         else:
-            raise ValueError(
-                "Unsupported inverse_std_transform %s" % inverse_std_transform)
+            raise ValueError("Unsupported inverse_std_transform %s" %
+                             inverse_std_transform)
 
         super().__init__(
             input_size=input_size,
@@ -446,6 +448,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
 
 @alf.configurable
 class CauchyProjectionNetwork(NormalProjectionNetwork):
+
     def __init__(self,
                  input_size,
                  action_spec,
@@ -501,8 +504,8 @@ class CauchyProjectionNetwork(NormalProjectionNetwork):
         return self._cauchy_dist(median, scale), state
 
     def _cauchy_dist(self, median, scale):
-        cauchy_dist = dist_utils.DiagMultivariateCauchy(
-            loc=median, scale=scale)
+        cauchy_dist = dist_utils.DiagMultivariateCauchy(loc=median,
+                                                        scale=scale)
         if self._scale_distribution:
             # The transformed distribution can also do reparameterized sampling
             # i.e., `.has_rsample=True`
@@ -573,8 +576,8 @@ class BetaProjectionNetwork(Network):
                 if the calculated concentration is very close to 0. A positive
                 value of this may help to alleviate it.
         """
-        super().__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
+        super().__init__(input_tensor_spec=TensorSpec((input_size, )),
+                         name=name)
         assert action_spec.ndim == 1, "Only support 1D action spec!"
 
         self._transformer = _get_transformer(action_spec)
@@ -597,8 +600,8 @@ class BetaProjectionNetwork(Network):
         if self._grad_clip is not None and inputs.requires_grad:
             concentration.register_hook(lambda x: x / (x.norm(
                 dim=1, keepdim=True) * (1 / self._grad_clip)).clamp(1.))
-        concentration10 = concentration.split(
-            concentration.shape[-1] // 2, dim=-1)
+        concentration10 = concentration.split(concentration.shape[-1] // 2,
+                                              dim=-1)
         return self._transformer(
             dist_utils.DiagMultivariateBeta(*concentration10)), state
 
@@ -607,13 +610,14 @@ class BetaProjectionNetwork(Network):
         original_parallelism = parallel_proj_net_args.get("parallelism", None)
         assert original_parallelism is None, (
             "Calling make_parallel on a network that is already parallelized")
-        parallel_proj_net_args.update(
-            parallelism=n, name="parallel_" + self.name)
+        parallel_proj_net_args.update(parallelism=n,
+                                      name="parallel_" + self.name)
         return type(self)(**parallel_proj_net_args)
 
 
 @alf.configurable
 class TruncatedProjectionNetwork(Network):
+
     def __init__(self,
                  input_size,
                  action_spec,
@@ -657,8 +661,8 @@ class TruncatedProjectionNetwork(Network):
                 `dist_ctor(loc=loc, scale=scale, lower_bound=lower_bound, upper_bound=upper_bound)`.
             name (str): name of this network.
         """
-        super().__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
+        super().__init__(input_tensor_spec=TensorSpec((input_size, )),
+                         name=name)
 
         assert isinstance(action_spec, TensorSpec)
         assert len(action_spec.shape) == 1, "Only support 1D action spec!"
@@ -710,17 +714,17 @@ class TruncatedProjectionNetwork(Network):
         scale = self._scale_transform(self._scale_projection_layer(inputs))
         if self._min_scale is not None or self._max_scale is not None:
             scale = scale.clamp(min=self._min_scale, max=self._max_scale)
-        dist = self._dist_ctor(
-            loc=loc,
-            scale=scale,
-            lower_bound=self._action_low,
-            upper_bound=self._action_high)
+        dist = self._dist_ctor(loc=loc,
+                               scale=scale,
+                               lower_bound=self._action_low,
+                               upper_bound=self._action_high)
 
         return dist, state
 
 
 @alf.configurable
 class OnehotCategoricalProjectionNetwork(Network):
+
     def __init__(self,
                  input_size,
                  action_spec,
@@ -754,8 +758,9 @@ class OnehotCategoricalProjectionNetwork(Network):
                 temperature leads to a more uniform sample (less like one-hot).
             name (str):
         """
-        super(OnehotCategoricalProjectionNetwork, self).__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
+        super(OnehotCategoricalProjectionNetwork,
+              self).__init__(input_tensor_spec=TensorSpec((input_size, )),
+                             name=name)
 
         unique_num_actions = np.unique(action_spec.maximum -
                                        action_spec.minimum + 1)
@@ -788,15 +793,13 @@ class OnehotCategoricalProjectionNetwork(Network):
         elif self._mode == 'st':
             dist_cls = dist_utils.OneHotCategoricalStraightThrough
         elif self._mode == 'gumbel':
-            dist_cls = partial(
-                dist_utils.OneHotCategoricalGumbelSoftmax,
-                tau=self._gumbel_temperature,
-                hard_sample=False)
+            dist_cls = partial(dist_utils.OneHotCategoricalGumbelSoftmax,
+                               tau=self._gumbel_temperature,
+                               hard_sample=False)
         else:  # 'st-gumbel'
-            dist_cls = partial(
-                dist_utils.OneHotCategoricalGumbelSoftmax,
-                tau=self._gumbel_temperature,
-                hard_sample=True)
+            dist_cls = partial(dist_utils.OneHotCategoricalGumbelSoftmax,
+                               tau=self._gumbel_temperature,
+                               hard_sample=True)
 
         if len(self._output_shape) > 1:
             return td.Independent(
@@ -848,19 +851,17 @@ class MixtureProjectionNetwork(Network):
             input_size, action_spec).make_parallel(num_components)
         mixture_proj = mixture_ctor(
             input_size,
-            BoundedTensorSpec(
-                shape=(),
-                dtype=torch.int64,
-                minimum=0,
-                maximum=num_components - 1))
+            BoundedTensorSpec(shape=(),
+                              dtype=torch.int64,
+                              minimum=0,
+                              maximum=num_components - 1))
 
-        super().__init__(
-            input_tensor_spec=TensorSpec((input_size, )),
-            state_spec={
-                "mixture": mixture_proj.state_spec,
-                "components": components_proj.state_spec,
-            },
-            name=name)
+        super().__init__(input_tensor_spec=TensorSpec((input_size, )),
+                         state_spec={
+                             "mixture": mixture_proj.state_spec,
+                             "components": components_proj.state_spec,
+                         },
+                         name=name)
 
         self._components_proj = components_proj
         self._mixture_proj = mixture_proj

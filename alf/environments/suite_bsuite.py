@@ -66,14 +66,13 @@ def load(environment_name=sweep.CARTPOLE_SWINGUP[0],
     elif max_episode_steps is None:
         max_episode_steps = 0
 
-    return wrap_env(
-        gym_env,
-        env_id=env_id,
-        discount=discount,
-        max_episode_steps=max_episode_steps,
-        gym_env_wrappers=gym_env_wrappers,
-        alf_env_wrappers=alf_env_wrappers,
-        image_channel_first=False)
+    return wrap_env(gym_env,
+                    env_id=env_id,
+                    discount=discount,
+                    max_episode_steps=max_episode_steps,
+                    gym_env_wrappers=gym_env_wrappers,
+                    alf_env_wrappers=alf_env_wrappers,
+                    image_channel_first=False)
 
 
 class BSuiteWrapper(gym_wrapper.GymFromDMEnv):
@@ -97,19 +96,18 @@ class BSuiteWrapper(gym_wrapper.GymFromDMEnv):
     @property
     def observation_space(self) -> spaces.Box:
         obs_spec = self._env.observation_spec()  # type: specs.Array
-        obs_spec = specs.Array(
-            shape=(obs_spec.shape[1], ), dtype=np.float32, name='state')
+        obs_spec = specs.Array(shape=(obs_spec.shape[1], ),
+                               dtype=np.float32,
+                               name='state')
         if isinstance(obs_spec, specs.BoundedArray):
-            return spaces.Box(
-                low=float(obs_spec.minimum),
-                high=float(obs_spec.maximum),
-                shape=obs_spec.shape,
-                dtype=obs_spec.dtype)
-        return spaces.Box(
-            low=-float('inf'),
-            high=float('inf'),
-            shape=obs_spec.shape,
-            dtype=obs_spec.dtype)
+            return spaces.Box(low=float(obs_spec.minimum),
+                              high=float(obs_spec.maximum),
+                              shape=obs_spec.shape,
+                              dtype=obs_spec.dtype)
+        return spaces.Box(low=-float('inf'),
+                          high=float('inf'),
+                          shape=obs_spec.shape,
+                          dtype=obs_spec.dtype)
 
     def step(self, action: int) -> _GymTimestep:
         timestep = self._env.step(action)

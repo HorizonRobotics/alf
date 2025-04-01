@@ -109,8 +109,8 @@ last_weight_max_norm = define_config('last_weight_max_norm', math.inf)
 
 rv_loss = define_config(
     'rv_loss',
-    losses.OrderedDiscreteRegressionLoss(
-        transform=alf.math.Sqrt1pTransform(), inverse_after_mean=False))
+    losses.OrderedDiscreteRegressionLoss(transform=alf.math.Sqrt1pTransform(),
+                                         inverse_after_mean=False))
 rv_bias_zero_init = define_config('rv_bias_zero_init', False)
 
 # This option can make the optimization of the parameters of quantile regression
@@ -132,8 +132,9 @@ else:
     weight_opt_args = None
 
 alf.config('Conv2D', activation=activation, weight_opt_args=weight_opt_args)
-alf.config(
-    'ResidueBlock', activation=activation, weight_opt_args=weight_opt_args)
+alf.config('ResidueBlock',
+           activation=activation,
+           weight_opt_args=weight_opt_args)
 alf.config('BatchNorm1d', fixed_weight_norm=bn_fixed_weight_norm)
 alf.config('BatchNorm2d', fixed_weight_norm=bn_fixed_weight_norm)
 
@@ -146,10 +147,9 @@ alf.config('multi_quantile_huber_loss', delta=0.0)
 
 reward_transformer = RewardClipping() if num_quantiles == 1 else None
 
-alf.config(
-    "AverageDiscountedReturnMetric",
-    discount=discount,
-    reward_transformer=reward_transformer)
+alf.config("AverageDiscountedReturnMetric",
+           discount=discount,
+           reward_transformer=reward_transformer)
 
 if suite == "ATARI":
     num_envs = define_config('num_envs', 8)
@@ -164,49 +164,46 @@ if suite == "ATARI":
             'suite_gym.load',
             alf_env_wrappers=[alf_wrappers.AtariTerminalOnLifeLossWrapper])
 
-    alf.config(
-        "create_environment",
-        env_name="BreakoutNoFrameskip-v4",
-        num_parallel_environments=num_envs)
+    alf.config("create_environment",
+               env_name="BreakoutNoFrameskip-v4",
+               num_parallel_environments=num_envs)
     num_env_steps = 100000
     initial_collect_steps = 2000
-    alf.config(
-        "TrainerConfig", mini_batch_size=256, num_updates_per_train_iter=5)
-    alf.config(
-        "MuzeroRepresentationImpl",
-        reanalyze_batch_size=1280 if use_small_net else 640)
+    alf.config("TrainerConfig",
+               mini_batch_size=256,
+               num_updates_per_train_iter=5)
+    alf.config("MuzeroRepresentationImpl",
+               reanalyze_batch_size=1280 if use_small_net else 640)
 elif suite == "PROCGEN":
     num_envs = define_config('num_envs', 64)
     unroll_length = define_config('unroll_length', 0.5)
     alf.config('FrameStacker', stack_size=4)
-    alf.config(
-        "create_environment",
-        env_load_fn=suite_procgen.load,
-        env_name='bossfight',
-        num_parallel_environments=num_envs)
+    alf.config("create_environment",
+               env_load_fn=suite_procgen.load,
+               env_name='bossfight',
+               num_parallel_environments=num_envs)
     num_env_steps = 1000000
     initial_collect_steps = 10000
-    alf.config(
-        "TrainerConfig", mini_batch_size=1024, num_updates_per_train_iter=1)
+    alf.config("TrainerConfig",
+               mini_batch_size=1024,
+               num_updates_per_train_iter=1)
 else:
     raise ValueError(f"Invalid value suite={suite}")
 
 lr_schedule = define_config(
     'lr_schedule',
-    StepScheduler(
-        "percent", [(0.45, initial_lr), (0.9, 0.1 * initial_lr),
-                    (1.0, 0.01 * initial_lr)],
-        warm_up_period=0.01,
-        start=initial_collect_steps / num_env_steps))
+    StepScheduler("percent", [(0.45, initial_lr), (0.9, 0.1 * initial_lr),
+                              (1.0, 0.01 * initial_lr)],
+                  warm_up_period=0.01,
+                  start=initial_collect_steps / num_env_steps))
 
 img_channels, img_height, img_width = alf.get_raw_observation_spec().shape
 
 alf.config("alf.norm_layers.BatchNorm1d", affine=True)
 alf.config("alf.norm_layers.BatchNorm2d", affine=True)
-alf.config(
-    "layers.ResidueBlock",
-    with_batch_normalization=use_bn,
-    bn_ctor=norm_type.BatchNorm2d)
+alf.config("layers.ResidueBlock",
+           with_batch_normalization=use_bn,
+           bn_ctor=norm_type.BatchNorm2d)
 alf.config("layers.Conv2D", use_bn=use_bn, bn_ctor=norm_type.BatchNorm2d)
 alf.config("layers.FC", bn_ctor=norm_type.BatchNorm1d)
 
@@ -214,9 +211,10 @@ aug_shift = define_config('aug_shift', 4)
 
 
 def rand_intensity_(x: torch.Tensor) -> torch.Tensor:
+
     def _f(x: torch.Tensor) -> torch.Tensor:
-        ratio = 1 + 0.05 * torch.randn(
-            x.shape[0], 1, 1, 1, device=x.device).clamp_(-2, 2)
+        ratio = 1 + 0.05 * torch.randn(x.shape[0], 1, 1, 1,
+                                       device=x.device).clamp_(-2, 2)
         return (ratio * x).round_().clamp_(max=255)
 
     # Do it in two batches to reduce memory footprint.
@@ -262,8 +260,8 @@ def create_representation_net(observation_spec):
     in_channels = observation_spec.shape[0]
     return alf.nn.Sequential(
         alf.layers.Scale(1. / 255.),
-        alf.layers.Conv2D(
-            in_channels, 32, kernel_size=3, strides=2, padding=1),
+        alf.layers.Conv2D(in_channels, 32, kernel_size=3, strides=2,
+                          padding=1),
         alf.layers.ResidueBlock(32, 32, 3, 1),
         alf.layers.ResidueBlock(32, 64, 3, 2),
         alf.layers.ResidueBlock(64, 64, 3, 1),
@@ -287,12 +285,11 @@ def create_dynamics_net(input_tensor_spec):
                 -1, 1, *plane_size)
         ],
                             dim=1),
-        a=alf.layers.Conv2D(
-            num_planes + 1,
-            num_planes,
-            3,
-            padding=1,
-            activation=alf.math.identity),
+        a=alf.layers.Conv2D(num_planes + 1,
+                            num_planes,
+                            3,
+                            padding=1,
+                            activation=alf.math.identity),
         b=(('input.0', 'a'), lambda x: activation(x[0] + x[1])),
         c=alf.layers.ResidueBlock(num_planes, num_planes, 3, 1),
         d=dyn_state_normalizer,
@@ -327,12 +324,11 @@ def create_dynamics_net_small(input_tensor_spec):
                 -1, 1, *plane_size)
         ],
                             dim=1),
-        a=alf.layers.Conv2D(
-            num_planes + 1,
-            num_planes,
-            3,
-            padding=1,
-            activation=alf.math.identity),
+        a=alf.layers.Conv2D(num_planes + 1,
+                            num_planes,
+                            3,
+                            padding=1,
+                            activation=alf.math.identity),
         b=(('input.0', 'a'), lambda x: activation(x[0] + x[1])),
         c=dyn_state_normalizer,
         input_tensor_spec=input_tensor_spec,
@@ -340,6 +336,7 @@ def create_dynamics_net_small(input_tensor_spec):
 
 
 class SumNet(alf.nn.Network):
+
     def __init__(self, input_tensor_spec):
         super().__init__(input_tensor_spec, input_tensor_spec)
 
@@ -362,8 +359,9 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
         if not x.requires_grad:
             return x
         if alf.summary.should_record_summaries():
-            return summarize_tensor_gradients(
-                "SimpleMCTSModel/" + name, x, clone=True)
+            return summarize_tensor_gradients("SimpleMCTSModel/" + name,
+                                              x,
+                                              clone=True)
         else:
             return x
 
@@ -373,41 +371,39 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
                 return [
                     alf.layers.Reshape(-1),
                     alf.nn.LSTMCell(latent_dim, 512),
-                    alf.layers.FC(
-                        512,
-                        dim,
-                        activation=activation,
-                        weight_opt_args=dict(
-                            fixed_norm=pred_fixed_weight_norm),
-                        use_bn=pred_use_bn)
+                    alf.layers.FC(512,
+                                  dim,
+                                  activation=activation,
+                                  weight_opt_args=dict(
+                                      fixed_norm=pred_fixed_weight_norm),
+                                  use_bn=pred_use_bn)
                 ]
             else:
                 return [
                     alf.layers.Conv2D(state_channels, 16, 1),
                     alf.layers.Reshape(-1),
                     alf.nn.LSTMCell(state_height * state_width * 16, 512),
-                    alf.layers.FC(
-                        512,
-                        dim,
-                        activation=activation,
-                        weight_opt_args=dict(
-                            fixed_norm=pred_fixed_weight_norm),
-                        use_bn=pred_use_bn)
+                    alf.layers.FC(512,
+                                  dim,
+                                  activation=activation,
+                                  weight_opt_args=dict(
+                                      fixed_norm=pred_fixed_weight_norm),
+                                  use_bn=pred_use_bn)
                 ]
         else:
             if use_small_net:
                 return [
                     alf.layers.Reshape(-1),
-                    alf.layers.FC(
-                        latent_dim, 1024, activation=activation,
-                        use_bn=use_bn),
-                    alf.layers.FC(
-                        1024,
-                        dim,
-                        activation=activation,
-                        weight_opt_args=dict(
-                            fixed_norm=pred_fixed_weight_norm),
-                        use_bn=pred_use_bn),
+                    alf.layers.FC(latent_dim,
+                                  1024,
+                                  activation=activation,
+                                  use_bn=use_bn),
+                    alf.layers.FC(1024,
+                                  dim,
+                                  activation=activation,
+                                  weight_opt_args=dict(
+                                      fixed_norm=pred_fixed_weight_norm),
+                                  use_bn=pred_use_bn),
                 ]
             else:
                 return [
@@ -422,13 +418,12 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
                             alf.layers.BatchNorm2d,
                             fixed_weight_norm=last_bn_fixed_weight_norm)),
                     alf.layers.Reshape(-1),
-                    alf.layers.FC(
-                        state_height * state_width * 16,
-                        dim,
-                        activation=activation,
-                        weight_opt_args=dict(
-                            fixed_norm=pred_fixed_weight_norm),
-                        use_bn=pred_use_bn),
+                    alf.layers.FC(state_height * state_width * 16,
+                                  dim,
+                                  activation=activation,
+                                  weight_opt_args=dict(
+                                      fixed_norm=pred_fixed_weight_norm),
+                                  use_bn=pred_use_bn),
                 ]
 
     if num_quantiles == 1:
@@ -444,14 +439,13 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
         else:
             return [lambda x: torch.lerp(x.detach(), x, scale)]
 
-    rv_weight_opt_args = dict(
-        weight_decay=rv_weight_decay,
-        l2_regularization=rv_weight_l2,
-        fixed_norm=False,
-        max_norm=last_weight_max_norm)
+    rv_weight_opt_args = dict(weight_decay=rv_weight_decay,
+                              l2_regularization=rv_weight_l2,
+                              fixed_norm=False,
+                              max_norm=last_weight_max_norm)
 
-    rv_bias_opt_args = dict(
-        weight_decay=rv_bias_decay, l2_regularization=rv_bias_l2)
+    rv_bias_opt_args = dict(weight_decay=rv_bias_decay,
+                            l2_regularization=rv_bias_l2)
 
     value_net = alf.layers.Sequential(
         partial(_summarize_grad, name='value_grad'),
@@ -463,13 +457,12 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
         # AMP
         alf.layers.AMPWrapper(
             False,
-            alf.layers.FC(
-                dim,
-                num_quantiles,
-                weight_opt_args=rv_weight_opt_args,
-                bias_opt_args=rv_bias_opt_args,
-                bias_initializer=_get_rv_bias_initializer(),
-                kernel_initializer=torch.nn.init.zeros_)),
+            alf.layers.FC(dim,
+                          num_quantiles,
+                          weight_opt_args=rv_weight_opt_args,
+                          bias_opt_args=rv_bias_opt_args,
+                          bias_initializer=_get_rv_bias_initializer(),
+                          kernel_initializer=torch.nn.init.zeros_)),
         *_scale_grad(num_quantiles if scale_grad_by_num_quantiles else 1),
         *reshape_layer,
     )
@@ -480,13 +473,12 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
         *_scale_grad(1 / num_quantiles if scale_grad_by_num_quantiles else 1),
         alf.layers.AMPWrapper(
             False,
-            alf.layers.FC(
-                dim,
-                num_quantiles,
-                weight_opt_args=rv_weight_opt_args,
-                bias_opt_args=rv_bias_opt_args,
-                bias_initializer=_get_rv_bias_initializer(),
-                kernel_initializer=torch.nn.init.zeros_)),
+            alf.layers.FC(dim,
+                          num_quantiles,
+                          weight_opt_args=rv_weight_opt_args,
+                          bias_opt_args=rv_bias_opt_args,
+                          bias_initializer=_get_rv_bias_initializer(),
+                          kernel_initializer=torch.nn.init.zeros_)),
         *_scale_grad(num_quantiles if scale_grad_by_num_quantiles else 1),
     ] + reshape_layer
     if sum_over_reward_prediction:
@@ -500,22 +492,19 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
             dim,
             action_spec,
             logits_init_output_factor=0.0,
-            weight_opt_args=dict(
-                weight_decay=action_weight_decay,
-                l2_regularization=action_weight_l2,
-                fixed_norm=False,
-                max_norm=last_weight_max_norm),
-            bias_opt_args=dict(
-                weight_decay=action_bias_decay,
-                l2_regularization=action_bias_l2)),
+            weight_opt_args=dict(weight_decay=action_weight_decay,
+                                 l2_regularization=action_weight_l2,
+                                 fixed_norm=False,
+                                 max_norm=last_weight_max_norm),
+            bias_opt_args=dict(weight_decay=action_bias_decay,
+                               l2_regularization=action_bias_l2)),
     )
     game_over_net = alf.layers.Sequential(
         *_make_trunk(),
-        alf.layers.FC(
-            dim,
-            1,
-            kernel_initializer=torch.nn.init.zeros_,
-            bias_init_value=initial_game_over_bias),
+        alf.layers.FC(dim,
+                      1,
+                      kernel_initializer=torch.nn.init.zeros_,
+                      bias_init_value=initial_game_over_bias),
         alf.layers.Reshape(()),
     ) if train_game_over_function else lambda x: ()
 
@@ -537,60 +526,57 @@ else:
 
 AdamOptimizers = {'ADAM': Adam, 'ADAMTF': AdamTF, 'ADAMW': AdamW}
 
-repr_loss = losses.AsymmetricSimSiamLoss(
-    input_size=latent_dim,
-    proj_hidden_size=512,
-    pred_hidden_size=512,
-    output_size=1024,
-    proj_last_use_bn=True,
-    fixed_weight_norm=fixed_weight_norm,
-    lr=initial_lr,
-    eps=1e-5)
+repr_loss = losses.AsymmetricSimSiamLoss(input_size=latent_dim,
+                                         proj_hidden_size=512,
+                                         pred_hidden_size=512,
+                                         output_size=1024,
+                                         proj_last_use_bn=True,
+                                         fixed_weight_norm=fixed_weight_norm,
+                                         lr=initial_lr,
+                                         eps=1e-5)
 
-alf.config(
-    "MCTSModel",
-    value_loss=rv_loss,
-    reward_loss=rv_loss,
-    repr_loss=repr_loss,
-    predict_reward_sum=True,
-    apply_partial_trajectory_mask=True,
-    policy_loss_weight=1.0,
-    value_loss_weight=0.5,
-    repr_prediction_loss_weight=20.0,
-    reward_loss_weight=2.0,
-    initial_loss_weight=1)
+alf.config("MCTSModel",
+           value_loss=rv_loss,
+           reward_loss=rv_loss,
+           repr_loss=repr_loss,
+           predict_reward_sum=True,
+           apply_partial_trajectory_mask=True,
+           policy_loss_weight=1.0,
+           value_loss_weight=0.5,
+           repr_prediction_loss_weight=20.0,
+           reward_loss_weight=2.0,
+           initial_loss_weight=1)
 
-alf.config(
-    "SimpleMCTSModel",
-    encoding_net_ctor=encoding_net_ctor,
-    dynamics_net_ctor=dynamics_net_ctor,
-    prediction_net_ctor=create_prediction_net,
-    train_repr_prediction=train_repr_prediction,
-    train_game_over_function=train_game_over_function,
-    initial_alpha=0.)
+alf.config("SimpleMCTSModel",
+           encoding_net_ctor=encoding_net_ctor,
+           dynamics_net_ctor=dynamics_net_ctor,
+           prediction_net_ctor=create_prediction_net,
+           train_repr_prediction=train_repr_prediction,
+           train_game_over_function=train_game_over_function,
+           initial_alpha=0.)
 
-alf.config(
-    "MCTSAlgorithm",
-    num_simulations=52,
-    num_parallel_sims=2,
-    discount=discount,
-    root_dirichlet_alpha=0.3,
-    root_exploration_fraction=0.,
-    pb_c_init=0.75,
-    pb_c_base=19652,
-    is_two_player_game=False,
-    value_min_max_delta=0.01,
-    ucb_break_tie_eps=1e-6,
-    visit_softmax_temperature_fn=VisitSoftmaxTemperatureByProgress(
-        [(0.5, 1.0), (0.75, 0.5), (1, 0.25)]),
-    act_with_exploration_policy=True,
-    learn_with_exploration_policy=True,
-    search_with_exploration_policy=True,
-    unexpanded_value_score='mean',
-    expand_all_children=False,
-    expand_all_root_children=False,
-    max_unroll_length=5,
-    learn_policy_temperature=1.0)
+alf.config("MCTSAlgorithm",
+           num_simulations=52,
+           num_parallel_sims=2,
+           discount=discount,
+           root_dirichlet_alpha=0.3,
+           root_exploration_fraction=0.,
+           pb_c_init=0.75,
+           pb_c_base=19652,
+           is_two_player_game=False,
+           value_min_max_delta=0.01,
+           ucb_break_tie_eps=1e-6,
+           visit_softmax_temperature_fn=VisitSoftmaxTemperatureByProgress([
+               (0.5, 1.0), (0.75, 0.5), (1, 0.25)
+           ]),
+           act_with_exploration_policy=True,
+           learn_with_exploration_policy=True,
+           search_with_exploration_policy=True,
+           unexpanded_value_score='mean',
+           expand_all_children=False,
+           expand_all_root_children=False,
+           max_unroll_length=5,
+           learn_policy_temperature=1.0)
 
 
 def model_ctor(*args, **kwargs):
@@ -624,58 +610,58 @@ alf.config(
     enable_amp=True,
     # use a bigger num_simulations for rollout to get better samples from
     # interaction.
-    mcts_algorithm_ctor=partial(
-        MCTSAlgorithm, num_parallel_sims=8, num_simulations=200),
+    mcts_algorithm_ctor=partial(MCTSAlgorithm,
+                                num_parallel_sims=8,
+                                num_simulations=200),
     reward_transformer=reward_transformer)
 
 alf.config('common.TargetUpdater', delayed_update=True)
 
-opt_kwargs = dict(
-    lr=lr_schedule,
-    weight_decay=weight_decay,
-    gradient_clipping=1e9,
-    clip_by_global_norm=True)
+opt_kwargs = dict(lr=lr_schedule,
+                  weight_decay=weight_decay,
+                  gradient_clipping=1e9,
+                  clip_by_global_norm=True)
 
 if optimizer_type in AdamOptimizers:
-    optimizer = AdamOptimizers[optimizer_type](
-        betas=(0.9, 0.999), eps=1e-7, **opt_kwargs)
+    optimizer = AdamOptimizers[optimizer_type](betas=(0.9, 0.999),
+                                               eps=1e-7,
+                                               **opt_kwargs)
 elif optimizer_type == 'NERO':
-    optimizer = NeroPlus(
-        lr=lr_schedule,
-        betas=(0.9, 0.999),
-        eps=1e-7,
-        weight_decay=0,
-        normalizing_grad_by_norm=False,
-        fixed_norm=True,
-        max_norm=1,
-        zero_mean=True,
-        gradient_clipping=1e9,
-        clip_by_global_norm=True)
+    optimizer = NeroPlus(lr=lr_schedule,
+                         betas=(0.9, 0.999),
+                         eps=1e-7,
+                         weight_decay=0,
+                         normalizing_grad_by_norm=False,
+                         fixed_norm=True,
+                         max_norm=1,
+                         zero_mean=True,
+                         gradient_clipping=1e9,
+                         clip_by_global_norm=True)
 else:
     optimizer = SGD(momentum=0.9, **opt_kwargs)
 
 alf.config("Agent", optimizer=optimizer)
 
 # training config
-alf.config(
-    "TrainerConfig",
-    unroll_length=unroll_length,
-    update_counter_every_mini_batch=False,
-    priority_replay=True,
-    priority_replay_alpha=1.2,
-    priority_replay_beta=0,
-    priority_replay_eps=1e-5,
-    num_iterations=0,
-    num_env_steps=num_env_steps,
-    num_checkpoints=1,
-    evaluate=True,
-    num_evals=10,
-    num_eval_episodes=32,
-    num_eval_environments=32,
-    enable_amp=False,
-    empty_cache=True,
-    debug_summaries=True,
-    summary_interval=int(num_env_steps // (1000 * unroll_length * num_envs)),
-    replay_buffer_length=num_env_steps // num_envs,
-    initial_collect_steps=initial_collect_steps,
-    summarize_grads_and_vars=True)
+alf.config("TrainerConfig",
+           unroll_length=unroll_length,
+           update_counter_every_mini_batch=False,
+           priority_replay=True,
+           priority_replay_alpha=1.2,
+           priority_replay_beta=0,
+           priority_replay_eps=1e-5,
+           num_iterations=0,
+           num_env_steps=num_env_steps,
+           num_checkpoints=1,
+           evaluate=True,
+           num_evals=10,
+           num_eval_episodes=32,
+           num_eval_environments=32,
+           enable_amp=False,
+           empty_cache=True,
+           debug_summaries=True,
+           summary_interval=int(num_env_steps //
+                                (1000 * unroll_length * num_envs)),
+           replay_buffer_length=num_env_steps // num_envs,
+           initial_collect_steps=initial_collect_steps,
+           summarize_grads_and_vars=True)

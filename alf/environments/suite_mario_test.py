@@ -22,6 +22,7 @@ import alf.nest as nest
 
 
 class SuiteMarioTest(alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         if not suite_mario.is_available():
@@ -34,8 +35,9 @@ class SuiteMarioTest(alf.test.TestCase):
     def test_process_env(self):
         game = 'SuperMarioBros-Nes'
 
-        self._env = suite_mario.load(
-            game=game, state='Level1-1', wrap_with_process=True)
+        self._env = suite_mario.load(game=game,
+                                     state='Level1-1',
+                                     wrap_with_process=True)
         self.assertIsInstance(self._env, alf_environment.AlfEnvironment)
         self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
         self.assertEqual((1, 84, 84), self._env.observation_spec().shape)
@@ -62,13 +64,14 @@ class SuiteMarioTest(alf.test.TestCase):
         env_num = 8
 
         def ctor(game, env_id=None):
-            return suite_mario.load(
-                game=game, state='Level1-1', wrap_with_process=False)
+            return suite_mario.load(game=game,
+                                    state='Level1-1',
+                                    wrap_with_process=False)
 
         constructor = functools.partial(ctor, game)
 
-        self._env = parallel_environment.ParallelAlfEnvironment(
-            [constructor] * env_num)
+        self._env = parallel_environment.ParallelAlfEnvironment([constructor] *
+                                                                env_num)
         self.assertTrue(self._env.batched)
         self.assertEqual(self._env.batch_size, env_num)
         self.assertEqual(torch.uint8, self._env.observation_spec().dtype)

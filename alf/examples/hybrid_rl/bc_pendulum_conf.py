@@ -30,8 +30,9 @@ offline_buffer_dir = [
     "./hybrid_rl/replay_buffer_data/pendulum_replay_buffer_from_sac_10k"
 ]
 
-alf.config(
-    "create_environment", env_name="Pendulum-v0", num_parallel_environments=1)
+alf.config("create_environment",
+           env_name="Pendulum-v0",
+           num_parallel_environments=1)
 
 alf.config(
     'Agent',
@@ -39,25 +40,22 @@ alf.config(
     optimizer=alf.optimizers.Adam(lr=lr),
 )
 
-alf.config(
-    'TrainerConfig',
-    algorithm_ctor=Agent,
-    whole_replay_buffer_training=False,
-    clear_replay_buffer=False)
+alf.config('TrainerConfig',
+           algorithm_ctor=Agent,
+           whole_replay_buffer_training=False,
+           clear_replay_buffer=False)
 
-proj_net = partial(
-    alf.networks.StableNormalProjectionNetwork,
-    state_dependent_std=True,
-    squash_mean=False,
-    scale_distribution=True,
-    min_std=1e-3,
-    max_std=10)
+proj_net = partial(alf.networks.StableNormalProjectionNetwork,
+                   state_dependent_std=True,
+                   squash_mean=False,
+                   scale_distribution=True,
+                   min_std=1e-3,
+                   max_std=10)
 
-actor_network_cls = partial(
-    alf.networks.ActorDistributionNetwork,
-    fc_layer_params=fc_layers_params,
-    activation=activation,
-    continuous_projection_net_ctor=proj_net)
+actor_network_cls = partial(alf.networks.ActorDistributionNetwork,
+                            fc_layer_params=fc_layers_params,
+                            activation=activation,
+                            continuous_projection_net_ctor=proj_net)
 
 alf.config('BcAlgorithm', actor_network_cls=actor_network_cls)
 

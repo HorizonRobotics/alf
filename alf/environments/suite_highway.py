@@ -39,9 +39,8 @@ class FlattenObservation(gym_wrappers.BaseObservationWrapper):
     """
 
     def transform_space(self, observation_space):
-        return gym.spaces.Box(
-            low=-observation_space.low.ravel(),
-            high=observation_space.high.ravel())
+        return gym.spaces.Box(low=-observation_space.low.ravel(),
+                              high=observation_space.high.ravel())
 
     def transform_observation(self, observation):
         return observation.ravel()
@@ -116,10 +115,8 @@ def load(environment_name,
     if env_config is None:
         default_env_config = {
             "observation": {
-                "type":
-                    "Kinematics",
-                "vehicles_count":
-                    5,
+                "type": "Kinematics",
+                "vehicles_count": 5,
                 "features": [
                     "presence", "x", "y", "vx", "vy", "cos_h", "sin_h"
                 ],
@@ -129,10 +126,8 @@ def load(environment_name,
                     "vx": [-20, 20],
                     "vy": [-20, 20]
                 },
-                "absolute":
-                    False,
-                "order":
-                    "sorted"
+                "absolute": False,
+                "order": "sorted"
             },
             "action": {
                 "type": "ContinuousAction"
@@ -158,10 +153,9 @@ def load(environment_name,
 
     max_episode_steps = min(gym_env.config["duration"] - 1, max_episode_steps)
 
-    return suite_gym.wrap_env(
-        gym_env,
-        env_id=env_id,
-        discount=discount,
-        max_episode_steps=max_episode_steps,
-        gym_env_wrappers=gym_env_wrappers,
-        alf_env_wrappers=alf_env_wrappers)
+    return suite_gym.wrap_env(gym_env,
+                              env_id=env_id,
+                              discount=discount,
+                              max_episode_steps=max_episode_steps,
+                              gym_env_wrappers=gym_env_wrappers,
+                              alf_env_wrappers=alf_env_wrappers)

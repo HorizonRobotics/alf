@@ -58,14 +58,14 @@ AVG_R_DIFF = AVG_R_METRIC + "_diff"
 
 
 def _return_diff(item):
-    return abs(item[AVG_R_DIFF]) / (max(
-        abs(float(item["alg1_" + AVG_R_METRIC])),
-        abs(float(item["alg2_" + AVG_R_METRIC]))) + 1.e-5)
+    return abs(item[AVG_R_DIFF]) / (
+        max(abs(float(item["alg1_" + AVG_R_METRIC])),
+            abs(float(item["alg2_" + AVG_R_METRIC]))) + 1.e-5)
 
 
 def _return_1_larger(item):
-    return float(item["alg1_" + AVG_R_METRIC]) > float(
-        item["alg2_" + AVG_R_METRIC])
+    return float(item["alg1_" + AVG_R_METRIC]) > float(item["alg2_" +
+                                                            AVG_R_METRIC])
 
 
 def _file_exists(file):
@@ -78,8 +78,9 @@ def _play_cmd(root_dir, seed):
             "python3 -m alf.bin.play "
             " --random_seed={seed} --num_episodes=1"
             " --verbosity=1 --root_dir=`pwd` --sleep_time_per_step=0"
-            " --epsilon_greedy=0 {g}").format(
-                root_dir=root_dir, seed=seed, g=FLAGS.common_gin)
+            " --epsilon_greedy=0 {g}").format(root_dir=root_dir,
+                                              seed=seed,
+                                              g=FLAGS.common_gin)
 
 
 def _get_metric(pattern, buffer, log_file):

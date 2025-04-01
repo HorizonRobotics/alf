@@ -41,29 +41,28 @@ from alf.utils.schedulers import Scheduler
 
 ActionType = Enum('ActionType', ('Discrete', 'Continuous', 'Mixed'))
 
-SacActionState = namedtuple(
-    "SacActionState", ["actor_network", "critic"], default_value=())
+SacActionState = namedtuple("SacActionState", ["actor_network", "critic"],
+                            default_value=())
 
 SacCriticState = namedtuple("SacCriticState", ["critics", "target_critics"])
 
-SacState = namedtuple(
-    "SacState", ["action", "actor", "critic", "repr", "target_repr"],
-    default_value=())
+SacState = namedtuple("SacState",
+                      ["action", "actor", "critic", "repr", "target_repr"],
+                      default_value=())
 
 SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
 
-SacActorInfo = namedtuple(
-    "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
+SacActorInfo = namedtuple("SacActorInfo", ["actor_loss", "neg_entropy"],
+                          default_value=())
 
-SacInfo = namedtuple(
-    "SacInfo", [
-        "reward", "step_type", "discount", "action", "action_distribution",
-        "actor", "critic", "alpha", "log_pi", "discounted_return", "repr"
-    ],
-    default_value=())
+SacInfo = namedtuple("SacInfo", [
+    "reward", "step_type", "discount", "action", "action_distribution",
+    "actor", "critic", "alpha", "log_pi", "discounted_return", "repr"
+],
+                     default_value=())
 
-SacLossInfo = namedtuple(
-    'SacLossInfo', ('actor', 'critic', 'alpha', 'repr'), default_value=())
+SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha', 'repr'),
+                         default_value=())
 
 
 def _set_target_entropy(name, target_entropy, flat_action_spec):
@@ -292,18 +291,16 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         original_observation_spec = observation_spec
         if repr_alg_ctor is not None:
-            repr_alg = repr_alg_ctor(
-                observation_spec=observation_spec,
-                action_spec=action_spec,
-                reward_spec=reward_spec,
-                debug_summaries=debug_summaries,
-                config=config)
-            target_repr_alg = repr_alg_ctor(
-                observation_spec=observation_spec,
-                action_spec=action_spec,
-                reward_spec=reward_spec,
-                debug_summaries=debug_summaries,
-                config=config)
+            repr_alg = repr_alg_ctor(observation_spec=observation_spec,
+                                     action_spec=action_spec,
+                                     reward_spec=reward_spec,
+                                     debug_summaries=debug_summaries,
+                                     config=config)
+            target_repr_alg = repr_alg_ctor(observation_spec=observation_spec,
+                                            action_spec=action_spec,
+                                            reward_spec=reward_spec,
+                                            debug_summaries=debug_summaries,
+                                            config=config)
             assert hasattr(repr_alg,
                            'output_spec'), "repr_alg must have output_spec"
             observation_spec = repr_alg.output_spec
@@ -327,8 +324,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if self._act_type == ActionType.Mixed:
             # separate alphas for discrete and continuous actions
-            log_alpha = type(action_spec)((_init_log_alpha(),
-                                           _init_log_alpha()))
+            log_alpha = type(action_spec)(
+                (_init_log_alpha(), _init_log_alpha()))
         else:
             log_alpha = _init_log_alpha()
 
@@ -398,8 +395,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
-        critic_loss_ctor = functools.partial(
-            critic_loss_ctor, debug_summaries=debug_summaries)
+        critic_loss_ctor = functools.partial(critic_loss_ctor,
+                                             debug_summaries=debug_summaries)
         # Have different names to separate their summary curves
         self._critic_losses = []
         for i in range(num_critic_replicas):
@@ -421,9 +418,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             if self._act_type == ActionType.Mixed:
                 if not isinstance(target_entropy, (tuple, list)):
                     target_entropy = nest.map_structure_up_to(
-                        nest.nest_top_level(
-                            self._action_spec), lambda _: target_entropy,
-                        self._action_spec)
+                        nest.nest_top_level(self._action_spec),
+                        lambda _: target_entropy, self._action_spec)
                 # separate target entropies for discrete and continuous actions
                 self._target_entropy = nest.map_structure_up_to(
                     target_entropy, lambda spec, t: _set_target_entropy(
@@ -492,9 +488,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        continuous_actor_network_cls, critic_network_cls,
                        q_network_cls):
+
         def _make_parallel(net):
-            return net.make_parallel(
-                self._num_critic_replicas * reward_spec.numel)
+            return net.make_parallel(self._num_critic_replicas *
+                                     reward_spec.numel)
 
         def _check_spec_equal(spec1, spec2):
             assert nest.flatten(spec1) == nest.flatten(spec2), (
@@ -555,9 +552,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                                        continuous_action_spec),
                     action_spec=discrete_action_spec)
             else:
-                q_network = q_network_cls(
-                    input_tensor_spec=observation_spec,
-                    action_spec=action_spec)
+                q_network = q_network_cls(input_tensor_spec=observation_spec,
+                                          action_spec=action_spec)
             critic_networks = _make_parallel(q_network)
 
         return critic_networks, actor_network, act_type
@@ -620,10 +616,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             # ``action``, it's still valid. It can also be used for summary
             # purpose because of the expectation taken over the continuous action
             # when summarizing.
-            action_dist = type(self._action_spec)((discrete_action_dist,
-                                                   continuous_action_dist))
-            action = type(self._action_spec)((discrete_action,
-                                              continuous_action))
+            action_dist = type(self._action_spec)(
+                (discrete_action_dist, continuous_action_dist))
+            action = type(self._action_spec)(
+                (discrete_action, continuous_action))
         elif self._act_type == ActionType.Discrete:
             action_dist = discrete_action_dist
             action = discrete_action
@@ -673,10 +669,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=state.action,
             epsilon_greedy=self._epsilon_greedy,
             eps_greedy_sampling=True)
-        return AlgStep(
-            output=action,
-            state=new_state._replace(action=action_state),
-            info=info._replace(action_distribution=action_dist))
+        return AlgStep(output=action,
+                       state=new_state._replace(action=action_state),
+                       info=info._replace(action_distribution=action_dist))
 
     def rollout_step(self, inputs: TimeStep, state: SacState):
         """``rollout_step()`` basically predicts actions like what is done by
@@ -711,8 +706,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             _, target_critics_state = self._compute_critics(
                 self._target_critic_networks, target_observation, action,
                 state.critic.target_critics)
-            critic_state = SacCriticState(
-                critics=critics_state, target_critics=target_critics_state)
+            critic_state = SacCriticState(critics=critics_state,
+                                          target_critics=target_critics_state)
             if self._act_type == ActionType.Continuous:
                 # During unroll, the computations of ``critics_state`` and
                 # ``actor_state`` are the same.
@@ -723,12 +718,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
             actor_state = state.actor
             critic_state = state.critic
 
-        new_state = new_state._replace(
-            action=action_state, actor=actor_state, critic=critic_state)
-        return AlgStep(
-            output=action,
-            state=new_state,
-            info=info._replace(action=action, action_distribution=action_dist))
+        new_state = new_state._replace(action=action_state,
+                                       actor=actor_state,
+                                       critic=critic_state)
+        return AlgStep(output=action,
+                       state=new_state,
+                       info=info._replace(action=action,
+                                          action_distribution=action_dist))
 
     def _apply_reward_weights(self, critics):
         critics = critics * self.reward_weights
@@ -824,9 +820,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
         actor_loss = math_ops.add_n(nest.flatten(actor_loss))
-        actor_info = LossInfo(
-            loss=actor_loss + cont_alpha * continuous_log_pi,
-            extra=SacActorInfo(actor_loss=actor_loss, neg_entropy=neg_entropy))
+        actor_info = LossInfo(loss=actor_loss + cont_alpha * continuous_log_pi,
+                              extra=SacActorInfo(actor_loss=actor_loss,
+                                                 neg_entropy=neg_entropy))
         return critics_state, actor_info
 
     def _select_q_value(self, action, q_values):
@@ -877,16 +873,17 @@ class SacAlgorithm(OffPolicyAlgorithm):
         elif self._act_type == ActionType.Mixed:
             critics = self._select_q_value(rollout_info.action[0], critics)
             discrete_act_dist = action_distribution[0]
-            target_critics = torch.sum(
-                discrete_act_dist.probs * target_critics, dim=-1)
+            target_critics = torch.sum(discrete_act_dist.probs *
+                                       target_critics,
+                                       dim=-1)
 
         target_critic = target_critics.reshape(target_critics.shape[0],
                                                *self._reward_spec.shape)
 
         target_critic = target_critic.detach()
 
-        state = SacCriticState(
-            critics=critics_state, target_critics=target_critics_state)
+        state = SacCriticState(critics=critics_state,
+                               target_critics=target_critics_state)
         info = SacCriticInfo(critics=critics, target_critic=target_critic)
 
         return state, info
@@ -919,16 +916,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
         new_state = new_state._replace(target_repr=target_repr_state)
 
         (action_distribution, action, critics,
-         action_state) = self._predict_action(
-             observation, state=state.action)
+         action_state) = self._predict_action(observation, state=state.action)
 
         log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
                                     action_distribution, action)
 
         if self._act_type == ActionType.Mixed:
             # For mixed type, add log_pi separately
-            log_pi = type(self._action_spec)((sum(nest.flatten(log_pi[0])),
-                                              sum(nest.flatten(log_pi[1]))))
+            log_pi = type(self._action_spec)(
+                (sum(nest.flatten(log_pi[0])), sum(nest.flatten(log_pi[1]))))
         else:
             log_pi = sum(nest.flatten(log_pi))
 
@@ -946,19 +942,19 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action, action_distribution)
         alpha_loss = self._alpha_train_step(log_pi)
 
-        new_state = new_state._replace(
-            action=action_state, actor=actor_state, critic=critic_state)
-        info = info._replace(
-            reward=inputs.reward,
-            step_type=inputs.step_type,
-            discount=inputs.discount,
-            action=rollout_info.action,
-            action_distribution=action_distribution,
-            actor=actor_loss,
-            critic=critic_info,
-            alpha=alpha_loss,
-            log_pi=log_pi,
-            discounted_return=rollout_info.discounted_return)
+        new_state = new_state._replace(action=action_state,
+                                       actor=actor_state,
+                                       critic=critic_state)
+        info = info._replace(reward=inputs.reward,
+                             step_type=inputs.step_type,
+                             discount=inputs.discount,
+                             action=rollout_info.action,
+                             action_distribution=action_distribution,
+                             actor=actor_loss,
+                             critic=critic_info,
+                             alpha=alpha_loss,
+                             log_pi=log_pi,
+                             discounted_return=rollout_info.discounted_return)
         return AlgStep(action, new_state, info)
 
     def after_update(self, root_inputs, info: SacInfo):
@@ -1007,14 +1003,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
         else:
             repr_loss = LossInfo(loss=0., extra=())
 
-        return LossInfo(
-            loss=loss,
-            priority=critic_loss.priority,
-            extra=SacLossInfo(
-                actor=actor_loss.extra,
-                critic=critic_loss.extra,
-                repr=repr_loss.extra,
-                alpha=alpha_loss))
+        return LossInfo(loss=loss,
+                        priority=critic_loss.priority,
+                        extra=SacLossInfo(actor=actor_loss.extra,
+                                          critic=critic_loss.extra,
+                                          repr=repr_loss.extra,
+                                          alpha=alpha_loss))
 
     def _calc_critic_loss(self, info: SacInfo):
         """
@@ -1047,8 +1041,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 entropy_reward = sum(nest.flatten(entropy_reward))
                 discount = self._critic_losses[0].gamma * info.discount
                 info = info._replace(
-                    reward=(info.reward + common.expand_dims_as(
-                        entropy_reward * discount, info.reward)))
+                    reward=(info.reward +
+                            common.expand_dims_as(entropy_reward *
+                                                  discount, info.reward)))
 
         critic_info = info.critic
         critic_losses = []
@@ -1063,15 +1058,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._calculate_priority:
             valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
             valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
-            priority = (
-                (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
+            priority = ((critic_loss * valid_masks).sum(dim=0) /
+                        valid_n).sqrt()
         else:
             priority = ()
 
-        return LossInfo(
-            loss=critic_loss,
-            priority=priority,
-            extra=critic_loss / float(self._num_critic_replicas))
+        return LossInfo(loss=critic_loss,
+                        priority=priority,
+                        extra=critic_loss / float(self._num_critic_replicas))
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_networks', '_target_repr_alg']

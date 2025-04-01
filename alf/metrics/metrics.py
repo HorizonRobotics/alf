@@ -61,8 +61,8 @@ class MetricBuffer(torch.nn.Module):
             self._current_pos += 1
         else:
             n = min(n, self._max_len)
-            pos = (self._current_pos + torch.arange(
-                n, device=self._device)) % self._max_len
+            pos = (self._current_pos +
+                   torch.arange(n, device=self._device)) % self._max_len
             self._buf[pos] = value[:n]
             self._current_pos += n
 
@@ -133,8 +133,9 @@ class NumberOfEpisodes(metric.StepMetric):
                  name='NumberOfEpisodes',
                  prefix='Metrics',
                  dtype=torch.int64):
-        super(NumberOfEpisodes, self).__init__(
-            name=name, dtype=dtype, prefix=prefix)
+        super(NumberOfEpisodes, self).__init__(name=name,
+                                               dtype=dtype,
+                                               prefix=prefix)
         self.register_buffer('_number_episodes', torch.zeros((), dtype=dtype))
 
     def call(self, time_step):
@@ -200,8 +201,9 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
                example metric value.
             device (str): device of the metric ('cpu' or 'cuda')
         """
-        super(AverageEpisodicAggregationMetric, self).__init__(
-            name=name, dtype=dtype, prefix=prefix)
+        super(AverageEpisodicAggregationMetric, self).__init__(name=name,
+                                                               dtype=dtype,
+                                                               prefix=prefix)
         if example_time_step is None:
             example_metric_value = torch.zeros((), device=device)
         else:
@@ -221,22 +223,27 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
         raise NotImplementedError()
 
     def _initialize(self, example_metric_value, device):
+
         def _init_buf(val):
-            return MetricBuffer(
-                max_len=self._buffer_size, dtype=self._dtype, device=device)
+            return MetricBuffer(max_len=self._buffer_size,
+                                dtype=self._dtype,
+                                device=device)
 
         def _init_acc(val):
-            accumulator = torch.zeros(
-                self._batch_size, dtype=self._dtype, device=device)
+            accumulator = torch.zeros(self._batch_size,
+                                      dtype=self._dtype,
+                                      device=device)
             return accumulator
 
         def _init_mask(val):
-            return torch.zeros(
-                self._batch_size, dtype=torch.bool, device=device)
+            return torch.zeros(self._batch_size,
+                               dtype=torch.bool,
+                               device=device)
 
         def _init_step(val):
-            return torch.zeros(
-                self._batch_size, dtype=self._dtype, device=device)
+            return torch.zeros(self._batch_size,
+                               dtype=self._dtype,
+                               device=device)
 
         self._buffer = alf.nest.map_structure(_init_buf, example_metric_value)
         self._accumulator = alf.nest.map_structure(_init_acc,
@@ -317,9 +324,10 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
         last_episode_indices = torch.where(time_step.is_last())[0]
 
         if len(last_episode_indices) > 0:
-            alf.nest.py_map_structure_with_path(
-                _episode_end_aggregate_, self._mask, self._steps, self._buffer,
-                self._accumulator)
+            alf.nest.py_map_structure_with_path(_episode_end_aggregate_,
+                                                self._mask, self._steps,
+                                                self._buffer,
+                                                self._accumulator)
 
         return time_step
 
@@ -360,12 +368,12 @@ class AverageReturnMetric(AverageEpisodicAggregationMetric):
                  prefix='Metrics',
                  dtype=torch.float32,
                  buffer_size=10):
-        super(AverageReturnMetric, self).__init__(
-            name=name,
-            dtype=dtype,
-            prefix=prefix,
-            buffer_size=buffer_size,
-            example_time_step=example_time_step)
+        super(AverageReturnMetric,
+              self).__init__(name=name,
+                             dtype=dtype,
+                             prefix=prefix,
+                             buffer_size=buffer_size,
+                             example_time_step=example_time_step)
 
     def _extract_metric_values(self, time_step):
         """Accumulate immediate rewards to get episodic return."""
@@ -424,13 +432,12 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
         self._reward_transformer = reward_transformer
         self._current_step = torch.zeros(batch_size, device=device)
 
-        super().__init__(
-            name=name,
-            dtype=dtype,
-            prefix=prefix,
-            buffer_size=buffer_size,
-            example_time_step=example_time_step,
-            device=device)
+        super().__init__(name=name,
+                         dtype=dtype,
+                         prefix=prefix,
+                         buffer_size=buffer_size,
+                         example_time_step=example_time_step,
+                         device=device)
 
     def _extract_metric_values(self, time_step):
         """Accumulate discounted immediate rewards to get discounted episodic
@@ -469,8 +476,9 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
         is_first = time_step.is_first()
 
         # update discount for the next time step
-        self._accumulated_discount = (self._discount * self._timestep_discount
-                                      * self._accumulated_discount + 1)
+        self._accumulated_discount = (
+            self._discount * self._timestep_discount *
+            self._accumulated_discount + 1)
         self._timestep_discount = time_step.discount
         self._accumulated_discount = torch.where(
             is_first, torch.zeros_like(self._accumulated_discount),
@@ -491,8 +499,8 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
 
 
 @alf.configurable
-class EpisodicStartAverageDiscountedReturnMetric(
-        AverageDiscountedReturnMetric):
+class EpisodicStartAverageDiscountedReturnMetric(AverageDiscountedReturnMetric
+                                                 ):
     r"""Metric for computing the discounted return from episode start states.
     It is calculated according to the following formula:
 
@@ -518,12 +526,11 @@ class EpisodicStartAverageDiscountedReturnMetric(
                  prefix='Metrics',
                  buffer_size=10,
                  device='cpu'):
-        super().__init__(
-            name=name,
-            prefix=prefix,
-            buffer_size=buffer_size,
-            example_time_step=example_time_step,
-            device=device)
+        super().__init__(name=name,
+                         prefix=prefix,
+                         buffer_size=buffer_size,
+                         example_time_step=example_time_step,
+                         device=device)
 
     def _extract_metric_values(self, time_step):
         """Accumulate discounted immediate rewards to get discounted episodic
@@ -588,13 +595,12 @@ class AverageRewardMetric(AverageDiscountedReturnMetric):
                  prefix='Metrics',
                  buffer_size=10,
                  device='cpu'):
-        super().__init__(
-            example_time_step=example_time_step,
-            name=name,
-            prefix=prefix,
-            buffer_size=buffer_size,
-            discount=0,
-            device=device)
+        super().__init__(example_time_step=example_time_step,
+                         name=name,
+                         prefix=prefix,
+                         buffer_size=buffer_size,
+                         discount=0,
+                         device=device)
 
 
 class AverageEpisodeLengthMetric(AverageEpisodicAggregationMetric):
@@ -607,13 +613,13 @@ class AverageEpisodeLengthMetric(AverageEpisodicAggregationMetric):
                  dtype=torch.float32,
                  buffer_size=10,
                  device='cpu'):
-        super(AverageEpisodeLengthMetric, self).__init__(
-            name=name,
-            dtype=dtype,
-            prefix=prefix,
-            buffer_size=buffer_size,
-            example_time_step=example_time_step,
-            device=device)
+        super(AverageEpisodeLengthMetric,
+              self).__init__(name=name,
+                             dtype=dtype,
+                             prefix=prefix,
+                             buffer_size=buffer_size,
+                             example_time_step=example_time_step,
+                             device=device)
 
     def _extract_metric_values(self, time_step):
         """Return a constant of 1 each time, except for ``time_step.is_first()``.
@@ -648,13 +654,13 @@ class AverageEnvInfoMetric(AverageEpisodicAggregationMetric):
             device (str): device of the metric ('cpu' or 'cuda')
         """
         self._fields = fields
-        super(AverageEnvInfoMetric, self).__init__(
-            name=name,
-            dtype=dtype,
-            prefix=prefix,
-            buffer_size=buffer_size,
-            example_time_step=example_time_step,
-            device=device)
+        super(AverageEnvInfoMetric,
+              self).__init__(name=name,
+                             dtype=dtype,
+                             prefix=prefix,
+                             buffer_size=buffer_size,
+                             example_time_step=example_time_step,
+                             device=device)
 
     def _extract_metric_values(self, time_step):
         if self._fields is None:

@@ -37,6 +37,7 @@ from alf.utils.math_ops import clipped_exp
 
 
 class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(
         (
             'iqn',
@@ -54,28 +55,25 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                             min_critic_by_critic_mean, nested_observation,
                             use_doac):
         num_env = 1
-        config = TrainerConfig(
-            root_dir="dummy",
-            unroll_length=1,
-            mini_batch_length=3,
-            mini_batch_size=40,
-            initial_collect_steps=500,
-            whole_replay_buffer_training=False,
-            clear_replay_buffer=False)
-        env_class = partial(
-            PolicyUnittestEnv, nested_observation=nested_observation)
+        config = TrainerConfig(root_dir="dummy",
+                               unroll_length=1,
+                               mini_batch_length=3,
+                               mini_batch_size=40,
+                               initial_collect_steps=500,
+                               whole_replay_buffer_training=False,
+                               clear_replay_buffer=False)
+        env_class = partial(PolicyUnittestEnv,
+                            nested_observation=nested_observation)
         steps_per_episode = 13
-        env = env_class(
-            num_env,
-            steps_per_episode,
-            action_type=ActionType.Continuous,
-            reward_dim=reward_dim)
+        env = env_class(num_env,
+                        steps_per_episode,
+                        action_type=ActionType.Continuous,
+                        reward_dim=reward_dim)
 
-        eval_env = env_class(
-            100,
-            steps_per_episode,
-            action_type=ActionType.Continuous,
-            reward_dim=reward_dim)
+        eval_env = env_class(100,
+                             steps_per_episode,
+                             action_type=ActionType.Continuous,
+                             reward_dim=reward_dim)
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
@@ -87,8 +85,9 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             alf.nn.NormalProjectionNetwork,
             state_dependent_std=True,
             scale_distribution=True,
-            std_transform=partial(
-                clipped_exp, clip_value_min=-10, clip_value_max=2))
+            std_transform=partial(clipped_exp,
+                                  clip_value_min=-10,
+                                  clip_value_max=2))
 
         if nested_observation:
             obs_combiner = NestConcat()
@@ -127,25 +126,24 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             extra_kwargs = {}
             alg_ctor = DSacAlgorithm
 
-        alg = alg_ctor(
-            observation_spec=obs_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            num_quantiles=num_quantiles,
-            tau_type=tau_type,
-            actor_network_cls=actor_network,
-            critic_network_cls=critic_network,
-            critic_loss_ctor=critic_loss,
-            min_critic_by_critic_mean=min_critic_by_critic_mean,
-            use_entropy_reward=reward_dim == 1,
-            env=env,
-            config=config,
-            actor_optimizer=alf.optimizers.Adam(lr=1e-2),
-            critic_optimizer=alf.optimizers.Adam(lr=1e-2),
-            alpha_optimizer=alpha_optimizer,
-            debug_summaries=False,
-            name="MyDSAC",
-            **extra_kwargs)
+        alg = alg_ctor(observation_spec=obs_spec,
+                       action_spec=action_spec,
+                       reward_spec=reward_spec,
+                       num_quantiles=num_quantiles,
+                       tau_type=tau_type,
+                       actor_network_cls=actor_network,
+                       critic_network_cls=critic_network,
+                       critic_loss_ctor=critic_loss,
+                       min_critic_by_critic_mean=min_critic_by_critic_mean,
+                       use_entropy_reward=reward_dim == 1,
+                       env=env,
+                       config=config,
+                       actor_optimizer=alf.optimizers.Adam(lr=1e-2),
+                       critic_optimizer=alf.optimizers.Adam(lr=1e-2),
+                       alpha_optimizer=alpha_optimizer,
+                       debug_summaries=False,
+                       name="MyDSAC",
+                       **extra_kwargs)
 
         eval_env.reset()
         for i in range(550):
@@ -159,8 +157,9 @@ class DSacAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                 "%d reward=%f" % (i, float(eval_time_step.reward.mean())),
                 n_seconds=1)
 
-        self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=0.3)
+        self.assertAlmostEqual(1.0,
+                               float(eval_time_step.reward.mean()),
+                               delta=0.3)
 
 
 def unroll(env, algorithm, steps, epsilon_greedy: float = 0.1):

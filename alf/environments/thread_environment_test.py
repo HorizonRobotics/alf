@@ -27,6 +27,7 @@ import alf.tensor_specs as ts
 
 
 class SlowStartingEnvironment(RandomAlfEnvironment):
+
     def __init__(self, *args, **kwargs):
         time_sleep = kwargs.pop('time_sleep', 1.0)
         time.sleep(time_sleep)
@@ -34,6 +35,7 @@ class SlowStartingEnvironment(RandomAlfEnvironment):
 
 
 class ThreadEnvironmentTest(alf.test.TestCase):
+
     def _set_default_specs(self):
         self.observation_spec = ts.TensorSpec((3, 3), torch.float32)
         self.action_spec = ts.BoundedTensorSpec([7],

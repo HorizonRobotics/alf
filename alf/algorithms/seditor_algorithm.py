@@ -58,11 +58,12 @@ SEditorActorInfo = namedtuple(
     ],
     default_value=())
 
-SEditorCriticInfo = namedtuple(
-    "SEditorCriticInfo", ["critics", "target_critic"], default_value=())
+SEditorCriticInfo = namedtuple("SEditorCriticInfo",
+                               ["critics", "target_critic"],
+                               default_value=())
 
-SEditorLossInfo = namedtuple(
-    "SEditorLossInfo", ["actor", "critic", "alpha"], default_value=())
+SEditorLossInfo = namedtuple("SEditorLossInfo", ["actor", "critic", "alpha"],
+                             default_value=())
 
 ActPredOutput = namedtuple(
     "ActPredOutput",
@@ -167,26 +168,26 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
                 'TrainerConfig.epsilon_greedy')
         self._epsilon_greedy = epsilon_greedy
 
-        (critic_networks,
-         actor_network, d_actor_network) = self._make_networks(
-             observation_spec, action_spec, reward_spec, actor_network_ctor,
-             critic_network_ctor)
+        (critic_networks, actor_network,
+         d_actor_network) = self._make_networks(observation_spec, action_spec,
+                                                reward_spec,
+                                                actor_network_ctor,
+                                                critic_network_ctor)
 
         if not isinstance(initial_alpha, (tuple, list)):
             initial_alpha = (initial_alpha, ) * 2
         log_alpha = nest.map_structure(
             lambda ia: nn.Parameter(torch.tensor(ia).log()), initial_alpha)
 
-        super().__init__(
-            observation_spec,
-            action_spec,
-            train_state_spec=(),
-            reward_spec=reward_spec,
-            reward_weights=reward_weights,
-            env=env,
-            config=config,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec,
+                         action_spec,
+                         train_state_spec=(),
+                         reward_spec=reward_spec,
+                         reward_weights=reward_weights,
+                         env=env,
+                         config=config,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         if optimizer is not None:
             self.add_optimizer(optimizer, [
@@ -223,8 +224,8 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
 
         if critic_loss_ctor is None:
             critic_loss_ctor = TDLoss
-        critic_loss_ctor = functools.partial(
-            critic_loss_ctor, debug_summaries=debug_summaries)
+        critic_loss_ctor = functools.partial(critic_loss_ctor,
+                                             debug_summaries=debug_summaries)
 
         # Have different names to separate their summary curves
         self._critic_losses = []
@@ -266,9 +267,10 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
 
     def _make_networks(self, observation_spec, action_spec, reward_spec,
                        actor_network_ctor, critic_network_ctor):
+
         def _make_parallel(net):
-            return net.make_parallel(
-                self._num_critic_replicas * reward_spec.numel)
+            return net.make_parallel(self._num_critic_replicas *
+                                     reward_spec.numel)
 
         obs_action_spec = (observation_spec, action_spec)
         actor_network = actor_network_ctor(
@@ -334,12 +336,11 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
 
         da, da_dist = _actor(da_net, a)
 
-        return ActPredOutput(
-            a=a,
-            a_dist=a_dist,
-            da=da,
-            da_dist=da_dist,
-            output=self._safe_action(a, da))
+        return ActPredOutput(a=a,
+                             a_dist=a_dist,
+                             da=da,
+                             da_dist=da_dist,
+                             output=self._safe_action(a, da))
 
     def _predict_action(self,
                         time_step,
@@ -349,10 +350,14 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
                         rollout_info=None):
 
         if mode == Mode.train:
-            ap_out0 = self._forward(
-                time_step, epsilon_greedy, mode, opt_ignore='a')
-            ap_out1 = self._forward(
-                time_step, epsilon_greedy, mode, opt_ignore='da')
+            ap_out0 = self._forward(time_step,
+                                    epsilon_greedy,
+                                    mode,
+                                    opt_ignore='a')
+            ap_out1 = self._forward(time_step,
+                                    epsilon_greedy,
+                                    mode,
+                                    opt_ignore='da')
             return ActPredOutput(
                 a=ap_out1.a,
                 a_dist=ap_out1.a_dist,
@@ -364,8 +369,10 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
                     # for computing how much the safety policy changes the action
                     a_UM_detached=ap_out0.a))
         else:
-            return self._forward(
-                time_step, epsilon_greedy, mode, opt_ignore='none')
+            return self._forward(time_step,
+                                 epsilon_greedy,
+                                 mode,
+                                 opt_ignore='none')
 
     def _safe_action(self, a, da):
         r"""Perform action editing.
@@ -381,11 +388,10 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
             torch.Tensor: the edited action to the env
         """
         if self._soft_clipping:
-            return math_ops.softclip(
-                a + 2 * da,
-                low=float(self._action_spec.minimum),
-                high=float(self._action_spec.maximum),
-                hinge_softness=self._hinge_softness)
+            return math_ops.softclip(a + 2 * da,
+                                     low=float(self._action_spec.minimum),
+                                     high=float(self._action_spec.maximum),
+                                     hinge_softness=self._hinge_softness)
         else:
             return spec_utils.clip_to_spec(a + 2 * da, self._action_spec)
 
@@ -397,37 +403,42 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         if render.is_rendering_enabled():
             q_a = self._compute_critics(self._critic_networks,
                                         inputs.observation, ap_out.a)[:, 0]
-            q_out_a = self._compute_critics(
-                self._critic_networks, inputs.observation, ap_out.output)[:, 0]
+            q_out_a = self._compute_critics(self._critic_networks,
+                                            inputs.observation,
+                                            ap_out.output)[:, 0]
             hinge_loss = torch.relu(q_a - q_out_a)
             l2 = ((ap_out.a - ap_out.output)**2).mean(dim=-1)
 
-            imgs['hinge_loss'] = render.render_bar(
-                name="hinge_loss", data=hinge_loss)
+            imgs['hinge_loss'] = render.render_bar(name="hinge_loss",
+                                                   data=hinge_loss)
             imgs['l2'] = render.render_bar(name="action_l2", data=l2)
-            imgs['a'] = render.render_action(
-                name="a", action=ap_out.a, action_spec=self._action_spec)
-            imgs['out_a'] = render.render_action(
-                name="out_a",
-                action=ap_out.output,
-                action_spec=self._action_spec)
+            imgs['a'] = render.render_action(name="a",
+                                             action=ap_out.a,
+                                             action_spec=self._action_spec)
+            imgs['out_a'] = render.render_action(name="out_a",
+                                                 action=ap_out.output,
+                                                 action_spec=self._action_spec)
 
-        return AlgStep(
-            output=ap_out.output, state=state, info={
-                'ap_out': ap_out,
-                **imgs
-            })
+        return AlgStep(output=ap_out.output,
+                       state=state,
+                       info={
+                           'ap_out': ap_out,
+                           **imgs
+                       })
 
     def rollout_step(self, inputs: TimeStep, state):
         ap_out = self._predict_action(inputs, state, mode=Mode.rollout)
         return AlgStep(output=ap_out.output, state=state, info=ap_out)
 
     def train_step(self, inputs: TimeStep, state, rollout_info: ActPredOutput):
+
         def _calc_entropy(dist, a):
             return -dist_utils.compute_log_probability(dist, a)
 
-        ap_out = self._predict_action(
-            inputs, state, mode=Mode.train, rollout_info=rollout_info)
+        ap_out = self._predict_action(inputs,
+                                      state,
+                                      mode=Mode.train,
+                                      rollout_info=rollout_info)
 
         a_entropy = _calc_entropy(ap_out.a_dist, ap_out.a)
         da_entropy = _calc_entropy(ap_out.da_dist, ap_out.da)
@@ -435,28 +446,27 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         actor_loss = self._actor_train_step(inputs, ap_out, a_entropy)
         da_loss, change_a_loss, a_l2 = self._d_actor_train_step(
             inputs, ap_out, da_entropy)
-        actor_info = SEditorActorInfo(
-            a_loss=actor_loss,
-            da_loss=da_loss,
-            a_entropy=a_entropy,
-            da_entropy=da_entropy,
-            change_a_loss=change_a_loss,
-            a_l2=a_l2)
+        actor_info = SEditorActorInfo(a_loss=actor_loss,
+                                      da_loss=da_loss,
+                                      a_entropy=a_entropy,
+                                      da_entropy=da_entropy,
+                                      change_a_loss=change_a_loss,
+                                      a_l2=a_l2)
 
         critic_info = self._critic_train_step(inputs, ap_out, rollout_info)
 
         alpha_loss = self._alpha_train_step(a_entropy, da_entropy)
 
-        info = SEditorInfo(
-            reward=inputs.reward,
-            step_type=inputs.step_type,
-            discount=inputs.discount,
-            actor=actor_info,
-            critic=critic_info,
-            alpha=alpha_loss)
+        info = SEditorInfo(reward=inputs.reward,
+                           step_type=inputs.step_type,
+                           discount=inputs.discount,
+                           actor=actor_info,
+                           critic=critic_info,
+                           alpha=alpha_loss)
 
-        return AlgStep(
-            output=ap_out.output.out_a_SE_detached, state=state, info=info)
+        return AlgStep(output=ap_out.output.out_a_SE_detached,
+                       state=state,
+                       info=info)
 
     def _compute_critics(self,
                          critic_net,
@@ -511,8 +521,8 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         # only maximize the constraint Q value
         q = critics[..., 1]
 
-        a_l2 = ((ap_out.output.out_a_UM_detached - ap_out.output.a_UM_detached)
-                **2).mean(dim=-1)
+        a_l2 = ((ap_out.output.out_a_UM_detached -
+                 ap_out.output.a_UM_detached)**2).mean(dim=-1)
 
         if self._regularize_action_diff:
             # Take mean so that the loss magnitude is invariant to action dimension
@@ -543,19 +553,19 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
                 self._target_critic_networks, inputs.observation,
                 ap_out.output.out_a_SE_detached)
 
-        critics = self._compute_critics(
-            self._critic_networks,
-            inputs.observation,
-            rollout_info.output,
-            replica_min=False)
+        critics = self._compute_critics(self._critic_networks,
+                                        inputs.observation,
+                                        rollout_info.output,
+                                        replica_min=False)
         return SEditorCriticInfo(critics=critics, target_critic=target_critics)
 
     def _alpha_train_step(self, a_entropy, da_entropy):
         if self._train_alpha:
             alpha_loss = (self._log_alpha[0] *
                           (a_entropy - self._target_entropy[0]).detach())
-            alpha_loss = alpha_loss + (self._log_alpha[1] * (
-                da_entropy - self._target_entropy[1]).detach())
+            alpha_loss = alpha_loss + (
+                self._log_alpha[1] *
+                (da_entropy - self._target_entropy[1]).detach())
         else:
             alpha_loss = torch.zeros_like(a_entropy)
         return alpha_loss
@@ -564,16 +574,14 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
         critic_info = info.critic
         critic_losses = []
         for i, l in enumerate(self._critic_losses):
-            kwargs = dict(
-                info=info,
-                value=critic_info.critics[:, :, i, ...],
-                target_value=critic_info.target_critic)
+            kwargs = dict(info=info,
+                          value=critic_info.critics[:, :, i, ...],
+                          target_value=critic_info.target_critic)
             critic_losses.append(l(**kwargs).loss)
 
         critic_loss = math_ops.add_n(critic_losses)
-        return LossInfo(
-            loss=critic_loss,
-            extra=critic_loss / float(self._num_critic_replicas))
+        return LossInfo(loss=critic_loss,
+                        extra=critic_loss / float(self._num_critic_replicas))
 
     def calc_loss(self, info: SEditorInfo):
         critic_loss = self._calc_critic_loss(info)
@@ -584,8 +592,8 @@ class SEditorAlgorithm(OffPolicyAlgorithm):
                 alf.summary.scalar("alpha/a", self._log_alpha[0].exp())
                 alf.summary.scalar("alpha/da", self._log_alpha[1].exp())
 
-        return LossInfo(
-            loss=(actor_info.a_loss + actor_info.da_loss + alpha_loss +
-                  critic_loss.loss),
-            extra=SEditorLossInfo(
-                actor=actor_info, critic=critic_loss.extra, alpha=alpha_loss))
+        return LossInfo(loss=(actor_info.a_loss + actor_info.da_loss +
+                              alpha_loss + critic_loss.loss),
+                        extra=SEditorLossInfo(actor=actor_info,
+                                              critic=critic_loss.extra,
+                                              alpha=alpha_loss))

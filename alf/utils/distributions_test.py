@@ -19,6 +19,7 @@ import alf
 
 
 class DistributionTest(alf.test.TestCase):
+
     def _test_its(self, x, its: ad.InverseTransformSampling):
         x.requires_grad_()
         y = its.cdf(x)
@@ -60,21 +61,20 @@ class DistributionTest(alf.test.TestCase):
         scale[2, :] = 0.5
         scale[3, :] = 1.5
 
-        dist = ad.TruncatedDistribution(
-            loc=loc,
-            scale=scale,
-            lower_bound=lower_bound,
-            upper_bound=upper_bound,
-            its=its)
+        dist = ad.TruncatedDistribution(loc=loc,
+                                        scale=scale,
+                                        lower_bound=lower_bound,
+                                        upper_bound=upper_bound,
+                                        its=its)
 
         # Test prob sum to 1.
         step = 1 / 128
-        x = torch.arange(-1.5, 2.5, step)[:, None, None].expand(
-            -1, batch_size, dim)
+        x = torch.arange(-1.5, 2.5, step)[:, None,
+                                          None].expand(-1, batch_size, dim)
         log_prob = dist.log_prob(x)
         prob = log_prob.exp() * step
-        self.assertTensorClose(
-            prob.sum(dim=0), torch.ones((batch_size, )), 0.01)
+        self.assertTensorClose(prob.sum(dim=0), torch.ones((batch_size, )),
+                               0.01)
 
         # Test samples are within bound
         samples = dist.rsample((1000, ))
@@ -91,14 +91,14 @@ class DistributionTest(alf.test.TestCase):
         self._test_truncated(ad.T2ITS())
 
     def test_truncated_normal_mode(self):
-        dist = ad.TruncatedNormal(
-            loc=torch.Tensor([[1.5, -3.0, 4.5]]),
-            scale=torch.tensor([[0.8, 1.9, 1.2]]),
-            lower_bound=torch.tensor([1.0, 1.0, 1.0]),
-            upper_bound=torch.tensor([2.0, 2.0, 2.0]))
+        dist = ad.TruncatedNormal(loc=torch.Tensor([[1.5, -3.0, 4.5]]),
+                                  scale=torch.tensor([[0.8, 1.9, 1.2]]),
+                                  lower_bound=torch.tensor([1.0, 1.0, 1.0]),
+                                  upper_bound=torch.tensor([2.0, 2.0, 2.0]))
         self.assertTrue(torch.all(torch.tensor([1.5, 1.0, 2.0]) == dist.mode))
 
     def test_truncated_normal_kl_divergence(self):
+
         def _numerical_kl_divergence(lower_bound, upper_bound, loc_p, scale_p,
                                      loc_q, scale_q):
             p = ad.TruncatedNormal(loc_p, scale_p, lower_bound, upper_bound)
@@ -131,11 +131,10 @@ class DistributionTest(alf.test.TestCase):
         scale1[2, :] = 1.5
         scale1[3, :] = 2.56
 
-        dist1 = ad.TruncatedNormal(
-            loc=loc1,
-            scale=scale1,
-            lower_bound=lower_bound,
-            upper_bound=upper_bound)
+        dist1 = ad.TruncatedNormal(loc=loc1,
+                                   scale=scale1,
+                                   lower_bound=lower_bound,
+                                   upper_bound=upper_bound)
 
         loc2 = torch.ones((batch_size, dim))
         loc2[0, :] = -1.0
@@ -148,11 +147,10 @@ class DistributionTest(alf.test.TestCase):
         scale2[1, :] = 1.5
         scale2[2, :] = 0.5
 
-        dist2 = ad.TruncatedNormal(
-            loc=loc2,
-            scale=scale2,
-            lower_bound=lower_bound,
-            upper_bound=upper_bound)
+        dist2 = ad.TruncatedNormal(loc=loc2,
+                                   scale=scale2,
+                                   lower_bound=lower_bound,
+                                   upper_bound=upper_bound)
 
         kl = torch.distributions.kl_divergence(dist1, dist2)
 

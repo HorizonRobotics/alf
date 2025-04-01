@@ -174,14 +174,16 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, inputs: TimeStep, state,
                    plain_rollout_info: PPGRolloutInfo) -> AlgStep:
-        alg_step = ppg_network_forward(
-            self._network, inputs, state, require_aux=True)
+        alg_step = ppg_network_forward(self._network,
+                                       inputs,
+                                       state,
+                                       require_aux=True)
 
         train_info = PPGTrainInfo(
             action=plain_rollout_info.action,
             rollout_value=plain_rollout_info.value,
-            rollout_action_distribution=plain_rollout_info.
-            action_distribution).absorbed(alg_step.info)
+            rollout_action_distribution=plain_rollout_info.action_distribution
+        ).absorbed(alg_step.info)
 
         return alg_step._replace(info=train_info)
 

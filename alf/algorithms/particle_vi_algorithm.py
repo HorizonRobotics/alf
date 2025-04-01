@@ -90,8 +90,9 @@ class ParVIAlgorithm(Algorithm):
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
-        super().__init__(
-            optimizer=optimizer, debug_summaries=debug_summaries, name=name)
+        super().__init__(optimizer=optimizer,
+                         debug_summaries=debug_summaries,
+                         name=name)
         self._particle_dim = particle_dim
         self._num_particles = num_particles
         self._entropy_regularization = entropy_regularization
@@ -119,8 +120,8 @@ class ParVIAlgorithm(Algorithm):
         else:
             raise ValueError("Unsupported par_vi method: %s" % par_vi)
 
-        self._kernel_width_averager = AdaptiveAverager(
-            tensor_spec=TensorSpec(shape=()))
+        self._kernel_width_averager = AdaptiveAverager(tensor_spec=TensorSpec(
+            shape=()))
 
         self._particles = torch.nn.Parameter(
             torch.randn(num_particles, particle_dim, requires_grad=True))
@@ -180,15 +181,15 @@ class ParVIAlgorithm(Algorithm):
         """
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
-        loss, loss_propagated = self._grad_func(
-            self.particles, loss_func, entropy_regularization, transform_func)
+        loss, loss_propagated = self._grad_func(self.particles, loss_func,
+                                                entropy_regularization,
+                                                transform_func)
         if loss_mask is not None:
             loss_propagated = loss_propagated * loss_mask
 
-        return AlgStep(
-            output=self.particles,
-            state=(),
-            info=LossInfo(loss=loss_propagated, extra=loss))
+        return AlgStep(output=self.particles,
+                       state=(),
+                       info=LossInfo(loss=loss_propagated, extra=loss))
 
     def _kernel_width(self, dist):
         """Update kernel_width averager and get latest kernel_width. """
@@ -316,12 +317,12 @@ class ParVIAlgorithm(Algorithm):
         kernel_logp = torch.matmul(kernel_weight, loss_grad) / (
             self.num_particles)  # [N, D]
 
-        loss_prop_kernel_logp = torch.sum(
-            kernel_logp.detach() * particles, dim=-1)
-        loss_prop_kernel_grad = torch.sum(
-            -entropy_regularization * kernel_grad.mean(0).detach() *
-            aug_particles,
-            dim=-1)
+        loss_prop_kernel_logp = torch.sum(kernel_logp.detach() * particles,
+                                          dim=-1)
+        loss_prop_kernel_grad = torch.sum(-entropy_regularization *
+                                          kernel_grad.mean(0).detach() *
+                                          aug_particles,
+                                          dim=-1)
         loss_propagated = loss_prop_kernel_logp + loss_prop_kernel_grad
 
         return loss, loss_propagated
@@ -359,8 +360,11 @@ class ParVIAlgorithm(Algorithm):
         assert fx.shape[-1] == x.shape[-1], (
             "Jacobian is not square, no trace defined.")
         eps = torch.randn_like(fx)
-        jvp = torch.autograd.grad(
-            fx, x, grad_outputs=eps, retain_graph=True, create_graph=True)[0]
+        jvp = torch.autograd.grad(fx,
+                                  x,
+                                  grad_outputs=eps,
+                                  retain_graph=True,
+                                  create_graph=True)[0]
         tr_jvp = torch.einsum('bi,bi->b', jvp, eps)
         return tr_jvp
 
@@ -410,7 +414,7 @@ class ParVIAlgorithm(Algorithm):
         loss = loss_func(loss_inputs.detach())
         critic_outputs = self._critic.predict_step(
             aug_particles.detach()).output
-        loss_propagated = torch.sum(
-            -critic_outputs.detach() * aug_particles, dim=-1)
+        loss_propagated = torch.sum(-critic_outputs.detach() * aug_particles,
+                                    dim=-1)
 
         return loss, loss_propagated

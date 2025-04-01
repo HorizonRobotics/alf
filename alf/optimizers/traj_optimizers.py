@@ -38,6 +38,7 @@ class TrajOptimizer(object):
 
 
 class RandomOptimizer(TrajOptimizer):
+
     def __init__(self, solution_dim, population_size, cost_func, upper_bound,
                  lower_bound):
         """Random Trajectory Optimizer
@@ -81,6 +82,7 @@ class RandomOptimizer(TrajOptimizer):
 
 
 class CEMOptimizer(TrajOptimizer):
+
     def __init__(self,
                  solution_dim,
                  population_size,
@@ -179,8 +181,8 @@ class CEMOptimizer(TrajOptimizer):
                 pop_var) + pop_mean
 
             # use bounded samples for evaluation
-            bounded_samples = samples.clamp(
-                min=self._lower_bound, max=self._upper_bound)
+            bounded_samples = samples.clamp(min=self._lower_bound,
+                                            max=self._upper_bound)
             costs = self._cost_func(observation, bounded_samples)
 
             # select elite set from the population

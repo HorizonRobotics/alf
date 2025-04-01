@@ -29,6 +29,7 @@ from alf.utils import math_ops
 
 
 class VQVaeTest(alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         self._input_spec = TensorSpec((1, ))
@@ -63,14 +64,13 @@ class VQVaeTest(alf.test.TestCase):
 
         optimizer = alf.optimizers.Adam(lr=self._learning_rate)
 
-        vq_vae = Vqvae(
-            input_tensor_spec=self._input_spec,
-            num_embeddings=self._num_embeddings,
-            embedding_dim=self._embedding_dim,
-            encoder_ctor=encoder_cls,
-            decoder_ctor=decoder_cls,
-            optimizer=optimizer,
-            commitment_loss_weight=self._commitment_loss_weight)
+        vq_vae = Vqvae(input_tensor_spec=self._input_spec,
+                       num_embeddings=self._num_embeddings,
+                       embedding_dim=self._embedding_dim,
+                       encoder_ctor=encoder_cls,
+                       decoder_ctor=decoder_cls,
+                       optimizer=optimizer,
+                       commitment_loss_weight=self._commitment_loss_weight)
 
         # construct 1d samples around two centers with additive noise
         num_centers = 2

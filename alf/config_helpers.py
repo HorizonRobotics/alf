@@ -150,11 +150,10 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
     # the per-process value.
     tag = 'create_environment.num_parallel_environments'
     num_parallel_environments = get_config_value(tag)
-    config1(
-        tag,
-        math.ceil(num_parallel_environments / multi_process_divider),
-        raise_if_used=False,
-        override_all=True)
+    config1(tag,
+            math.ceil(num_parallel_environments / multi_process_divider),
+            raise_if_used=False,
+            override_all=True)
 
     # Adjust the mini_batch_size. If the original configured value is 64 and
     # there are 4 processes, it should mean that "jointly the 4 processes have
@@ -163,11 +162,10 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
     tag = 'TrainerConfig.mini_batch_size'
     mini_batch_size = get_config_value(tag)
     if isinstance(mini_batch_size, int):
-        config1(
-            tag,
-            math.ceil(mini_batch_size / multi_process_divider),
-            raise_if_used=False,
-            override_all=True)
+        config1(tag,
+                math.ceil(mini_batch_size / multi_process_divider),
+                raise_if_used=False,
+                override_all=True)
 
     # If the termination condition is num_env_steps instead of num_iterations,
     # we need to adjust it as well since each process only sees env steps taking
@@ -175,29 +173,26 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
     tag = 'TrainerConfig.num_env_steps'
     num_env_steps = get_config_value(tag)
     if num_env_steps > 0:
-        config1(
-            tag,
-            math.ceil(num_env_steps / multi_process_divider),
-            raise_if_used=False,
-            override_all=True)
+        config1(tag,
+                math.ceil(num_env_steps / multi_process_divider),
+                raise_if_used=False,
+                override_all=True)
 
     tag = 'TrainerConfig.initial_collect_steps'
     init_collect_steps = get_config_value(tag)
-    config1(
-        tag,
-        math.ceil(init_collect_steps / multi_process_divider),
-        raise_if_used=False,
-        override_all=True)
+    config1(tag,
+            math.ceil(init_collect_steps / multi_process_divider),
+            raise_if_used=False,
+            override_all=True)
 
     # Only allow process with rank 0 to have evaluate. Enabling evaluation for
     # other parallel processes is a waste as such evaluation does not offer more
     # information.
     if ddp_rank > 0:
-        config1(
-            'TrainerConfig.evaluate',
-            False,
-            raise_if_used=False,
-            override_all=True)
+        config1('TrainerConfig.evaluate',
+                False,
+                raise_if_used=False,
+                override_all=True)
 
 
 def parse_config(conf_file, conf_params, create_env=True):
@@ -293,11 +288,10 @@ def get_env():
             # A 'None' random seed won't set a deterministic torch behavior.
             for _ in range(PerProcessContext().ddp_rank):
                 random_seed = random.randint(0, 2**32)
-        config1(
-            "TrainerConfig.random_seed",
-            random_seed,
-            raise_if_used=False,
-            override_sole_init=True)
+        config1("TrainerConfig.random_seed",
+                random_seed,
+                raise_if_used=False,
+                override_sole_init=True)
 
         # We have to call set_random_seed() here because we need the actual
         # random seed to call create_environment.

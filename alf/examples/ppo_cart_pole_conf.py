@@ -19,11 +19,10 @@ from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.utils.losses import element_wise_huber_loss
 
 # Environment Configuration
-alf.config(
-    'create_environment',
-    env_name='CartPole-v0',
-    num_parallel_environments=8,
-    start_serially=False)
+alf.config('create_environment',
+           env_name='CartPole-v0',
+           num_parallel_environments=8,
+           start_serially=False)
 alf.config('FastParallelEnvironment', start_method="spawn")
 
 # Reward Scailing
@@ -34,29 +33,26 @@ alf.config('RewardScaling', scale=0.01)
 alf.config('ActorDistributionNetwork', fc_layer_params=(100, ))
 alf.config('ValueNetwork', fc_layer_params=(100, ))
 
-alf.config(
-    'ActorCriticAlgorithm',
-    actor_network_ctor=ActorDistributionNetwork,
-    value_network_ctor=ValueNetwork,
-    optimizer=alf.optimizers.AdamTF(lr=1e-3))
+alf.config('ActorCriticAlgorithm',
+           actor_network_ctor=ActorDistributionNetwork,
+           value_network_ctor=ValueNetwork,
+           optimizer=alf.optimizers.AdamTF(lr=1e-3))
 
-alf.config(
-    'PPOLoss',
-    entropy_regularization=1e-4,
-    gamma=0.98,
-    td_error_loss_fn=element_wise_huber_loss,
-    normalize_advantages=False)
+alf.config('PPOLoss',
+           entropy_regularization=1e-4,
+           gamma=0.98,
+           td_error_loss_fn=element_wise_huber_loss,
+           normalize_advantages=False)
 
 # training config
-alf.config(
-    'TrainerConfig',
-    mini_batch_length=1,
-    unroll_length=32,
-    mini_batch_size=128,
-    num_updates_per_train_iter=4,
-    num_iterations=200,
-    num_checkpoints=5,
-    evaluate=True,
-    eval_interval=50,
-    debug_summaries=False,
-    summary_interval=5)
+alf.config('TrainerConfig',
+           mini_batch_length=1,
+           unroll_length=32,
+           mini_batch_size=128,
+           num_updates_per_train_iter=4,
+           num_iterations=200,
+           num_checkpoints=5,
+           evaluate=True,
+           eval_interval=50,
+           debug_summaries=False,
+           summary_interval=5)

@@ -73,17 +73,16 @@ class StepType(object):
         if value == cls.LAST:
             return cls.LAST
 
-        raise ValueError(
-            'No known conversion for `%r` into a StepType' % value)
+        raise ValueError('No known conversion for `%r` into a StepType' %
+                         value)
 
 
 class TimeStep(
-        namedtuple(
-            'TimeStep', [
-                'step_type', 'reward', 'discount', 'observation',
-                'prev_action', 'env_id', 'untransformed', "env_info"
-            ],
-            default_value=())):
+        namedtuple('TimeStep', [
+            'step_type', 'reward', 'discount', 'observation', 'prev_action',
+            'env_id', 'untransformed', "env_info"
+        ],
+                   default_value=())):
     """A ``TimeStep`` contains the data emitted by an environment at each step of
     interaction. A ``TimeStep`` holds a ``step_type``, an ``observation`` (typically a
     NumPy array or a dict or list of arrays), and an associated ``reward`` and
@@ -226,8 +225,9 @@ class Experience(
             Experience: a structure the same as the original experience except
             that the field ``field`` in the time_step is replaced by ``new_value``.
         """
-        return nest.set_field(
-            self, field='time_step.' + field, new_value=new_value)
+        return nest.set_field(self,
+                              field='time_step.' + field,
+                              new_value=new_value)
 
 
 def add_batch_info(experience, batch_info, buffer=()):
@@ -236,8 +236,8 @@ def add_batch_info(experience, batch_info, buffer=()):
     if batch_info is not None:
         if buffer == () and batch_info.replay_buffer != ():
             buffer = batch_info.replay_buffer
-        experience = experience._replace(
-            batch_info=batch_info, replay_buffer=buffer)
+        experience = experience._replace(batch_info=batch_info,
+                                         replay_buffer=buffer)
     return experience._replace(rollout_info_field='rollout_info')
 
 
@@ -247,8 +247,9 @@ def clear_batch_info(experience):
     Useful as certain nest functions like convert_device do not skip
     non-tensor objects in nests.
     """
-    return experience._replace(
-        batch_info=(), replay_buffer=(), rollout_info_field=())
+    return experience._replace(batch_info=(),
+                               replay_buffer=(),
+                               rollout_info_field=())
 
 
 AlgStep = namedtuple('AlgStep', ['output', 'state', 'info'], default_value=())
@@ -306,19 +307,18 @@ def _generate_time_step(batched,
     discount = md.ones(outer_dims, dtype=md.float32) * discount
     if prev_action is None:
         prev_action = nest.map_structure(
-            lambda spec: md.zeros(
-                outer_dims + spec.shape,
-                dtype=getattr(md, ts.torch_dtype_to_str(spec.dtype))),
+            lambda spec: md.zeros(outer_dims + spec.shape,
+                                  dtype=getattr(
+                                      md, ts.torch_dtype_to_str(spec.dtype))),
             action_spec)
 
-    return TimeStep(
-        step_type,
-        reward,
-        discount,
-        observation,
-        prev_action,
-        env_id,
-        env_info=env_info)
+    return TimeStep(step_type,
+                    reward,
+                    discount,
+                    observation,
+                    prev_action,
+                    env_id,
+                    env_info=env_info)
 
 
 def restart(observation,
@@ -342,15 +342,14 @@ def restart(observation,
     Returns:
         TimeStep:
     """
-    return _generate_time_step(
-        batched=batched,
-        observation=observation,
-        step_type=StepType.FIRST,
-        discount=1.,
-        action_spec=action_spec,
-        reward_spec=reward_spec,
-        env_id=env_id,
-        env_info=env_info)
+    return _generate_time_step(batched=batched,
+                               observation=observation,
+                               step_type=StepType.FIRST,
+                               discount=1.,
+                               action_spec=action_spec,
+                               reward_spec=reward_spec,
+                               env_id=env_id,
+                               env_info=env_info)
 
 
 def transition(observation,
@@ -387,16 +386,16 @@ def transition(observation,
         ValueError: If observations are tensors but reward's rank
         is not 0 or 1.
     """
-    return _generate_time_step(
-        batched=torch.as_tensor(reward).ndim > len(reward_spec.shape),
-        observation=observation,
-        step_type=StepType.MID,
-        discount=discount,
-        prev_action=prev_action,
-        reward=reward,
-        reward_spec=reward_spec,
-        env_id=env_id,
-        env_info=env_info)
+    return _generate_time_step(batched=torch.as_tensor(reward).ndim
+                               > len(reward_spec.shape),
+                               observation=observation,
+                               step_type=StepType.MID,
+                               discount=discount,
+                               prev_action=prev_action,
+                               reward=reward,
+                               reward_spec=reward_spec,
+                               env_id=env_id,
+                               env_info=env_info)
 
 
 def termination(observation,
@@ -427,16 +426,16 @@ def termination(observation,
         ValueError: If observations are tensors but reward's statically known rank
             is not 0 or 1.
     """
-    return _generate_time_step(
-        batched=torch.as_tensor(reward).ndim > len(reward_spec.shape),
-        observation=observation,
-        step_type=StepType.LAST,
-        discount=0.,
-        prev_action=prev_action,
-        reward=reward,
-        reward_spec=reward_spec,
-        env_id=env_id,
-        env_info=env_info)
+    return _generate_time_step(batched=torch.as_tensor(reward).ndim
+                               > len(reward_spec.shape),
+                               observation=observation,
+                               step_type=StepType.LAST,
+                               discount=0.,
+                               prev_action=prev_action,
+                               reward=reward,
+                               reward_spec=reward_spec,
+                               env_id=env_id,
+                               env_info=env_info)
 
 
 def time_step_spec(observation_spec, action_spec, reward_spec):
@@ -449,16 +448,15 @@ def time_step_spec(observation_spec, action_spec, reward_spec):
 
     assert all(map(is_valid_tensor_spec, nest.flatten(observation_spec)))
     assert all(map(is_valid_tensor_spec, nest.flatten(action_spec)))
-    return TimeStep(
-        step_type=ts.TensorSpec([], torch.int32),
-        reward=reward_spec,
-        discount=ts.BoundedTensorSpec([],
-                                      torch.float32,
-                                      minimum=0.0,
-                                      maximum=1.0),
-        observation=observation_spec,
-        prev_action=action_spec,
-        env_id=ts.TensorSpec([], torch.int32))
+    return TimeStep(step_type=ts.TensorSpec([], torch.int32),
+                    reward=reward_spec,
+                    discount=ts.BoundedTensorSpec([],
+                                                  torch.float32,
+                                                  minimum=0.0,
+                                                  maximum=1.0),
+                    observation=observation_spec,
+                    prev_action=action_spec,
+                    env_id=ts.TensorSpec([], torch.int32))
 
 
 def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
@@ -472,11 +470,10 @@ def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
     Returns:
         Experience:
     """
-    return Experience(
-        time_step=time_step,
-        action=alg_step.output,
-        rollout_info=alg_step.info,
-        state=state)
+    return Experience(time_step=time_step,
+                      action=alg_step.output,
+                      rollout_info=alg_step.info,
+                      state=state)
 
 
 LossInfo = namedtuple(

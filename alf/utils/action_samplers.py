@@ -26,10 +26,9 @@ def _gammaincinv(a, y):
     # pytorch does not have a native implementation of gammaincinv, so we
     # have to use scipy.
     return convert_device(
-        torch.as_tensor(
-            scipy.special.gammaincinv(a.cpu().numpy(),
-                                      y.cpu().numpy()),
-            device='cpu'))
+        torch.as_tensor(scipy.special.gammaincinv(a.cpu().numpy(),
+                                                  y.cpu().numpy()),
+                        device='cpu'))
 
 
 class _CategoricalSeedSamplerBase(alf.nn.Network):
@@ -37,8 +36,8 @@ class _CategoricalSeedSamplerBase(alf.nn.Network):
     # is for easier unittest.
     def __init__(self, num_classes, new_noise_prob=0.01, concentration=1):
         input_tensor_spec = alf.TensorSpec((num_classes, ))
-        super().__init__(
-            input_tensor_spec=input_tensor_spec, state_spec=input_tensor_spec)
+        super().__init__(input_tensor_spec=input_tensor_spec,
+                         state_spec=input_tensor_spec)
         self._concentration = concentration
         self._new_noise_prob = new_noise_prob
 

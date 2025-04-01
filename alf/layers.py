@@ -180,13 +180,14 @@ class Permute(nn.Module):
 
 @alf.configurable
 class OneHot(nn.Module):
+
     def __init__(self, num_classes):
         super().__init__()
         self._num_classes = num_classes
 
     def forward(self, input):
-        return nn.functional.one_hot(
-            input, num_classes=self._num_classes).to(torch.float32)
+        return nn.functional.one_hot(input, num_classes=self._num_classes).to(
+            torch.float32)
 
     def make_parallel(self, n: int):
         return OneHot(self._num_classes)
@@ -234,8 +235,8 @@ class FixedDecodingLayer(nn.Module):
         def _polyvander_matrix(n, D, tau=tau):
             # non-square matrix [n, D + 1]
             x = torch.linspace(-1, 1, n)
-            B = torch.as_tensor(
-                np.polynomial.polynomial.polyvander(x.cpu(), D))
+            B = torch.as_tensor(np.polynomial.polynomial.polyvander(
+                x.cpu(), D))
             # weight for encoding the preference to low-frequency basis
             exp_factor = torch.arange(D + 1).float()
             basis_weight = tau**exp_factor
@@ -421,10 +422,9 @@ class FC(nn.Module):
             if self._use_torch_init:
                 nn.init.kaiming_uniform_(self._weight, a=math.sqrt(5))
             else:
-                variance_scaling_init(
-                    self._weight.data,
-                    gain=self._kernel_init_gain,
-                    nonlinearity=self._activation)
+                variance_scaling_init(self._weight.data,
+                                      gain=self._kernel_init_gain,
+                                      nonlinearity=self._activation)
         else:
             self._kernel_initializer(self._weight.data)
 
@@ -548,15 +548,14 @@ class FCBatchEnsemble(FC):
                   Liu, Chang, et al. "Understanding and accelerating particle-based
                   variational inference." ICML, 2019.
         """
-        super().__init__(
-            input_size,
-            output_size,
-            activation=activation,
-            use_bias=False,
-            use_bn=use_bn,
-            use_ln=use_ln,
-            kernel_initializer=kernel_initializer,
-            kernel_init_gain=kernel_init_gain)
+        super().__init__(input_size,
+                         output_size,
+                         activation=activation,
+                         use_bias=False,
+                         use_bn=use_bn,
+                         use_ln=use_ln,
+                         kernel_initializer=kernel_initializer,
+                         kernel_init_gain=kernel_init_gain)
 
         self._r = nn.Parameter(torch.Tensor(ensemble_size, input_size))
         self._s = nn.Parameter(torch.Tensor(ensemble_size, output_size))
@@ -582,19 +581,22 @@ class FCBatchEnsemble(FC):
         # class when both ``_s`` and ``_r`` are not initialized yet.
         if hasattr(self, '_r') and hasattr(self, '_s'):
             # Both r and s are initialized to +1/-1 according to Appendix B
-            torch.randint(
-                2, size=self._r.shape, dtype=torch.float32, out=self._r.data)
-            torch.randint(
-                2, size=self._s.shape, dtype=torch.float32, out=self._s.data)
+            torch.randint(2,
+                          size=self._r.shape,
+                          dtype=torch.float32,
+                          out=self._r.data)
+            torch.randint(2,
+                          size=self._s.shape,
+                          dtype=torch.float32,
+                          out=self._s.data)
             self._r.data.mul_(2)
             self._r.data.sub_(1)
             self._s.data.mul_(2)
             self._s.data.sub_(1)
             if self._use_ensemble_bias:
-                nn.init.uniform_(
-                    self._ensemble_bias.data,
-                    a=-self._bias_init_range,
-                    b=self._bias_init_range)
+                nn.init.uniform_(self._ensemble_bias.data,
+                                 a=-self._bias_init_range,
+                                 b=self._bias_init_range)
 
     def forward(self, inputs):
         """Forward computation.
@@ -618,8 +620,8 @@ class FCBatchEnsemble(FC):
         if type(inputs) == tuple:
             inputs, ensemble_ids = inputs
         else:
-            ensemble_ids = torch.randint(
-                self._ensemble_size, size=(inputs.shape[0], ))
+            ensemble_ids = torch.randint(self._ensemble_size,
+                                         size=(inputs.shape[0], ))
         batch_size = inputs.shape[0]
         output_size, input_size = self._weight.shape
         r = self._r[ensemble_ids]  # [batch_size, input_size]
@@ -740,13 +742,12 @@ class ParallelFC(nn.Module):
         for i in range(self._n):
             if self._kernel_initializer is None:
                 if self._use_torch_init:
-                    nn.init.kaiming_uniform_(
-                        self._weight.data[i], a=math.sqrt(5))
+                    nn.init.kaiming_uniform_(self._weight.data[i],
+                                             a=math.sqrt(5))
                 else:
-                    variance_scaling_init(
-                        self._weight.data[i],
-                        gain=self._kernel_init_gain,
-                        nonlinearity=self._activation)
+                    variance_scaling_init(self._weight.data[i],
+                                          gain=self._kernel_init_gain,
+                                          nonlinearity=self._activation)
             else:
                 self._kernel_initializer(self._weight.data[i])
 
@@ -778,8 +779,8 @@ class ParallelFC(nn.Module):
         n, k, l = self._weight.shape
         if inputs.ndim == 2:
             assert inputs.shape[1] == l, (
-                "inputs has wrong shape %s. Expecting (B, %d)" % (inputs.shape,
-                                                                  l))
+                "inputs has wrong shape %s. Expecting (B, %d)" %
+                (inputs.shape, l))
             inputs = inputs.unsqueeze(0).expand(n, *inputs.shape)
         elif inputs.ndim == 3:
             assert (inputs.shape[1] == n and inputs.shape[2] == l), (
@@ -797,9 +798,8 @@ class ParallelFC(nn.Module):
                 y = y + self._bias
             y = y.unsqueeze(2)  # [n, B, 1]
         elif self.bias is not None:
-            y = torch.baddbmm(
-                self._bias.unsqueeze(1), inputs,
-                self.weight.transpose(1, 2))  # [n, B, k]
+            y = torch.baddbmm(self._bias.unsqueeze(1), inputs,
+                              self.weight.transpose(1, 2))  # [n, B, k]
         else:
             y = torch.bmm(inputs, self._weight.transpose(1, 2))  # [n, B, k]
         y = y.transpose(0, 1)  # [B, n, k]
@@ -938,24 +938,23 @@ class CompositionalFC(nn.Module):
 
         if inputs.ndim == 2:
             assert inputs.shape[1] == l, (
-                "inputs has wrong shape %s. Expecting (B, %d)" % (inputs.shape,
-                                                                  l))
+                "inputs has wrong shape %s. Expecting (B, %d)" %
+                (inputs.shape, l))
             inputs = inputs.unsqueeze(0).expand(n, *inputs.shape)
 
         else:
             raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
 
         if self.bias is not None:
-            y = torch.baddbmm(
-                self._bias.unsqueeze(1), inputs,
-                self.weight.transpose(1, 2))  # [n, B, k]
+            y = torch.baddbmm(self._bias.unsqueeze(1), inputs,
+                              self.weight.transpose(1, 2))  # [n, B, k]
         else:
             y = torch.bmm(inputs, self._weight.transpose(1, 2))  # [n, B, k]
         y = y.transpose(0, 1)  # [B, n, k]
 
         if comp_weight is not None:
-            assert comp_weight.ndim == 2, (
-                "Wrong comp_weight.ndim=%d" % comp_weight.ndim)
+            assert comp_weight.ndim == 2, ("Wrong comp_weight.ndim=%d" %
+                                           comp_weight.ndim)
 
             # [B, 1, n] x [B, n, k] -> [B, 1, k] -> [B, k]
             y = torch.bmm(comp_weight.unsqueeze(1), y).squeeze(1)
@@ -983,10 +982,9 @@ class CompositionalFC(nn.Module):
         """Initialize the parameters."""
         for i in range(self._n):
             if self._kernel_initializer is None:
-                variance_scaling_init(
-                    self._weight.data[i],
-                    gain=self._kernel_init_gain,
-                    nonlinearity=self._activation)
+                variance_scaling_init(self._weight.data[i],
+                                      gain=self._kernel_init_gain,
+                                      nonlinearity=self._activation)
             else:
                 self._kernel_initializer(self._weight.data[i])
 
@@ -1091,16 +1089,17 @@ class CausalConv1D(nn.Module):
         else:
             asymmetric_padding = ((kernel_size - 1) * dilation, 0)
 
-        self._pad = partial(
-            F.pad, pad=asymmetric_padding, mode='constant', value=0)
-        self._causal_conv1d = nn.Conv1d(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride=1,
-            padding=0,
-            dilation=dilation,
-            bias=use_bias)
+        self._pad = partial(F.pad,
+                            pad=asymmetric_padding,
+                            mode='constant',
+                            value=0)
+        self._causal_conv1d = nn.Conv1d(in_channels,
+                                        out_channels,
+                                        kernel_size,
+                                        stride=1,
+                                        padding=0,
+                                        dilation=dilation,
+                                        bias=use_bias)
 
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
@@ -1116,10 +1115,9 @@ class CausalConv1D(nn.Module):
     def reset_parameters(self):
         """Initialize the parameters."""
         if self._kernel_initializer is None:
-            variance_scaling_init(
-                self._causal_conv1d.weight.data,
-                gain=self._kernel_init_gain,
-                nonlinearity=self._activation)
+            variance_scaling_init(self._causal_conv1d.weight.data,
+                                  gain=self._kernel_init_gain,
+                                  nonlinearity=self._activation)
         else:
             self._kernel_initializer(self._causal_conv1d.weight.data)
         if self._use_bias:
@@ -1159,22 +1157,22 @@ class Conv2D(nn.Module):
     """2D Convolution Layer."""
 
     def __init__(
-            self,
-            in_channels,
-            out_channels,
-            kernel_size,
-            activation=torch.relu_,
-            strides=1,
-            padding=0,
-            use_bias=None,
-            use_bn=False,
-            use_ln=False,
-            weight_opt_args: Optional[Dict] = None,
-            bn_ctor=nn.BatchNorm2d,
-            kernel_initializer=None,
-            kernel_init_gain=1.0,
-            bias_init_value=0.0,
-            use_torch_init=False,
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        activation=torch.relu_,
+        strides=1,
+        padding=0,
+        use_bias=None,
+        use_bn=False,
+        use_ln=False,
+        weight_opt_args: Optional[Dict] = None,
+        bn_ctor=nn.BatchNorm2d,
+        kernel_initializer=None,
+        kernel_init_gain=1.0,
+        bias_init_value=0.0,
+        use_torch_init=False,
     ):
         """A 2D Conv layer that's also responsible for activation and customized
         weights initialization. An auto gain calculation might depend on the
@@ -1216,13 +1214,12 @@ class Conv2D(nn.Module):
         if use_bias is None:
             use_bias = not use_bn
         self._activation = activation
-        self._conv2d = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride=strides,
-            padding=padding,
-            bias=use_bias)
+        self._conv2d = nn.Conv2d(in_channels,
+                                 out_channels,
+                                 kernel_size,
+                                 stride=strides,
+                                 padding=padding,
+                                 bias=use_bias)
 
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
@@ -1248,10 +1245,9 @@ class Conv2D(nn.Module):
             if self._use_torch_init:
                 nn.init.kaiming_uniform_(self._conv2d.weight, a=math.sqrt(5))
             else:
-                variance_scaling_init(
-                    self._conv2d.weight.data,
-                    gain=self._kernel_init_gain,
-                    nonlinearity=self._activation)
+                variance_scaling_init(self._conv2d.weight.data,
+                                      gain=self._kernel_init_gain,
+                                      nonlinearity=self._activation)
         else:
             self._kernel_initializer(self._conv2d.weight.data)
         if self._use_bias:
@@ -1363,17 +1359,16 @@ class Conv2DBatchEnsemble(Conv2D):
                   Liu, Chang, et al. "Understanding and accelerating particle-based
                   variational inference." ICML, 2019.
         """
-        super().__init__(
-            in_channels,
-            out_channels,
-            kernel_size,
-            activation=activation,
-            strides=strides,
-            padding=padding,
-            use_bias=False,
-            use_bn=False,
-            kernel_initializer=kernel_initializer,
-            kernel_init_gain=kernel_init_gain)
+        super().__init__(in_channels,
+                         out_channels,
+                         kernel_size,
+                         activation=activation,
+                         strides=strides,
+                         padding=padding,
+                         use_bias=False,
+                         use_bn=False,
+                         kernel_initializer=kernel_initializer,
+                         kernel_init_gain=kernel_init_gain)
 
         self._r = nn.Parameter(torch.Tensor(ensemble_size, in_channels))
         self._s = nn.Parameter(torch.Tensor(ensemble_size, out_channels))
@@ -1399,19 +1394,22 @@ class Conv2DBatchEnsemble(Conv2D):
         # class when both ``_s`` and ``_r`` are not initialized yet.
         if hasattr(self, '_r') and hasattr(self, '_s'):
             # Both r and s are initialized to +1/-1 according to Appendix B
-            torch.randint(
-                2, size=self._r.shape, dtype=torch.float32, out=self._r.data)
-            torch.randint(
-                2, size=self._s.shape, dtype=torch.float32, out=self._s.data)
+            torch.randint(2,
+                          size=self._r.shape,
+                          dtype=torch.float32,
+                          out=self._r.data)
+            torch.randint(2,
+                          size=self._s.shape,
+                          dtype=torch.float32,
+                          out=self._s.data)
             self._r.data.mul_(2)
             self._r.data.sub_(1)
             self._s.data.mul_(2)
             self._s.data.sub_(1)
             if self._use_ensemble_bias:
-                nn.init.uniform_(
-                    self._ensemble_bias.data,
-                    a=-self._bias_init_range,
-                    b=self._bias_init_range)
+                nn.init.uniform_(self._ensemble_bias.data,
+                                 a=-self._bias_init_range,
+                                 b=self._bias_init_range)
 
     def forward(self, inputs):
         """Forward computation.
@@ -1433,8 +1431,8 @@ class Conv2DBatchEnsemble(Conv2D):
         if type(inputs) == tuple:
             inputs, ensemble_ids = inputs
         else:
-            ensemble_ids = torch.randint(
-                self._ensemble_size, size=(inputs.shape[0], ))
+            ensemble_ids = torch.randint(self._ensemble_size,
+                                         size=(inputs.shape[0], ))
         batch_size = inputs.shape[0]
         r = self._r[ensemble_ids].unsqueeze_(-1).unsqueeze_(
             -1)  # [B, in_channels, 1, 1]
@@ -1457,6 +1455,7 @@ class Conv2DBatchEnsemble(Conv2D):
 
 @alf.configurable
 class ParallelConv2D(nn.Module):
+
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -1521,14 +1520,13 @@ class ParallelConv2D(nn.Module):
         self._use_torch_init = use_torch_init
 
         self._kernel_size = common.tuplify2d(kernel_size)
-        self._conv2d = nn.Conv2d(
-            in_channels * n,
-            out_channels * n,
-            kernel_size,
-            groups=n,
-            stride=strides,
-            padding=padding,
-            bias=use_bias)
+        self._conv2d = nn.Conv2d(in_channels * n,
+                                 out_channels * n,
+                                 kernel_size,
+                                 groups=n,
+                                 stride=strides,
+                                 padding=padding,
+                                 bias=use_bias)
 
         if use_bn:
             self._bn = bn_ctor(n * out_channels)
@@ -1547,13 +1545,15 @@ class ParallelConv2D(nn.Module):
             if self._kernel_initializer is None:
                 if self._use_torch_init:
                     nn.init.kaiming_uniform_(
-                        self._conv2d.weight.data[i * self._out_channels:
-                                                 (i + 1) * self._out_channels],
+                        self._conv2d.weight.data[i *
+                                                 self._out_channels:(i + 1) *
+                                                 self._out_channels],
                         a=math.sqrt(5))
                 else:
                     variance_scaling_init(
-                        self._conv2d.weight.data[i * self._out_channels:
-                                                 (i + 1) * self._out_channels],
+                        self._conv2d.weight.data[i *
+                                                 self._out_channels:(i + 1) *
+                                                 self._out_channels],
                         gain=self._kernel_init_gain,
                         nonlinearity=self._activation)
             else:
@@ -1615,10 +1615,9 @@ class ParallelConv2D(nn.Module):
         elif img.ndim == 5:
             # the non-shared case
             assert (
-                img.shape[1] == self._n
-                and img.shape[2] == self._in_channels), (
-                    "Input img has wrong shape %s. Expecting (B, %d, %d, H, W)"
-                    % (img.shape, self._n, self._in_channels))
+                img.shape[1] == self._n and img.shape[2] == self._in_channels
+            ), ("Input img has wrong shape %s. Expecting (B, %d, %d, H, W)" %
+                (img.shape, self._n, self._in_channels))
         else:
             raise ValueError("Wrong img.ndim=%d" % img.ndim)
 
@@ -1643,9 +1642,10 @@ class ParallelConv2D(nn.Module):
         # The reason that weight cannot pre-computed at __init__ is deepcopy will
         # fail. deepcopy is needed to implement the copy for the container networks.
         # [n*C', C, kernel_size, kernel_size]->[n, C', C, kernel_size, kernel_size]
-        return self._conv2d.weight.view(
-            self._n, self._out_channels, self._in_channels,
-            self._kernel_size[0], self._kernel_size[1])
+        return self._conv2d.weight.view(self._n, self._out_channels,
+                                        self._in_channels,
+                                        self._kernel_size[0],
+                                        self._kernel_size[1])
 
     @property
     def bias(self):
@@ -1660,6 +1660,7 @@ class ParallelConv2D(nn.Module):
 
 @alf.configurable
 class ConvTranspose2D(nn.Module):
+
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -1710,14 +1711,13 @@ class ConvTranspose2D(nn.Module):
         if use_bias is None:
             use_bias = not use_bn
         self._activation = activation
-        self._conv_trans2d = nn.ConvTranspose2d(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride=strides,
-            padding=padding,
-            output_padding=output_padding,
-            bias=use_bias)
+        self._conv_trans2d = nn.ConvTranspose2d(in_channels,
+                                                out_channels,
+                                                kernel_size,
+                                                stride=strides,
+                                                padding=padding,
+                                                output_padding=output_padding,
+                                                bias=use_bias)
 
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
@@ -1731,11 +1731,10 @@ class ConvTranspose2D(nn.Module):
     def reset_parameters(self):
         """Initialize the parameters."""
         if self._kernel_initializer is None:
-            variance_scaling_init(
-                self._conv_trans2d.weight.data,
-                gain=self._kernel_init_gain,
-                nonlinearity=self._activation,
-                transposed=True)
+            variance_scaling_init(self._conv_trans2d.weight.data,
+                                  gain=self._kernel_init_gain,
+                                  nonlinearity=self._activation,
+                                  transposed=True)
         else:
             self._kernel_initializer(self._conv_trans2d.weight.data)
         if self._use_bias:
@@ -1764,6 +1763,7 @@ class ConvTranspose2D(nn.Module):
 
 @alf.configurable
 class ParallelConvTranspose2D(nn.Module):
+
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -1813,15 +1813,14 @@ class ParallelConvTranspose2D(nn.Module):
         self._in_channels = in_channels
         self._out_channels = out_channels
         self._kernel_size = common.tuplify2d(kernel_size)
-        self._conv_trans2d = nn.ConvTranspose2d(
-            in_channels * n,
-            out_channels * n,
-            kernel_size,
-            groups=n,
-            stride=strides,
-            padding=padding,
-            output_padding=output_padding,
-            bias=use_bias)
+        self._conv_trans2d = nn.ConvTranspose2d(in_channels * n,
+                                                out_channels * n,
+                                                kernel_size,
+                                                groups=n,
+                                                stride=strides,
+                                                padding=padding,
+                                                output_padding=output_padding,
+                                                bias=use_bias)
 
         for i in range(n):
             if kernel_initializer is None:
@@ -1836,9 +1835,11 @@ class ParallelConvTranspose2D(nn.Module):
                                                    in_channels])
 
         # [n*C, C', kernel_size, kernel_size]->[n, C, C', kernel_size, kernel_size]
-        self._weight = self._conv_trans2d.weight.view(
-            self._n, self._in_channels, self._out_channels,
-            self._kernel_size[0], self._kernel_size[1])
+        self._weight = self._conv_trans2d.weight.view(self._n,
+                                                      self._in_channels,
+                                                      self._out_channels,
+                                                      self._kernel_size[0],
+                                                      self._kernel_size[1])
 
         if use_bias:
             nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
@@ -1890,10 +1891,9 @@ class ParallelConvTranspose2D(nn.Module):
         elif img.ndim == 5:
             # the non-shared case
             assert (
-                img.shape[1] == self._n
-                and img.shape[2] == self._in_channels), (
-                    "Input img has wrong shape %s. Expecting (B, %d, %d, H, W)"
-                    % (img.shape, self._n, self._in_channels))
+                img.shape[1] == self._n and img.shape[2] == self._in_channels
+            ), ("Input img has wrong shape %s. Expecting (B, %d, %d, H, W)" %
+                (img.shape, self._n, self._in_channels))
         else:
             raise ValueError("Wrong img.ndim=%d" % img.ndim)
 
@@ -1920,6 +1920,7 @@ class ParallelConvTranspose2D(nn.Module):
 
 @alf.configurable
 class ParamFC(nn.Module):
+
     def __init__(self,
                  input_size,
                  output_size,
@@ -2064,10 +2065,9 @@ class ParamFC(nn.Module):
         if reinitialize:
             for i in range(self._n_groups):
                 if self._kernel_initializer is None:
-                    variance_scaling_init(
-                        weight[i],
-                        gain=self._kernel_init_gain,
-                        nonlinearity=self._activation)
+                    variance_scaling_init(weight[i],
+                                          gain=self._kernel_init_gain,
+                                          nonlinearity=self._activation)
                 else:
                     self._kernel_initializer(weight[i])
 
@@ -2132,8 +2132,8 @@ class ParamFC(nn.Module):
             raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
 
         if self._bias is not None:
-            res = torch.baddbmm(
-                self._bias.unsqueeze(1), inputs, self._weight.transpose(1, 2))
+            res = torch.baddbmm(self._bias.unsqueeze(1), inputs,
+                                self._weight.transpose(1, 2))
         else:
             res = torch.bmm(inputs, self._weight.transpose(1, 2))
         res = res.transpose(0, 1)  # [B, n, D]
@@ -2148,6 +2148,7 @@ class ParamFC(nn.Module):
 
 @alf.configurable
 class ParamConv2D(nn.Module):
+
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -2400,13 +2401,12 @@ class ParamConv2D(nn.Module):
             else:
                 raise ValueError("Wrong img.ndim=%d" % img.ndim)
 
-        res = F.conv2d(
-            img,
-            self._weight,
-            bias=self._bias,
-            stride=self._strides,
-            padding=self._padding,
-            groups=self._n_groups)
+        res = F.conv2d(img,
+                       self._weight,
+                       bias=self._bias,
+                       stride=self._strides,
+                       padding=self._padding,
+                       groups=self._n_groups)
         if self._use_ln:
             res = self._ln(res, keep_group_dim=False)
         res = self._activation(res)
@@ -2424,6 +2424,7 @@ class ParamConv2D(nn.Module):
 
 @alf.configurable
 class Reshape(nn.Module):
+
     def __init__(self, *shape):
         """A layer for reshape the tensor.
 
@@ -2455,14 +2456,13 @@ def _conv_transpose_2d(in_channels,
     # need output_padding so that output_size is stride * input_size
     # See https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d
     output_padding = stride + 2 * padding - kernel_size
-    return nn.ConvTranspose2d(
-        in_channels,
-        out_channels,
-        kernel_size,
-        stride=stride,
-        padding=padding,
-        output_padding=output_padding,
-        bias=bias)
+    return nn.ConvTranspose2d(in_channels,
+                              out_channels,
+                              kernel_size,
+                              stride=stride,
+                              padding=padding,
+                              output_padding=output_padding,
+                              bias=bias)
 
 
 @alf.configurable(whitelist=[
@@ -2513,15 +2513,17 @@ class ResidueBlock(nn.Module):
         self._activation = activation
         padding = (kernel_size - 1) // 2
 
-        conv1 = conv_fn(
-            in_channels,
-            channels,
-            kernel_size,
-            stride,
-            padding=padding,
-            bias=bias)
-        conv2 = conv_fn(
-            channels, channels, kernel_size, padding=padding, bias=bias)
+        conv1 = conv_fn(in_channels,
+                        channels,
+                        kernel_size,
+                        stride,
+                        padding=padding,
+                        bias=bias)
+        conv2 = conv_fn(channels,
+                        channels,
+                        kernel_size,
+                        padding=padding,
+                        bias=bias)
         nn.init.kaiming_normal_(conv1.weight.data)
         nn.init.kaiming_normal_(conv2.weight.data)
 
@@ -2630,8 +2632,12 @@ class BottleneckBlock(nn.Module):
         padding = (kernel_size - 1) // 2
         if v1_5:
             a = conv_fn(in_channels, filters1, 1, bias=bias)
-            b = conv_fn(
-                filters1, filters2, kernel_size, stride, padding, bias=bias)
+            b = conv_fn(filters1,
+                        filters2,
+                        kernel_size,
+                        stride,
+                        padding,
+                        bias=bias)
         else:
             a = conv_fn(in_channels, filters1, 1, stride, bias=bias)
             b = conv_fn(filters1, filters2, kernel_size, 1, padding, bias=bias)
@@ -2914,8 +2920,9 @@ class TransformerBlock(nn.Module):
             # a           M * H * N * d_k              M * H * N
 
             # [B, N, H, d_k] <= [B, N, d_model] * [d_model, H * d_k]
-            k = torch.matmul(memory, self._k_proj).reshape(
-                batch_size, n, num_heads, d_k)
+            k = torch.matmul(memory,
+                             self._k_proj).reshape(batch_size, n, num_heads,
+                                                   d_k)
             # [B, M, H, N] <= [B, M, H, d_k] * [B, N, H, d_k]
             logits = torch.einsum('bmhd,bnhd->bmhn', q + self._qk_bias, k)
         else:
@@ -2962,8 +2969,9 @@ class TransformerBlock(nn.Module):
             # att_result  M * H * N * d_v              M * H * d_v
 
             # [B, N, H, d_v] <= [B, N, d_model] * [d_model, H * d_v]
-            v = torch.matmul(memory, self._v_proj).reshape(
-                batch_size, n, num_heads, d_v)
+            v = torch.matmul(memory,
+                             self._v_proj).reshape(batch_size, n, num_heads,
+                                                   d_v)
             # [B, M, H, d_v] <= [B, M, H, N] * [B, N, H, d_v]
             att_result = torch.einsum('bmhn,bnhd->bmhd', a, v)
         else:
@@ -3183,8 +3191,8 @@ class RandomCrop(nn.Module):
             "input size is too small: %s vs %s" % ((H, W), (h, w)))
 
         starty = torch.randint(-top, H + bottom - h + 1, (B, )).reshape(B, 1)
-        startx = torch.randint(-left, W + right - w + 1, (B, )).reshape(
-            B, 1, 1)
+        startx = torch.randint(-left, W + right - w + 1,
+                               (B, )).reshape(B, 1, 1)
         # [B, h, 1]
         y = (starty + torch.arange(h)).clamp_(min=0, max=H - 1).unsqueeze(-1)
         # [B, 1, w]
@@ -3261,8 +3269,8 @@ def reset_parameters(module):
             reset_parameters(l)
     elif isinstance(module, nn.Module):
         if len(list(module.parameters())) > 0:
-            raise ValueError(
-                "Cannot reset_parameter for layer type %s." % type(module))
+            raise ValueError("Cannot reset_parameter for layer type %s." %
+                             type(module))
 
 
 class Detach(ElementwiseLayerBase):
@@ -3276,6 +3284,7 @@ class Detach(ElementwiseLayerBase):
 
 
 class Scale(ElementwiseLayerBase):
+
     def __init__(self, scale):
         super().__init__()
         self._scale = scale
@@ -3303,6 +3312,7 @@ class ScaleGradient(ElementwiseLayerBase):
 
 @alf.configurable
 class SummarizeGradient(ElementwiseLayerBase):
+
     def __init__(self, name):
         """A layer for summarizing the gradient of the input tensor.
 
@@ -3484,9 +3494,9 @@ class Sequential(nn.Module):
             else:
                 module = element
             if not (isinstance(module, Callable) and is_nested_str(input)):
-                raise ValueError(
-                    "Argument %s is not in the form of Callable "
-                    "or (nested str, Callable): %s" % (out or str(i), element))
+                raise ValueError("Argument %s is not in the form of Callable "
+                                 "or (nested str, Callable): %s" %
+                                 (out or str(i), element))
             if isinstance(module, alf.networks.Network):
                 assert not alf.nest.flatten(module.state_spec), (
                     "Network element of layers.Sequential should be stateless. "
@@ -3553,8 +3563,9 @@ class Sequential(nn.Module):
                 new_networks.append((input, pnet))
             else:
                 new_named_networks[output] = (input, pnet)
-        return Sequential(
-            *new_networks, output=self._output, **new_named_networks)
+        return Sequential(*new_networks,
+                          output=self._output,
+                          **new_named_networks)
 
 
 def make_parallel_net(module, n: int):
@@ -3601,6 +3612,7 @@ def make_parallel_net(module, n: int):
 
 
 class NaiveParallelLayer(nn.Module):
+
     def __init__(self, module: Union[nn.Module, Callable], n: int):
         """
         A parallel network has ``n`` copies of network with the same structure but

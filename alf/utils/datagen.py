@@ -24,6 +24,7 @@ import alf
 
 
 class TestDataSet(torch.utils.data.Dataset):
+
     def __init__(self, input_dim=3, output_dim=1, size=1000, weight=None):
         self._features = torch.randn(size, input_dim)
         if weight is None:
@@ -50,16 +51,24 @@ def load_test(train_bs=50, test_bs=10, num_workers=0):
     input_dim = 3
     output_dim = 1
     weight = torch.rand(input_dim, output_dim) + 5.
-    trainset = TestDataSet(
-        input_dim=input_dim, output_dim=output_dim, size=1000, weight=weight)
-    testset = TestDataSet(
-        input_dim=input_dim, output_dim=output_dim, size=500, weight=weight)
+    trainset = TestDataSet(input_dim=input_dim,
+                           output_dim=output_dim,
+                           size=1000,
+                           weight=weight)
+    testset = TestDataSet(input_dim=input_dim,
+                          output_dim=output_dim,
+                          size=500,
+                          weight=weight)
 
-    train_loader = torch.utils.data.DataLoader(
-        trainset, batch_size=train_bs, shuffle=True, num_workers=num_workers)
+    train_loader = torch.utils.data.DataLoader(trainset,
+                                               batch_size=train_bs,
+                                               shuffle=True,
+                                               num_workers=num_workers)
 
-    test_loader = torch.utils.data.DataLoader(
-        testset, batch_size=test_bs, shuffle=True, num_workers=num_workers)
+    test_loader = torch.utils.data.DataLoader(testset,
+                                              batch_size=test_bs,
+                                              shuffle=True,
+                                              num_workers=num_workers)
 
     return train_loader, test_loader
 
@@ -110,18 +119,24 @@ def load_mnist(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
         [transforms.ToTensor(),
          transforms.Normalize((0.1307, ), (0.3081, ))])
 
-    trainset = datasets.MNIST(
-        root=path, train=True, download=True, transform=data_transform)
+    trainset = datasets.MNIST(root=path,
+                              train=True,
+                              download=True,
+                              transform=data_transform)
     testset = datasets.MNIST(root=path, train=False, transform=data_transform)
 
     if label_idx is not None:
         trainset = Subset(trainset, get_classes(trainset, label_idx))
         testset = Subset(testset, get_classes(testset, label_idx))
 
-    train_loader = torch.utils.data.DataLoader(
-        trainset, batch_size=train_bs, shuffle=True, **kwargs)
-    test_loader = torch.utils.data.DataLoader(
-        testset, batch_size=test_bs, shuffle=False, **kwargs)
+    train_loader = torch.utils.data.DataLoader(trainset,
+                                               batch_size=train_bs,
+                                               shuffle=True,
+                                               **kwargs)
+    test_loader = torch.utils.data.DataLoader(testset,
+                                              batch_size=test_bs,
+                                              shuffle=False,
+                                              **kwargs)
 
     return train_loader, test_loader
 
@@ -152,20 +167,28 @@ def load_cifar10(label_idx=None, train_bs=100, test_bs=100, num_workers=0):
                              (0.2023, 0.1994, 0.2010))
     ])
 
-    trainset = datasets.CIFAR10(
-        root=path, train=True, download=True, transform=data_transform)
+    trainset = datasets.CIFAR10(root=path,
+                                train=True,
+                                download=True,
+                                transform=data_transform)
 
-    testset = datasets.CIFAR10(
-        root=path, train=False, download=True, transform=data_transform)
+    testset = datasets.CIFAR10(root=path,
+                               train=False,
+                               download=True,
+                               transform=data_transform)
 
     if label_idx is not None:
         trainset = Subset(trainset, get_classes(trainset, label_idx))
         testset = Subset(testset, get_classes(testset, label_idx))
 
-    test_loader = torch.utils.data.DataLoader(
-        testset, batch_size=test_bs, shuffle=False, **kwargs)
-    train_loader = torch.utils.data.DataLoader(
-        trainset, batch_size=train_bs, shuffle=True, **kwargs)
+    test_loader = torch.utils.data.DataLoader(testset,
+                                              batch_size=test_bs,
+                                              shuffle=False,
+                                              **kwargs)
+    train_loader = torch.utils.data.DataLoader(trainset,
+                                               batch_size=train_bs,
+                                               shuffle=True,
+                                               **kwargs)
 
     return train_loader, test_loader
 
@@ -260,5 +283,7 @@ def load_wikitext103(train_bs, test_bs, max_vocab_size=32768):
         - torchtext.vocab.Vacob: vocab
     """
     from torchtext.datasets import WikiText103
-    return _load_textdata(
-        WikiText103, train_bs, test_bs, max_vocab_size=max_vocab_size)
+    return _load_textdata(WikiText103,
+                          train_bs,
+                          test_bs,
+                          max_vocab_size=max_vocab_size)

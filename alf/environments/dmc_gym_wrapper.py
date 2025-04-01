@@ -69,6 +69,7 @@ def _flatten_obs(obs):
 
 
 class DMCGYMWrapper(gym.core.Env):
+
     def __init__(self,
                  domain_name: str,
                  task_name: str,
@@ -111,13 +112,12 @@ class DMCGYMWrapper(gym.core.Env):
             environment_kwargs = None
 
         # create task
-        self._env_fn = partial(
-            suite.load,
-            domain_name=domain_name,
-            task_name=task_name,
-            task_kwargs={"time_limit": float('inf')},
-            environment_kwargs=environment_kwargs,
-            visualize_reward=visualize_reward)
+        self._env_fn = partial(suite.load,
+                               domain_name=domain_name,
+                               task_name=task_name,
+                               task_kwargs={"time_limit": float('inf')},
+                               environment_kwargs=environment_kwargs,
+                               visualize_reward=visualize_reward)
         self._env = self._env_fn()
 
         self._action_space = _dmc_spec_to_box([self._env.action_spec()])
@@ -125,8 +125,10 @@ class DMCGYMWrapper(gym.core.Env):
         # create observation space
         if from_pixels:
             shape = [3, height, width]
-            self._observation_space = spaces.Box(
-                low=0, high=255, shape=shape, dtype=np.uint8)
+            self._observation_space = spaces.Box(low=0,
+                                                 high=255,
+                                                 shape=shape,
+                                                 dtype=np.uint8)
         else:
             self._observation_space = _dmc_spec_to_box(
                 self._env.observation_spec().values())
@@ -137,10 +139,9 @@ class DMCGYMWrapper(gym.core.Env):
     def _get_obs(self, time_step):
         if self._from_pixels:
             # this returns channels_last images
-            obs = self.render(
-                height=self._height,
-                width=self._width,
-                camera_id=self._camera_id)
+            obs = self.render(height=self._height,
+                              width=self._width,
+                              camera_id=self._camera_id)
             obs = obs.transpose(2, 0, 1).copy()
         else:
             obs = _flatten_obs(time_step.observation)
@@ -181,10 +182,11 @@ class DMCGYMWrapper(gym.core.Env):
         """Render an RGB image.
         Copied from https://github.com/denisyarats/dmc2gym
         """
-        assert mode == 'rgb_array', (
-            'only support rgb_array mode, given %s' % mode)
+        assert mode == 'rgb_array', ('only support rgb_array mode, given %s' %
+                                     mode)
         height = height or self._height
         width = width or self._width
         camera_id = camera_id or self._camera_id
-        return self._env.physics.render(
-            height=height, width=width, camera_id=camera_id)
+        return self._env.physics.render(height=height,
+                                        width=width,
+                                        camera_id=camera_id)

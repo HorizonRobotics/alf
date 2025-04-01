@@ -192,16 +192,16 @@ class RLAlgorithm(Algorithm):
             debug_summaries (bool): If True, debug summaries will be created.
             name (str): Name of this algorithm.
         """
-        super(RLAlgorithm, self).__init__(
-            train_state_spec=train_state_spec,
-            rollout_state_spec=rollout_state_spec,
-            predict_state_spec=predict_state_spec,
-            is_on_policy=is_on_policy,
-            optimizer=optimizer,
-            config=config,
-            checkpoint=checkpoint,
-            debug_summaries=debug_summaries,
-            name=name)
+        super(RLAlgorithm,
+              self).__init__(train_state_spec=train_state_spec,
+                             rollout_state_spec=rollout_state_spec,
+                             predict_state_spec=predict_state_spec,
+                             is_on_policy=is_on_policy,
+                             optimizer=optimizer,
+                             config=config,
+                             checkpoint=checkpoint,
+                             debug_summaries=debug_summaries,
+                             name=name)
         self._is_eval = is_eval
 
         self._env = env
@@ -375,24 +375,22 @@ class RLAlgorithm(Algorithm):
                 "The shape of rewards should be [T, B] or [T, B, k]")
             if rewards.ndim == 2:
                 alf.summary.histogram(name + "/value", rewards)
-                alf.summary.scalar(
-                    name + "/mean",
-                    torch.mean(rewards),
-                    average_over_summary_interval=True)
+                alf.summary.scalar(name + "/mean",
+                                   torch.mean(rewards),
+                                   average_over_summary_interval=True)
             else:
                 for i in range(rewards.shape[2]):
                     r = rewards[..., i]
                     alf.summary.histogram('%s/%s/value' % (name, i), r)
-                    alf.summary.scalar(
-                        '%s/%s/mean' % (name, i),
-                        torch.mean(r),
-                        average_over_summary_interval=True)
+                    alf.summary.scalar('%s/%s/mean' % (name, i),
+                                       torch.mean(r),
+                                       average_over_summary_interval=True)
 
     @alf.configurable(whitelist=["custom_summary"])
-    def summarize_rollout(
-            self,
-            experience: Experience,
-            custom_summary: Optional[Callable[[Experience], None]] = None):
+    def summarize_rollout(self,
+                          experience: Experience,
+                          custom_summary: Optional[Callable[[Experience],
+                                                            None]] = None):
         """Generate summaries for rollout.
 
         Args:
@@ -452,10 +450,10 @@ class RLAlgorithm(Algorithm):
                 summary_utils.summarize_distribution("action_dist", field[0])
 
     @alf.configurable(whitelist=["custom_summary"])
-    def summarize_play(
-            self,
-            experience: Experience,
-            custom_summary: Optional[Callable[[Experience], None]] = None):
+    def summarize_play(self,
+                       experience: Experience,
+                       custom_summary: Optional[Callable[[Experience],
+                                                         None]] = None):
         """Generate summaries for play or evaluate.
 
         Args:
@@ -573,10 +571,9 @@ class RLAlgorithm(Algorithm):
                 transformed_time_step, policy_state, experience_list,
                 original_reward_list)
 
-        alf.summary.scalar(
-            "time/unroll_env_step",
-            env_step_time,
-            average_over_summary_interval=True)
+        alf.summary.scalar("time/unroll_env_step",
+                           env_step_time,
+                           average_over_summary_interval=True)
         alf.summary.scalar("time/unroll_store_exp", store_exp_time)
         if unroll_length == 0:
             alf.summary.scalar("async_unroll/unroll_length",
@@ -697,10 +694,9 @@ class RLAlgorithm(Algorithm):
             time_step = next_time_step
             policy_state = policy_step.state
 
-        alf.summary.scalar(
-            "time/unroll_env_step",
-            env_step_time,
-            average_over_summary_interval=True)
+        alf.summary.scalar("time/unroll_env_step",
+                           env_step_time,
+                           average_over_summary_interval=True)
         alf.summary.scalar("time/unroll_store_exp", store_exp_time)
         original_reward = alf.nest.utils.stack_nests(original_reward_list)
         self.summarize_reward("rollout_reward/original_reward",
@@ -740,8 +736,8 @@ class RLAlgorithm(Algorithm):
     @data_distributed_when(lambda algorithm: algorithm.on_policy)
     def _compute_train_info_and_loss_info_on_policy(self, unroll_length):
         with record_time("time/unroll"):
-            with torch.cuda.amp.autocast(
-                    self._config.enable_amp, dtype=self._config.amp_dtype):
+            with torch.cuda.amp.autocast(self._config.enable_amp,
+                                         dtype=self._config.amp_dtype):
                 experience = self.unroll(self._config.unroll_length)
             self.summarize_metrics()
 
@@ -759,8 +755,8 @@ class RLAlgorithm(Algorithm):
             self._config.unroll_length)
 
         with record_time("time/train"):
-            valid_masks = (experience.step_type != StepType.LAST).to(
-                torch.float32)
+            valid_masks = (experience.step_type
+                           != StepType.LAST).to(torch.float32)
             loss_info, params = self.update_with_gradient(
                 loss_info, valid_masks)
             self.after_update(experience.time_step, train_info)
@@ -799,8 +795,8 @@ class RLAlgorithm(Algorithm):
         unrolled = False
         root_inputs = None
         rollout_info = None
-        if (alf.summary.get_global_counter() >=
-                self._rl_train_after_update_steps
+        if (alf.summary.get_global_counter()
+                >= self._rl_train_after_update_steps
                 and (unroll_length > 0 or config.unroll_length == 0) and
             (config.num_env_steps == 0
              or self.get_step_metrics()[1].result() < config.num_env_steps)):
@@ -918,13 +914,13 @@ class RLAlgorithm(Algorithm):
 
                 step_type_spec = dist_utils.extract_spec(
                     buffer_dict[step_type_key], from_dim=2)
-                reward_spec = dist_utils.extract_spec(
-                    buffer_dict[reward_key], from_dim=2)
+                reward_spec = dist_utils.extract_spec(buffer_dict[reward_key],
+                                                      from_dim=2)
                 discount_spec = dist_utils.extract_spec(
                     buffer_dict[discount_key], from_dim=2)
 
-                env_id_spec = dist_utils.extract_spec(
-                    buffer_dict[env_id_key], from_dim=2)
+                env_id_spec = dist_utils.extract_spec(buffer_dict[env_id_key],
+                                                      from_dim=2)
 
                 time_step_spec = TimeStep(
                     step_type=step_type_spec,
@@ -934,8 +930,8 @@ class RLAlgorithm(Algorithm):
                     prev_action=self._action_spec,
                     env_id=env_id_spec)
 
-                exp_spec_wo_info = Experience(
-                    time_step=time_step_spec, action=self._action_spec)
+                exp_spec_wo_info = Experience(time_step=time_step_spec,
+                                              action=self._action_spec)
 
                 # assumes a typical Agent structure
                 exp_spec = Experience(
@@ -957,10 +953,11 @@ class RLAlgorithm(Algorithm):
                      '{}------'.format(
                          self._offline_replay_buffer.total_size.item()))
 
-    def _populate_offline_replay_buffer(
-            self, exp_spec, exp_spec_wo_info, number_of_samples,
-            total_replay_buffer_length, env_batch_size,
-            replay_buffer_checkpoint):
+    def _populate_offline_replay_buffer(self, exp_spec, exp_spec_wo_info,
+                                        number_of_samples,
+                                        total_replay_buffer_length,
+                                        env_batch_size,
+                                        replay_buffer_checkpoint):
         """Initialize the experience replay buffer from a offline replay buffer
         checkpoint. It will construct ``_offline_replay_buffer`` if it is not
         constructed yet. Then the first ``number_of_samples`` data samples from
@@ -1016,22 +1013,20 @@ class RLAlgorithm(Algorithm):
 
         # 3) wrap as experience
         time_step_dict = buffer_dict.time_step
-        time_step = TimeStep(
-            step_type=time_step_dict.step_type,
-            reward=time_step_dict.reward,
-            discount=time_step_dict.discount,
-            observation=time_step_dict.observation,
-            prev_action=time_step_dict.prev_action,
-            env_id=time_step_dict.env_id)
+        time_step = TimeStep(step_type=time_step_dict.step_type,
+                             reward=time_step_dict.reward,
+                             discount=time_step_dict.discount,
+                             observation=time_step_dict.observation,
+                             prev_action=time_step_dict.prev_action,
+                             env_id=time_step_dict.env_id)
 
-        exp = Experience(
-            time_step=time_step,
-            action=buffer_dict.action,
-            rollout_info=BasicRolloutInfo(
-                rl=BasicRLInfo(action=buffer_dict.action),
-                rewards={},
-                repr={},
-            ))
+        exp = Experience(time_step=time_step,
+                         action=buffer_dict.action,
+                         rollout_info=BasicRolloutInfo(
+                             rl=BasicRLInfo(action=buffer_dict.action),
+                             rewards={},
+                             repr={},
+                         ))
 
         # load data
         def _load_data(exp):
@@ -1048,8 +1043,8 @@ class RLAlgorithm(Algorithm):
                     bat = alf.nest.map_structure(lambda x: x[:, t, ...], exp)
                     self._offline_replay_buffer.add_batch(bat, bat.env_id)
             else:
-                raise ValueError(
-                    "Unsupported outer rank %s of `exp`" % outer_rank)
+                raise ValueError("Unsupported outer rank %s of `exp`" %
+                                 outer_rank)
 
         _load_data(exp)
 

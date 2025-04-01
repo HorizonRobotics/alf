@@ -38,26 +38,24 @@ class PrettyPrinter(pprint.PrettyPrinter):
         if length:
             # We first try to print inline, and if it is too large then we print it on multiple lines
             inline_stream = StringIO()
-            PrettyPrinter.format_namedtuple_items(
-                self,
-                object_dict.items(),
-                inline_stream,
-                indent,
-                allowance + 1,
-                context,
-                level,
-                inline=True)
+            PrettyPrinter.format_namedtuple_items(self,
+                                                  object_dict.items(),
+                                                  inline_stream,
+                                                  indent,
+                                                  allowance + 1,
+                                                  context,
+                                                  level,
+                                                  inline=True)
             max_width = self._width - indent - allowance
             if len(inline_stream.getvalue()) > max_width:
-                PrettyPrinter.format_namedtuple_items(
-                    self,
-                    object_dict.items(),
-                    stream,
-                    indent,
-                    allowance + 1,
-                    context,
-                    level,
-                    inline=False)
+                PrettyPrinter.format_namedtuple_items(self,
+                                                      object_dict.items(),
+                                                      stream,
+                                                      indent,
+                                                      allowance + 1,
+                                                      context,
+                                                      level,
+                                                      inline=False)
             else:
                 stream.write(inline_stream.getvalue())
         write(')')
@@ -95,8 +93,8 @@ class PrettyPrinter(pprint.PrettyPrinter):
         # same formatting on other classes but a more precise one is possible
         if (hasattr(object, '_asdict')
                 and type(object).__repr__ not in self._dispatch):
-            self._dispatch[type(object).
-                           __repr__] = PrettyPrinter.format_namedtuple
+            self._dispatch[type(
+                object).__repr__] = PrettyPrinter.format_namedtuple
         super()._format(object, stream, indent, allowance, context, level)
 
 
@@ -105,6 +103,6 @@ pp = PrettyPrinter(indent=2)
 
 def pformat_pycolor(obj):
     if _py_color:
-        return highlight(
-            pp.pformat(obj), PythonLexer(), Terminal256Formatter())
+        return highlight(pp.pformat(obj), PythonLexer(),
+                         Terminal256Formatter())
     return pp.pformat(obj)

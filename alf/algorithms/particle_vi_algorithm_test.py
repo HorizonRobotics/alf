@@ -27,6 +27,7 @@ from alf.tensor_specs import TensorSpec
 
 
 class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+
     def assertArrayEqual(self, x, y, eps):
         self.assertEqual(x.shape, y.shape)
         self.assertLessEqual(float(torch.max(abs(x - y))), eps)
@@ -68,13 +69,12 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         logging.info("par_vi: %s" % (par_vi))
         dim = 2
         num_particles = 256
-        ParVI = ParVIAlgorithm(
-            dim,
-            num_particles=num_particles,
-            par_vi=par_vi,
-            critic_hidden_layers=(20, ),
-            critic_optimizer=alf.optimizers.Adam(lr=1e-3),
-            optimizer=alf.optimizers.AdamTF(lr=1e-2))
+        ParVI = ParVIAlgorithm(dim,
+                               num_particles=num_particles,
+                               par_vi=par_vi,
+                               critic_hidden_layers=(20, ),
+                               critic_optimizer=alf.optimizers.Adam(lr=1e-3),
+                               optimizer=alf.optimizers.AdamTF(lr=1e-2))
 
         var = torch.tensor([1, 4], dtype=torch.float32)
         precision = 1. / var

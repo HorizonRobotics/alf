@@ -213,11 +213,10 @@ class HyperNetwork(Algorithm):
                 outlier_dataloaders = data_creator_outlier()
             else:
                 outlier_dataloaders = None
-            self.set_data_loader(
-                trainset,
-                testset,
-                outlier_dataloaders,
-                entropy_regularization=entropy_regularization)
+            self.set_data_loader(trainset,
+                                 testset,
+                                 outlier_dataloaders,
+                                 entropy_regularization=entropy_regularization)
             input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
             if hasattr(trainset.dataset, 'classes'):
                 output_dim = len(trainset.dataset.classes)
@@ -232,38 +231,35 @@ class HyperNetwork(Algorithm):
             self._test_loader = None
 
         last_layer_size = output_dim
-        param_net = ParamNetwork(
-            input_tensor_spec=input_tensor_spec,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            use_conv_bias=use_conv_bias,
-            use_conv_ln=use_conv_ln,
-            use_fc_bias=use_fc_bias,
-            use_fc_ln=use_fc_ln,
-            n_groups=num_particles,
-            activation=activation,
-            last_layer_size=last_layer_size,
-            last_use_bias=last_use_bias,
-            last_use_ln=last_use_ln,
-            last_activation=last_activation)
+        param_net = ParamNetwork(input_tensor_spec=input_tensor_spec,
+                                 conv_layer_params=conv_layer_params,
+                                 fc_layer_params=fc_layer_params,
+                                 use_conv_bias=use_conv_bias,
+                                 use_conv_ln=use_conv_ln,
+                                 use_fc_bias=use_fc_bias,
+                                 use_fc_ln=use_fc_ln,
+                                 n_groups=num_particles,
+                                 activation=activation,
+                                 last_layer_size=last_layer_size,
+                                 last_use_bias=last_use_bias,
+                                 last_use_ln=last_use_ln,
+                                 last_activation=last_activation)
 
         gen_output_dim = param_net.param_length
         noise_spec = TensorSpec(shape=(noise_dim, ))
 
         if functional_gradient:
-            net = ReluMLP(
-                noise_spec,
-                hidden_layers=hidden_layers,
-                output_size=gen_output_dim,
-                name='Generator')
+            net = ReluMLP(noise_spec,
+                          hidden_layers=hidden_layers,
+                          output_size=gen_output_dim,
+                          name='Generator')
         else:
-            net = EncodingNetwork(
-                noise_spec,
-                fc_layer_params=hidden_layers,
-                use_fc_bn=generator_use_fc_bn,
-                last_layer_size=gen_output_dim,
-                last_activation=math_ops.identity,
-                name="Generator")
+            net = EncodingNetwork(noise_spec,
+                                  fc_layer_params=hidden_layers,
+                                  use_fc_bn=generator_use_fc_bn,
+                                  last_layer_size=gen_output_dim,
+                                  last_activation=math_ops.identity,
+                                  name="Generator")
 
         if logging_network:
             logging.info("Generated network")
@@ -285,12 +281,12 @@ class HyperNetwork(Algorithm):
             assert function_extra_bs_sampler in ('uniform', 'normal'), (
                 "Unsupported sampling type %s for extra training batch" %
                 (function_extra_bs_sampler))
-            self._function_extra_bs = math.ceil(
-                function_bs * function_extra_bs_ratio)
+            self._function_extra_bs = math.ceil(function_bs *
+                                                function_extra_bs_ratio)
             self._function_extra_bs_sampler = function_extra_bs_sampler
             self._function_extra_bs_std = function_extra_bs_std
-            critic_input_dim = (
-                function_bs + self._function_extra_bs) * last_layer_size
+            critic_input_dim = (function_bs +
+                                self._function_extra_bs) * last_layer_size
         else:
             critic_input_dim = gen_output_dim
 
@@ -396,11 +392,15 @@ class HyperNetwork(Algorithm):
         """
         if noise is None and num_particles is None:
             num_particles = self.num_particles
-        generator_step = self._generator.predict_step(
-            noise=noise, batch_size=num_particles, training=training)
+        generator_step = self._generator.predict_step(noise=noise,
+                                                      batch_size=num_particles,
+                                                      training=training)
         return generator_step.output
 
-    def predict_step(self, inputs, params=None, num_particles=None,
+    def predict_step(self,
+                     inputs,
+                     params=None,
+                     num_particles=None,
                      state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
 
@@ -463,12 +463,11 @@ class HyperNetwork(Algorithm):
             if self._loss_type == 'classification':
                 logging.info("Avg acc: {}".format(acc))
             logging.info("Cum loss: {}".format(loss))
-        self.summarize_train(
-            loss_info,
-            params,
-            cum_loss=loss,
-            avg_acc=acc,
-            inverse_mvp_loss=inverse_mvp_loss)
+        self.summarize_train(loss_info,
+                             params,
+                             cum_loss=loss,
+                             avg_acc=acc,
+                             inverse_mvp_loss=inverse_mvp_loss)
         return batch_idx + 1
 
     def train_step(self,
@@ -643,8 +642,9 @@ class HyperNetwork(Algorithm):
             pred = probs.argmax(-1).cpu()  # [B, N, 1]
             vote = []
             for i in range(pred.shape[0]):
-                values, counts = torch.unique(
-                    pred[i], sorted=False, return_counts=True)
+                values, counts = torch.unique(pred[i],
+                                              sorted=False,
+                                              return_counts=True)
                 modes = (counts == counts.max()).nonzero()
                 label = values[torch.randint(len(modes), (1, ))]
                 vote.append(label)
@@ -742,5 +742,5 @@ class HyperNetwork(Algorithm):
         if avg_acc is not None:
             alf.summary.scalar(name='train_epoch/avg_acc', data=avg_acc)
         if inverse_mvp_loss is not None:
-            alf.summary.scalar(
-                name='train_epoch/inverse_mvp_loss', data=inverse_mvp_loss)
+            alf.summary.scalar(name='train_epoch/inverse_mvp_loss',
+                               data=inverse_mvp_loss)

@@ -30,8 +30,9 @@ offline_buffer_dir = [
     "./hybrid_rl/replay_buffer_data/pendulum_replay_buffer_from_sac_10k"
 ]
 
-alf.config(
-    "create_environment", env_name="Pendulum-v0", num_parallel_environments=1)
+alf.config("create_environment",
+           env_name="Pendulum-v0",
+           num_parallel_environments=1)
 
 alf.config(
     'Agent',
@@ -39,11 +40,10 @@ alf.config(
     optimizer=alf.optimizers.Adam(lr=lr),
 )
 
-alf.config(
-    'TrainerConfig',
-    algorithm_ctor=Agent,
-    whole_replay_buffer_training=False,
-    clear_replay_buffer=False)
+alf.config('TrainerConfig',
+           algorithm_ctor=Agent,
+           whole_replay_buffer_training=False,
+           clear_replay_buffer=False)
 
 # these clip values are set according to IQL's hyper-parameter values
 alf.config('clipped_exp', clip_value_min=-5.0, clip_value_max=2.0)
@@ -65,8 +65,8 @@ critic_network_cls = partial(
     joint_fc_layer_params=fc_layers_params,
 )
 
-v_network_cls = partial(
-    alf.networks.ValueNetwork, fc_layer_params=fc_layers_params)
+v_network_cls = partial(alf.networks.ValueNetwork,
+                        fc_layer_params=fc_layers_params)
 
 alf.config(
     'IqlAlgorithm',

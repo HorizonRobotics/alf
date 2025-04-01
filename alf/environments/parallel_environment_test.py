@@ -35,6 +35,7 @@ from alf.utils.schedulers import update_progress, get_progress
 
 
 class SlowStartingEnvironment(RandomAlfEnvironment):
+
     def __init__(self, *args, **kwargs):
         self._time_sleep = kwargs.pop('time_sleep', 1.0)
         self._reset_sleep = kwargs.pop('reset_sleep', 0.0)
@@ -47,6 +48,7 @@ class SlowStartingEnvironment(RandomAlfEnvironment):
 
 
 class ProgressEnvironment(AlfEnvironment):
+
     def __init__(self, env_id):
         super().__init__()
         self._env_id = np.int32(env_id)
@@ -64,25 +66,25 @@ class ProgressEnvironment(AlfEnvironment):
         return {}
 
     def _step(self, action):
-        return ds.TimeStep(
-            step_type=ds.StepType.MID,
-            prev_action=action,
-            reward=np.float32(1.0),
-            observation=np.float32(get_progress("global_counter")),
-            env_id=self._env_id,
-            discount=np.float32(1.0))
+        return ds.TimeStep(step_type=ds.StepType.MID,
+                           prev_action=action,
+                           reward=np.float32(1.0),
+                           observation=np.float32(
+                               get_progress("global_counter")),
+                           env_id=self._env_id,
+                           discount=np.float32(1.0))
 
     def seed(self, seed):
         pass
 
     def _reset(self):
-        return ds.TimeStep(
-            step_type=ds.StepType.MID,
-            prev_action=np.float32(0.0),
-            reward=np.float32(1.0),
-            observation=np.float32(get_progress("global_counter")),
-            env_id=self._env_id,
-            discount=np.float32(1.0))
+        return ds.TimeStep(step_type=ds.StepType.MID,
+                           prev_action=np.float32(0.0),
+                           reward=np.float32(1.0),
+                           observation=np.float32(
+                               get_progress("global_counter")),
+                           env_id=self._env_id,
+                           discount=np.float32(1.0))
 
 
 def slow_env_load(observation_spec,
@@ -91,14 +93,13 @@ def slow_env_load(observation_spec,
                   env_id=0,
                   time_sleep=0,
                   reset_sleep=0):
-    return SlowStartingEnvironment(
-        observation_spec,
-        action_spec,
-        env_id=env_id,
-        max_duration=1,
-        time_sleep=time_sleep,
-        reset_sleep=reset_sleep,
-        use_tensor_time_step=False)
+    return SlowStartingEnvironment(observation_spec,
+                                   action_spec,
+                                   env_id=env_id,
+                                   max_duration=1,
+                                   time_sleep=time_sleep,
+                                   reset_sleep=reset_sleep,
+                                   use_tensor_time_step=False)
 
 
 def _batch_env_ctor(env_ctor, batch_size_per_env, env_id):
@@ -110,6 +111,7 @@ def _batch_env_ctor(env_ctor, batch_size_per_env, env_id):
 
 
 class ParallelAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
+
     def setUp(self):
         self._parallel_environment_ctor = parallel_environment.ParallelAlfEnvironment
 
@@ -137,11 +139,11 @@ class ParallelAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
             constructor = functools.partial(_batch_env_ctor, constructor,
                                             batch_size_per_env)
         num_envs //= batch_size_per_env
-        env = self._parallel_environment_ctor(
-            env_constructors=[constructor] * num_envs,
-            blocking=blocking,
-            flatten=flatten,
-            start_serially=start_serially)
+        env = self._parallel_environment_ctor(env_constructors=[constructor] *
+                                              num_envs,
+                                              blocking=blocking,
+                                              flatten=flatten,
+                                              start_serially=start_serially)
         env.seed(list(range(num_envs)))
         return env
 
@@ -188,23 +190,21 @@ class ParallelAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         start_t = time.time()
         env = alf.environments.utils.create_environment(
             env_name="IgnoredName",
-            env_load_fn=functools.partial(
-                slow_env_load,
-                self.observation_spec,
-                self.action_spec,
-                time_sleep=sleep_time,
-                reset_sleep=sleep_time),
+            env_load_fn=functools.partial(slow_env_load,
+                                          self.observation_spec,
+                                          self.action_spec,
+                                          time_sleep=sleep_time,
+                                          reset_sleep=sleep_time),
             parallel_environment_ctor=self._parallel_environment_ctor,
             num_parallel_environments=num_envs,
             start_serially=False,
             num_spare_envs=num_envs)
         init_t = time.time()
         init_time = init_t - start_t
-        self.assertLessEqual(
-            init_time,
-            sleep_time * 2 - 0.5,
-            msg=('Expected all processes to start together, '
-                 'got {} wait time').format(init_time))
+        self.assertLessEqual(init_time,
+                             sleep_time * 2 - 0.5,
+                             msg=('Expected all processes to start together, '
+                                  'got {} wait time').format(init_time))
 
         time_step0 = env.reset()
         assert torch.all(time_step0.step_type == ds.StepType.FIRST)
@@ -231,8 +231,9 @@ class ParallelAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         time_step3 = env.step(action)
         step3_t = time.time()
         step3_time = step3_t - reset_t
-        self.assertLessEqual(
-            step3_time, 0.5, msg=(f'Regular step took {step3_time}, too long'))
+        self.assertLessEqual(step3_time,
+                             0.5,
+                             msg=(f'Regular step took {step3_time}, too long'))
         time_step4 = env.step(action)
         step4_t = time.time()
         step4_time = step4_t - step3_t
@@ -254,12 +255,11 @@ class ParallelAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
 
         env = alf.environments.utils.create_environment(
             env_name="IgnoredName",
-            env_load_fn=functools.partial(
-                slow_env_load,
-                self.observation_spec,
-                self.action_spec,
-                time_sleep=0,
-                reset_sleep=sleep_time),
+            env_load_fn=functools.partial(slow_env_load,
+                                          self.observation_spec,
+                                          self.action_spec,
+                                          time_sleep=0,
+                                          reset_sleep=sleep_time),
             parallel_environment_ctor=self._parallel_environment_ctor,
             num_parallel_environments=num_envs,
             start_serially=False,
@@ -270,49 +270,44 @@ class ParallelAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         start_t = time.time()
         time_step2 = env.step(action)
         reset_time = time.time() - start_t
-        self.assertLessEqual(
-            reset_time,
-            sleep_time - 0.1,
-            msg=(f'Without spare env, Reset already called, '
-                 'took {reset_time}, too long'))
+        self.assertLessEqual(reset_time,
+                             sleep_time - 0.1,
+                             msg=(f'Without spare env, Reset already called, '
+                                  'took {reset_time}, too long'))
         # make sure promises are properly cleaned up
         time_step3 = env.step(action)
         env.close()
 
     def test_non_blocking_start_processes_in_parallel(self):
         self._set_default_specs()
-        constructor = functools.partial(
-            SlowStartingEnvironment,
-            self.observation_spec,
-            self.action_spec,
-            time_sleep=1.0)
+        constructor = functools.partial(SlowStartingEnvironment,
+                                        self.observation_spec,
+                                        self.action_spec,
+                                        time_sleep=1.0)
         start_time = time.time()
-        env = self._make_parallel_environment(
-            constructor=constructor,
-            num_envs=10,
-            start_serially=False,
-            blocking=False)
+        env = self._make_parallel_environment(constructor=constructor,
+                                              num_envs=10,
+                                              start_serially=False,
+                                              blocking=False)
         end_time = time.time()
-        self.assertLessEqual(
-            end_time - start_time,
-            5.0,
-            msg=('Expected all processes to start together, '
-                 'got {} wait time').format(end_time - start_time))
+        self.assertLessEqual(end_time - start_time,
+                             5.0,
+                             msg=('Expected all processes to start together, '
+                                  'got {} wait time').format(end_time -
+                                                             start_time))
         env.close()
 
     def test_blocking_start_processes_one_after_another(self):
         self._set_default_specs()
-        constructor = functools.partial(
-            SlowStartingEnvironment,
-            self.observation_spec,
-            self.action_spec,
-            time_sleep=1.0)
+        constructor = functools.partial(SlowStartingEnvironment,
+                                        self.observation_spec,
+                                        self.action_spec,
+                                        time_sleep=1.0)
         start_time = time.time()
-        env = self._make_parallel_environment(
-            constructor=constructor,
-            num_envs=10,
-            start_serially=True,
-            blocking=True)
+        env = self._make_parallel_environment(constructor=constructor,
+                                              num_envs=10,
+                                              start_serially=True,
+                                              blocking=True)
         end_time = time.time()
         self.assertGreater(
             end_time - start_time,
@@ -348,8 +343,8 @@ class ParallelAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
                                        ['action', 'other_var'])):
             pass
 
-        nested_action = NestedAction(
-            action=batched_action, other_var=torch.tensor([13.0] * num_envs))
+        nested_action = NestedAction(action=batched_action,
+                                     other_var=torch.tensor([13.0] * num_envs))
         unstacked_actions = env._unstack_actions(nested_action)
         for nested_action in unstacked_actions:
             self.assertEqual(action_spec.shape, nested_action.action.shape)
@@ -371,6 +366,7 @@ class ParallelAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
 
 
 class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
+
     def setUp(self):
         self._parallel_environment_ctor = FastParallelEnvironment
 
@@ -410,8 +406,8 @@ class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
         self._parallel_environment_ctor = parallel_environment.ParallelAlfEnvironment
         env1 = self._make_parallel_environment(num_envs=6)
         self._parallel_environment_ctor = FastParallelEnvironment
-        env2 = self._make_parallel_environment(
-            num_envs=6, batch_size_per_env=2)
+        env2 = self._make_parallel_environment(num_envs=6,
+                                               batch_size_per_env=2)
         ts1 = env1.reset()
         ts2 = env2.reset()
         self.assertEqual(env1.batch_size, env2.batch_size)
@@ -426,8 +422,9 @@ class FastParallelEnvironmentTest(ParallelAlfEnvironmentTest):
                               (parallel_environment.ParallelAlfEnvironment, ))
     def test_sync_progress(self, parallel_environment_ctor):
         self._parallel_environment_ctor = parallel_environment_ctor
-        env = self._make_parallel_environment(
-            constructor=ProgressEnvironment, num_envs=6, batch_size_per_env=2)
+        env = self._make_parallel_environment(constructor=ProgressEnvironment,
+                                              num_envs=6,
+                                              batch_size_per_env=2)
         ts = env.reset()
         for i in range(10):
             update_progress("global_counter", i)

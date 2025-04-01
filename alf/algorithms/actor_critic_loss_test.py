@@ -22,6 +22,7 @@ from alf.utils.dist_utils import compute_entropy, compute_log_probability
 
 
 class TestEntropyExpand(unittest.TestCase):
+
     def test_entropy(self):
         m = td.categorical.Categorical(torch.Tensor([0.25, 0.75]))
         M = m.expand([2, 3])
@@ -32,6 +33,7 @@ class TestEntropyExpand(unittest.TestCase):
 
 
 class TestEntropy(unittest.TestCase):
+
     def test_entropy(self):
         M = td.categorical.Categorical(
             torch.Tensor([[0.25, 0.75], [0.5, 0.5], [0.75, 0.25]]))
@@ -41,6 +43,7 @@ class TestEntropy(unittest.TestCase):
 
 
 class TestLogProbabilityExpand(unittest.TestCase):
+
     def test_log_probability(self):
         m = td.categorical.Categorical(torch.Tensor([0.25, 0.75]))
         M = m.expand([2, 3])
@@ -52,6 +55,7 @@ class TestLogProbabilityExpand(unittest.TestCase):
 
 
 class TestLogProbability(unittest.TestCase):
+
     def test_log_probability_(self):
         M = td.categorical.Categorical(
             torch.Tensor([[0.25, 0.75], [0.5, 0.5], [0.75, 0.25]]))

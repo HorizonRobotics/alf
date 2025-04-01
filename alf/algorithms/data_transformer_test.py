@@ -23,12 +23,13 @@ from alf.experience_replayers.replay_buffer_test import get_exp_batch, ReplayBuf
 from alf.algorithms.data_transformer import FrameStacker, ImageScaleTransformer, HindsightExperienceTransformer
 from alf.utils import common
 
-TimestepItem = namedtuple(
-    'TimestepItem', ['step_type', 'observation', 'reward', 'env_id'],
-    default_value=())
+TimestepItem = namedtuple('TimestepItem',
+                          ['step_type', 'observation', 'reward', 'env_id'],
+                          default_value=())
 
 
 class RewardTransformerTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(
         alf.algorithms.data_transformer.RewardClipping(),
         alf.algorithms.data_transformer.RewardScaling(scale=0.01),
@@ -48,6 +49,7 @@ class RewardTransformerTest(parameterized.TestCase, alf.test.TestCase):
 
 class FunctionalRewardTransformerTest(parameterized.TestCase,
                                       alf.test.TestCase):
+
     @parameterized.parameters((1, 1), (1, 10), (10, 1), (10, 10))
     def test_functional_reward_transformer_for_clipping(
             self, reward_dim, clamp_bound):
@@ -93,6 +95,7 @@ class FunctionalRewardTransformerTest(parameterized.TestCase,
     )
     def test_multi_dim_reward_transformation(self, reward_dim, dim_for_trans,
                                              scale, bias):
+
         def multi_dim_reward_trans_func(reward):
             # only apply transformation to the dimension specified by ``dim_for_trans``
             reward[...,
@@ -109,6 +112,7 @@ class FunctionalRewardTransformerTest(parameterized.TestCase,
 
 
 class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(-1, 0)
     def test_frame_stacker(self, stack_axis=0):
         time_step_spec = TimestepItem(
@@ -122,11 +126,10 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
                     maximum=100.0),
                 tensor=alf.TensorSpec((2, 3, 4))))
         exp_spec = Experience(time_step=time_step_spec)
-        replay_buffer = ReplayBuffer(
-            data_spec=exp_spec,
-            num_environments=2,
-            max_length=1024,
-            num_earliest_frames_ignored=2)
+        replay_buffer = ReplayBuffer(data_spec=exp_spec,
+                                     num_environments=2,
+                                     max_length=1024,
+                                     num_earliest_frames_ignored=2)
         frame_stacker = FrameStacker(
             time_step_spec.observation,
             stack_size=3,
@@ -173,20 +176,18 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
 
         def _get_stacked_data(t, b):
             if stack_axis == -1:
-                return dict(
-                    scalar=observation['scalar'][t, b],
-                    vector=observation['vector'][t, b].reshape(-1),
-                    matrix=observation['matrix'][t, b].transpose(0, 1).reshape(
-                        5, 18),
-                    tensor=observation['tensor'][t, b].permute(1, 2, 0,
-                                                               3).reshape(
-                                                                   2, 3, 12))
+                return dict(scalar=observation['scalar'][t, b],
+                            vector=observation['vector'][t, b].reshape(-1),
+                            matrix=observation['matrix'][t, b].transpose(
+                                0, 1).reshape(5, 18),
+                            tensor=observation['tensor'][t, b].permute(
+                                1, 2, 0, 3).reshape(2, 3, 12))
             elif stack_axis == 0:
-                return dict(
-                    scalar=observation['scalar'][t, b],
-                    vector=observation['vector'][t, b].reshape(-1),
-                    matrix=observation['matrix'][t, b].reshape(15, 6),
-                    tensor=observation['tensor'][t, b].reshape(6, 3, 4))
+                return dict(scalar=observation['scalar'][t, b],
+                            vector=observation['vector'][t, b].reshape(-1),
+                            matrix=observation['matrix'][t, b].reshape(15, 6),
+                            tensor=observation['tensor'][t,
+                                                         b].reshape(6, 3, 4))
 
         def _check_equal(stacked, expected, b):
             self.assertEqual(stacked['scalar'][b], expected['scalar'])
@@ -233,17 +234,18 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
                     expected = _get_stacked_data(t, b)
                     _check_equal(timestep.observation, expected, b)
 
-        batch_info = BatchInfo(
-            env_ids=torch.tensor([0, 1, 0, 1], dtype=torch.int64),
-            positions=torch.tensor([0, 1, 18, 22], dtype=torch.int64))
+        batch_info = BatchInfo(env_ids=torch.tensor([0, 1, 0, 1],
+                                                    dtype=torch.int64),
+                               positions=torch.tensor([0, 1, 18, 22],
+                                                      dtype=torch.int64))
 
         # [4, 2, ...]
         experience = replay_buffer.get_field(
             '', batch_info.env_ids.unsqueeze(-1),
             batch_info.positions.unsqueeze(-1) + torch.arange(2))
 
-        experience = experience._replace(
-            batch_info=batch_info, replay_buffer=replay_buffer)
+        experience = experience._replace(batch_info=batch_info,
+                                         replay_buffer=replay_buffer)
         experience = frame_stacker.transform_experience(experience)
         expected = _get_stacked_data([0, 0, 0], 0)
         _check_equal(experience.observation, expected, (0, 0))
@@ -267,6 +269,7 @@ class FrameStackerTest(parameterized.TestCase, alf.test.TestCase):
 
 
 class ImageScaleTransformerTest(alf.test.TestCase):
+
     def test_image_scale_transformer(self):
         spec = alf.BoundedTensorSpec((3, 16, 16),
                                      dtype=torch.uint8,
@@ -288,23 +291,22 @@ class ImageScaleTransformerTest(alf.test.TestCase):
         self.assertLess((transformed_exp.observation * 255 -
                          timestep.observation).abs().max(), 1e-4)
 
-        spec = dict(
-            img=alf.BoundedTensorSpec((3, 16, 16),
-                                      dtype=torch.uint8,
-                                      minimum=0,
-                                      maximum=255),
-            other=alf.TensorSpec(()))
+        spec = dict(img=alf.BoundedTensorSpec((3, 16, 16),
+                                              dtype=torch.uint8,
+                                              minimum=0,
+                                              maximum=255),
+                    other=alf.TensorSpec(()))
         self.assertRaises(AssertionError, ImageScaleTransformer, spec, min=0.)
-        self.assertRaises(
-            AssertionError,
-            ImageScaleTransformer,
-            spec,
-            min=0.,
-            fields=['other'])
+        self.assertRaises(AssertionError,
+                          ImageScaleTransformer,
+                          spec,
+                          min=0.,
+                          fields=['other'])
         transformer = ImageScaleTransformer(spec, min=0., fields=['img'])
 
 
 class HindsightExperienceTransformerTest(ReplayBufferTest):
+
     @parameterized.named_parameters([
         ('test_dense_epi_ends', 0.1),
         ('test_sparse_epi_ends', 0.004),
@@ -316,23 +318,21 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
 
         from alf.experience_replayers.replay_buffer_test import TimestepItem
 
-        data_spec = Experience(
-            time_step=TimestepItem(
-                env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
-                x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
-                step_type=alf.TensorSpec(shape=(), dtype=torch.int32),
-                o=dict({
-                    "a": alf.TensorSpec(shape=(), dtype=torch.float32),
-                    "g": alf.TensorSpec(shape=(), dtype=torch.float32)
-                }),
-                discount=alf.TensorSpec(shape=(), dtype=torch.float32),
-                reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
+        data_spec = Experience(time_step=TimestepItem(
+            env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
+            x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
+            step_type=alf.TensorSpec(shape=(), dtype=torch.int32),
+            o=dict({
+                "a": alf.TensorSpec(shape=(), dtype=torch.float32),
+                "g": alf.TensorSpec(shape=(), dtype=torch.float32)
+            }),
+            discount=alf.TensorSpec(shape=(), dtype=torch.float32),
+            reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
 
-        replay_buffer = ReplayBuffer(
-            data_spec=data_spec,
-            num_environments=num_envs,
-            max_length=max_length,
-            keep_episodic_info=True)
+        replay_buffer = ReplayBuffer(data_spec=data_spec,
+                                     num_environments=num_envs,
+                                     max_length=max_length,
+                                     keep_episodic_info=True)
 
         transform = HindsightExperienceTransformer(
             data_spec,
@@ -344,8 +344,9 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
         # insert data
         max_steps = 1000
         # generate step_types with certain density of episode ends
-        steps = self.generate_step_types(
-            num_envs, max_steps, end_prob=end_prob)
+        steps = self.generate_step_types(num_envs,
+                                         max_steps,
+                                         end_prob=end_prob)
         for t in range(max_steps):
             for b in range(num_envs):
                 batch = get_exp_batch([b],
@@ -387,9 +388,8 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
                 res = res._replace(batch_info=info)
                 res = transform.transform_experience(res)
 
-                self.assertEqual(
-                    list(res.get_time_step_field("o.g").shape),
-                    [sample_steps, 2])
+                self.assertEqual(list(res.get_time_step_field("o.g").shape),
+                                 [sample_steps, 2])
 
                 # Test relabeling doesn't change original experience
                 self.assertTrue(
@@ -401,8 +401,8 @@ class HindsightExperienceTransformerTest(ReplayBufferTest):
                 self.assertTrue(
                     torch.all(idx_orig == replay_buffer._indexed_pos))
                 self.assertTrue(
-                    torch.all(idx_headless_orig == replay_buffer.
-                              _headless_indexed_pos))
+                    torch.all(idx_headless_orig ==
+                              replay_buffer._headless_indexed_pos))
 
 
 if __name__ == '__main__':

@@ -101,10 +101,10 @@ class AgentPerception(object):
         H = self._history_window_size
         self._sampled_index = np.arange((H - 1) % self._history_frame_skip, H,
                                         self._history_frame_skip)
-        self._spec = TensorSpec(
-            shape=(self._agent_limit, self._sampled_index.shape[0],
-                   self._unit_feature_size),
-            dtype=torch.float32)
+        self._spec = TensorSpec(shape=(self._agent_limit,
+                                       self._sampled_index.shape[0],
+                                       self._unit_feature_size),
+                                dtype=torch.float32)
 
     @property
     def observation_spec(self):
@@ -200,8 +200,8 @@ class AgentPerception(object):
         transformed_position = self._history_position.transformed(
             self._ego.position, self._ego.heading_theta)
         transformed_heading = self._history_heading - self._ego.heading_theta
-        self._visible[:, -1] = self._fov.within(
-            transformed_position.point[:, -1])
+        self._visible[:, -1] = self._fov.within(transformed_position.point[:,
+                                                                           -1])
         self._visible[~alive, -1] = False
         sampled_visible = self._visible[:, self._sampled_index]
         sampled_position = transformed_position.point[:, self._sampled_index]

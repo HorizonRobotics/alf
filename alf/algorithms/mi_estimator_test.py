@@ -27,6 +27,7 @@ from alf.utils.dist_utils import DiagMultivariateNormal
 
 
 class Net_YGivenZX_manual(Network):
+
     def __init__(self, input_spec):
         super().__init__(input_tensor_spec=input_spec, name="Net")
 
@@ -37,6 +38,7 @@ class Net_YGivenZX_manual(Network):
 
 
 class NetML(Network):
+
     def __init__(self, input_spec):
         super().__init__(input_tensor_spec=input_spec, name="Net")
         size = sum([x.shape[-1] for x in alf.nest.flatten(input_spec)])
@@ -51,6 +53,7 @@ class NetML(Network):
 
 
 class NetJSD(Network):
+
     def __init__(self, input_spec):
         super().__init__(input_tensor_spec=input_spec, name="Net")
         size = sum([x.shape[-1] for x in alf.nest.flatten(input_spec)])
@@ -69,6 +72,7 @@ class NetJSD(Network):
 
 
 class MIEstimatorTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(
         dict(estimator='DV', rho=0.0, eps=0.03),
         dict(estimator='KLD', rho=0.0, eps=0.03),
@@ -91,21 +95,22 @@ class MIEstimatorTest(parameterized.TestCase, alf.test.TestCase):
                           eps=1000.0,
                           buffer_size=65536,
                           dim=20):
-        mi_estimator = MIEstimator(
-            x_spec=[
-                alf.TensorSpec(shape=(dim // 3, ), dtype=torch.float32),
-                alf.TensorSpec(shape=(dim - dim // 3, ), dtype=torch.float32)
-            ],
-            y_spec=[
-                alf.TensorSpec(shape=(dim // 2, ), dtype=torch.float32),
-                alf.TensorSpec(shape=(dim // 2, ), dtype=torch.float32)
-            ],
-            fc_layers=(512, ),
-            buffer_size=buffer_size,
-            estimator_type=estimator,
-            sampler=sampler,
-            averager=ScalarAdaptiveAverager(),
-            optimizer=alf.optimizers.AdamTF(lr=1e-4))
+        mi_estimator = MIEstimator(x_spec=[
+            alf.TensorSpec(shape=(dim // 3, ), dtype=torch.float32),
+            alf.TensorSpec(shape=(dim - dim // 3, ), dtype=torch.float32)
+        ],
+                                   y_spec=[
+                                       alf.TensorSpec(shape=(dim // 2, ),
+                                                      dtype=torch.float32),
+                                       alf.TensorSpec(shape=(dim // 2, ),
+                                                      dtype=torch.float32)
+                                   ],
+                                   fc_layers=(512, ),
+                                   buffer_size=buffer_size,
+                                   estimator_type=estimator,
+                                   sampler=sampler,
+                                   averager=ScalarAdaptiveAverager(),
+                                   optimizer=alf.optimizers.AdamTF(lr=1e-4))
 
         a = 0.5 * (math.sqrt(1 + rho) + math.sqrt(1 - rho))
         b = 0.5 * (math.sqrt(1 + rho) - math.sqrt(1 - rho))
@@ -164,14 +169,15 @@ class MIEstimatorTest(parameterized.TestCase, alf.test.TestCase):
         return mi, estimated_mi
 
     @parameterized.parameters(
-        dict(
-            estimator='JSD', switch_xy=False, use_default_model=True, eps=0.2),
-        dict(
-            estimator='JSD', switch_xy=False, use_default_model=False,
-            eps=0.2),
+        dict(estimator='JSD', switch_xy=False, use_default_model=True,
+             eps=0.2),
+        dict(estimator='JSD',
+             switch_xy=False,
+             use_default_model=False,
+             eps=0.2),
         dict(estimator='JSD', switch_xy=True, use_default_model=True, eps=0.2),
-        dict(
-            estimator='JSD', switch_xy=True, use_default_model=False, eps=0.2),
+        dict(estimator='JSD', switch_xy=True, use_default_model=False,
+             eps=0.2),
         dict(estimator='ML', switch_xy=False, use_default_model=True),
         dict(estimator='ML', switch_xy=False, use_default_model=False),
         dict(estimator='ML', switch_xy=True, use_default_model=True),
@@ -207,13 +213,12 @@ class MIEstimatorTest(parameterized.TestCase, alf.test.TestCase):
             model = NetML(x_spec)
         else:
             model = NetJSD([x_spec, y_spec])
-        mi_estimator = MIEstimator(
-            x_spec=x_spec,
-            y_spec=y_spec,
-            fc_layers=(256, 256),
-            model=model,
-            estimator_type=estimator,
-            optimizer=alf.optimizers.AdamTF(lr=2e-4))
+        mi_estimator = MIEstimator(x_spec=x_spec,
+                                   y_spec=y_spec,
+                                   fc_layers=(256, 256),
+                                   model=model,
+                                   estimator_type=estimator,
+                                   optimizer=alf.optimizers.AdamTF(lr=2e-4))
 
         z = torch.randn(10000, )
         e = 0.5
@@ -224,9 +229,9 @@ class MIEstimatorTest(parameterized.TestCase, alf.test.TestCase):
                 z = torch.randn(batch_size, dim)
             x_dist = DiagMultivariateNormal(loc=z, scale=torch.ones_like(z))
             mask = (z > 0).to(torch.float32)
-            y_dist = DiagMultivariateNormal(
-                loc=(z + z * z) * mask,
-                scale=1 - mask + mask * torch.sqrt(e * e + z * z))
+            y_dist = DiagMultivariateNormal(loc=(z + z * z) * mask,
+                                            scale=1 - mask +
+                                            mask * torch.sqrt(e * e + z * z))
             x = x_dist.sample()
             y = (z + x * z) * mask + (1 - mask + e * mask) * torch.randn(
                 batch_size, dim)
@@ -255,8 +260,9 @@ class MIEstimatorTest(parameterized.TestCase, alf.test.TestCase):
             estimated_mi = estimated_pmi.mean(dim=0)
             var = torch.var(estimated_pmi, dim=0, unbiased=False)
             estimated_mi = float(estimated_mi)
-            logging.info("%s estimated_mi=%s std=%s pmi_rmse=%s" % (
-                i, estimated_mi, math.sqrt(var / batch_size), float(pmi_rmse)))
+            logging.info("%s estimated_mi=%s std=%s pmi_rmse=%s" %
+                         (i, estimated_mi, math.sqrt(
+                             var / batch_size), float(pmi_rmse)))
             return estimated_mi
 
         batch_size = 512
@@ -290,8 +296,8 @@ class MIEstimatorTest(parameterized.TestCase, alf.test.TestCase):
                 batch = _get_batch(batch_size, z * torch.ones(batch_size, dim))
                 info = "z={z} mi={mi}".format(
                     z=float(z),
-                    mi=float(
-                        0.5 * torch.log(1 + math_ops.square(F.relu(z / e)))))
+                    mi=float(0.5 *
+                             torch.log(1 + math_ops.square(F.relu(z / e)))))
                 _estimate_mi(info, batch)
 
         return mi, estimated_mi

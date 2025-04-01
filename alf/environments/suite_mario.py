@@ -87,14 +87,13 @@ def load(game,
             env = FrameSkip(env, frame_skip)
         env = ProcessFrame84(env, crop=crop)
         env = LimitedDiscreteActions(env, buttons)
-        return suite_gym.wrap_env(
-            env,
-            env_id=env_id,
-            discount=discount,
-            max_episode_steps=max_episode_steps,
-            gym_env_wrappers=gym_env_wrappers,
-            alf_env_wrappers=alf_env_wrappers,
-            auto_reset=True)
+        return suite_gym.wrap_env(env,
+                                  env_id=env_id,
+                                  discount=discount,
+                                  max_episode_steps=max_episode_steps,
+                                  gym_env_wrappers=gym_env_wrappers,
+                                  alf_env_wrappers=alf_env_wrappers,
+                                  auto_reset=True)
 
     # wrap each env in a new process when parallel envs are used
     # since it cannot create multiple emulator instances per process

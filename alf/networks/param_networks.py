@@ -27,6 +27,7 @@ from alf.utils import common
 
 @alf.configurable
 class ParamConvNet(Network):
+
     def __init__(self,
                  input_channels,
                  input_size,
@@ -68,9 +69,9 @@ class ParamConvNet(Network):
         """
 
         input_size = common.tuplify2d(input_size)
-        super().__init__(
-            input_tensor_spec=TensorSpec((input_channels, ) + input_size),
-            name=name)
+        super().__init__(input_tensor_spec=TensorSpec((input_channels, ) +
+                                                      input_size),
+                         name=name)
 
         assert isinstance(conv_layer_params, tuple)
         assert len(conv_layer_params) > 0
@@ -95,18 +96,17 @@ class ParamConvNet(Network):
                 padding = ((kernel_size[0] - 1) // 2,
                            (kernel_size[1] - 1) // 2)
             self._conv_layers.append(
-                ParamConv2D(
-                    input_channels,
-                    filters,
-                    kernel_size,
-                    activation=activation,
-                    strides=strides,
-                    pooling_kernel=pooling_kernel,
-                    padding=padding,
-                    use_bias=use_bias,
-                    use_ln=use_ln,
-                    n_groups=n_groups,
-                    kernel_initializer=kernel_initializer))
+                ParamConv2D(input_channels,
+                            filters,
+                            kernel_size,
+                            activation=activation,
+                            strides=strides,
+                            pooling_kernel=pooling_kernel,
+                            padding=padding,
+                            use_bias=use_bias,
+                            use_ln=use_ln,
+                            n_groups=n_groups,
+                            kernel_initializer=kernel_initializer))
             input_channels = filters
 
     @property
@@ -141,8 +141,8 @@ class ParamConvNet(Network):
         pos = 0
         for conv_l in self._conv_layers:
             param_length = conv_l.param_length
-            conv_l.set_parameters(
-                theta[:, pos:pos + param_length], reinitialize=reinitialize)
+            conv_l.set_parameters(theta[:, pos:pos + param_length],
+                                  reinitialize=reinitialize)
             pos = pos + param_length
         self._output_spec = None
 
@@ -163,6 +163,7 @@ class ParamConvNet(Network):
 
 @alf.configurable
 class ParamNetwork(Network):
+
     def __init__(self,
                  input_tensor_spec,
                  conv_layer_params=None,
@@ -256,28 +257,26 @@ class ParamNetwork(Network):
 
         for size in fc_layer_params:
             self._fc_layers.append(
-                ParamFC(
-                    input_size,
-                    size,
-                    activation=activation,
-                    use_bias=use_fc_bias,
-                    use_ln=use_fc_ln,
-                    n_groups=n_groups,
-                    kernel_initializer=kernel_initializer))
+                ParamFC(input_size,
+                        size,
+                        activation=activation,
+                        use_bias=use_fc_bias,
+                        use_ln=use_fc_ln,
+                        n_groups=n_groups,
+                        kernel_initializer=kernel_initializer))
             input_size = size
 
         if last_layer_size is not None or last_activation is not None:
             assert last_layer_size is not None and last_activation is not None, \
             "Both last_layer_param and last_activation need to be specified!"
             self._fc_layers.append(
-                ParamFC(
-                    input_size,
-                    last_layer_size,
-                    activation=last_activation,
-                    use_bias=last_use_bias,
-                    use_ln=last_use_ln,
-                    n_groups=n_groups,
-                    kernel_initializer=kernel_initializer))
+                ParamFC(input_size,
+                        last_layer_size,
+                        activation=last_activation,
+                        use_bias=last_use_bias,
+                        use_ln=last_use_ln,
+                        n_groups=n_groups,
+                        kernel_initializer=kernel_initializer))
             input_size = last_layer_size
 
         self._output_spec = TensorSpec((input_size, ),
@@ -317,8 +316,8 @@ class ParamNetwork(Network):
         if self._conv_net is not None:
             split = self._conv_net.param_length
             conv_theta = theta[:, :split]
-            self._conv_net.set_parameters(
-                conv_theta, reinitialize=reinitialize)
+            self._conv_net.set_parameters(conv_theta,
+                                          reinitialize=reinitialize)
             fc_theta = theta[:, self._conv_net.param_length:]
         else:
             fc_theta = theta
@@ -326,8 +325,8 @@ class ParamNetwork(Network):
         pos = 0
         for fc_l in self._fc_layers:
             param_length = fc_l.param_length
-            fc_l.set_parameters(
-                fc_theta[:, pos:pos + param_length], reinitialize=reinitialize)
+            fc_l.set_parameters(fc_theta[:, pos:pos + param_length],
+                                reinitialize=reinitialize)
             pos = pos + param_length
 
     def forward(self, inputs, state=()):

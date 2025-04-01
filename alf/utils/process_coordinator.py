@@ -103,10 +103,9 @@ class Coordinator(object):
             if not self._stop_event.is_set():
                 if ex and self._exc_info_to_raise is None:
                     if isinstance(ex, tuple):
-                        logging.info(
-                            "Error reported to Coordinator: %s",
-                            str(ex[1]),
-                            exc_info=ex)
+                        logging.info("Error reported to Coordinator: %s",
+                                     str(ex[1]),
+                                     exc_info=ex)
                         self._exc_info_to_raise = ex
                     else:
                         logging.info("Error reported to Coordinator: %s, %s",
@@ -257,8 +256,8 @@ class Coordinator(object):
             # Keep the waiting period within sane bounds.
             # The minimum value is to avoid decreasing stop_wait_secs to a value
             # that could cause stop_grace_period_secs to remain unchanged.
-            stop_wait_secs = max(
-                min(stop_wait_secs, stop_grace_period_secs), 0.001)
+            stop_wait_secs = max(min(stop_wait_secs, stop_grace_period_secs),
+                                 0.001)
 
         # List the processes still alive after the grace period.
         stragglers = [t.name for t in processes if t.is_alive()]
@@ -305,8 +304,8 @@ class Process(mp.Process):
             kwargs (dict): optional keyword arguments for target callable.
         """
         if not isinstance(coord, Coordinator):
-            raise ValueError(
-                "'coord' argument must be a Coordinator: %s" % coord)
+            raise ValueError("'coord' argument must be a Coordinator: %s" %
+                             coord)
         super().__init__()
         self._coord = coord
         # allow pass in target or overriding body

@@ -28,40 +28,39 @@ fc_layer_params = (128, ) * 4
 env_name = "BipedalWalker-v2"
 num_iterations = 200000
 
-alf.config(
-    'create_environment', env_name=env_name, num_parallel_environments=64)
+alf.config('create_environment',
+           env_name=env_name,
+           num_parallel_environments=64)
 
-alf.config(
-    'ActorDistributionNetwork',
-    fc_layer_params=fc_layer_params,
-    continuous_projection_net_ctor=partial(
-        BetaProjectionNetwork, min_concentration=1.))
+alf.config('ActorDistributionNetwork',
+           fc_layer_params=fc_layer_params,
+           continuous_projection_net_ctor=partial(BetaProjectionNetwork,
+                                                  min_concentration=1.))
 alf.config('ValueNetwork', fc_layer_params=fc_layer_params)
 
 # reward scaling
-alf.config(
-    'TrainerConfig',
-    data_transformer_ctor=partial(
-        RewardNormalizer, update_mode="rollout", clip_value=5.),
-    algorithm_ctor=Agent,
-    epsilon_greedy=0.1,
-    evaluate=True,
-    num_evals=200,
-    unroll_length=8,
-    mini_batch_length=1,
-    mini_batch_size=256,
-    num_updates_per_train_iter=4,
-    num_iterations=num_iterations,
-    num_checkpoints=1,
-    debug_summaries=True,
-    summarize_grads_and_vars=False,
-    num_summaries=200)
+alf.config('TrainerConfig',
+           data_transformer_ctor=partial(RewardNormalizer,
+                                         update_mode="rollout",
+                                         clip_value=5.),
+           algorithm_ctor=Agent,
+           epsilon_greedy=0.1,
+           evaluate=True,
+           num_evals=200,
+           unroll_length=8,
+           mini_batch_length=1,
+           mini_batch_size=256,
+           num_updates_per_train_iter=4,
+           num_iterations=num_iterations,
+           num_checkpoints=1,
+           debug_summaries=True,
+           summarize_grads_and_vars=False,
+           num_summaries=200)
 
 alf.config("calc_default_target_entropy", min_prob=0.1)
 
-alf.config(
-    'Agent',
-    optimizer=alf.optimizers.Adam(lr=3e-4),
-    rl_algorithm_cls=partial(PPOAlgorithm, loss_class=PPOLoss),
-    enforce_entropy_target=True,
-    entropy_target_cls=SGDEntropyTargetAlgorithm)
+alf.config('Agent',
+           optimizer=alf.optimizers.Adam(lr=3e-4),
+           rl_algorithm_cls=partial(PPOAlgorithm, loss_class=PPOLoss),
+           enforce_entropy_target=True,
+           entropy_target_cls=SGDEntropyTargetAlgorithm)

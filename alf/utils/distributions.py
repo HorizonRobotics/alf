@@ -86,6 +86,7 @@ class CauchyITS(InverseTransformSampling):
 
 
 class T2Cdf_(torch.autograd.Function):
+
     @staticmethod
     def forward(ctx, x):
         # return 0.5 + 0.5 * x / (1 + x**2).sqrt()
@@ -278,9 +279,8 @@ def _kl_truncated_normal_trucated_normal(p, q):
 
     """
     assert torch.all(
-        torch.logical_and(
-            torch.isclose(p.lower_bound, q.lower_bound),
-            torch.isclose(p.upper_bound, q.upper_bound)))
+        torch.logical_and(torch.isclose(p.lower_bound, q.lower_bound),
+                          torch.isclose(p.upper_bound, q.upper_bound)))
 
     delta = p.loc - q.loc
     delta2 = delta**2

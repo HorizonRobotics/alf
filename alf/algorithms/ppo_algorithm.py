@@ -24,22 +24,21 @@ from alf.data_structures import namedtuple, TimeStep
 from alf.utils import value_ops, tensor_utils
 from alf.nest.utils import convert_device
 
-PPOInfo = namedtuple(
-    "PPOInfo", [
-        "step_type",
-        "discount",
-        "reward",
-        "action",
-        "rollout_log_prob",
-        "rollout_action_distribution",
-        "returns",
-        "advantages",
-        "action_distribution",
-        "value",
-        "reward_weights",
-        "normalized_advantages",
-    ],
-    default_value=())
+PPOInfo = namedtuple("PPOInfo", [
+    "step_type",
+    "discount",
+    "reward",
+    "action",
+    "rollout_log_prob",
+    "rollout_action_distribution",
+    "returns",
+    "advantages",
+    "action_distribution",
+    "value",
+    "reward_weights",
+    "normalized_advantages",
+],
+                     default_value=())
 
 
 @alf.configurable
@@ -58,14 +57,13 @@ class PPOAlgorithm(ActorCriticAlgorithm):
 
     def train_step(self, inputs: TimeStep, state, rollout_info):
         alg_step = self._rollout_step(inputs, state)
-        return alg_step._replace(
-            info=rollout_info._replace(
-                step_type=alg_step.info.step_type,
-                reward=alg_step.info.reward,
-                discount=alg_step.info.discount,
-                action_distribution=alg_step.info.action_distribution,
-                value=alg_step.info.value,
-                reward_weights=alg_step.info.reward_weights))
+        return alg_step._replace(info=rollout_info._replace(
+            step_type=alg_step.info.step_type,
+            reward=alg_step.info.reward,
+            discount=alg_step.info.discount,
+            action_distribution=alg_step.info.action_distribution,
+            value=alg_step.info.value,
+            reward_weights=alg_step.info.reward_weights))
 
     def preprocess_experience(self, root_inputs: TimeStep, rollout_info,
                               batch_info):

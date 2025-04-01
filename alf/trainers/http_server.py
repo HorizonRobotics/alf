@@ -26,6 +26,7 @@ HELP_TEXT = {}  # Dictionary to store help text for each endpoint
 
 
 class CustomRequestHandler(http.server.BaseHTTPRequestHandler):
+
     def get_int_argument(self, name: str, default: int):
         """Get an integer argument from the query parameters.
 

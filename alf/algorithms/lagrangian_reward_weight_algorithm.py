@@ -85,17 +85,18 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
             debug_summaries (bool):
             name (str):
         """
-        super(LagrangianRewardWeightAlgorithm, self).__init__(
-            debug_summaries=debug_summaries, name=name)
+        super(LagrangianRewardWeightAlgorithm,
+              self).__init__(debug_summaries=debug_summaries, name=name)
 
         self._reward_spec = reward_spec
 
         assert reward_spec.numel > 1, (
             "Only multi-dim reward needs this algorithm!")
-        assert (isinstance(reward_thresholds, (list, tuple))
-                and len(reward_thresholds) == reward_spec.numel), (
-                    "Mismatch between len(reward_weights)=%s and reward_dim=%s"
-                    % (len(reward_thresholds), reward_spec.numel))
+        assert (isinstance(
+            reward_thresholds,
+            (list, tuple)) and len(reward_thresholds) == reward_spec.numel), (
+                "Mismatch between len(reward_weights)=%s and reward_dim=%s" %
+                (len(reward_thresholds), reward_spec.numel))
 
         self._reward_training_mask = torch.tensor(
             [t is not None for t in reward_thresholds], dtype=torch.float32)
@@ -144,8 +145,8 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
         return AlgStep()
 
     def rollout_step(self, inputs, state=None):
-        return AlgStep(
-            info=LagInfo(rollout_reward=inputs.untransformed.reward))
+        return AlgStep(info=LagInfo(
+            rollout_reward=inputs.untransformed.reward))
 
     def _calc_loss(self, train_info: LagInfo):
         """Retrieve *untransformed* rollout rewards from ``train_info``
@@ -153,8 +154,9 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
         """
         # [T, B, reward_dim]
         reward_weights = self._lambda_transform(self._lambdas)
-        loss = ((train_info.rollout_reward - self._reward_thresholds).detach()
-                * (reward_weights * self._reward_training_mask))
+        loss = (
+            (train_info.rollout_reward - self._reward_thresholds).detach() *
+            (reward_weights * self._reward_training_mask))
         loss = loss.sum(dim=-1).mean()
         return LossInfo(scalar_loss=loss, extra=reward_weights)
 
@@ -206,8 +208,8 @@ class LagrangianPredRewardWeightAlgorithm(LagrangianRewardWeightAlgorithm):
                  init_weights=1.,
                  max_weight=None,
                  reward_weight_normalization=True,
-                 pred_rewards_averager_ctor=partial(
-                     EMAverager, update_rate=1e-4),
+                 pred_rewards_averager_ctor=partial(EMAverager,
+                                                    update_rate=1e-4),
                  debug_summaries=False,
                  name="LagrangianPredRewardWeightAlgorithm"):
         """

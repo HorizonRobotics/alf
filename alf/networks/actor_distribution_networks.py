@@ -223,8 +223,8 @@ class ParallelActorDistributionNetwork(Network):
             name (str):
         """
 
-        super().__init__(
-            input_tensor_spec=actor_network.input_tensor_spec, name=name)
+        super().__init__(input_tensor_spec=actor_network.input_tensor_spec,
+                         name=name)
         self._encoding_net = actor_network._encoding_net.make_parallel(n)
         self._projection_net = actor_network._projection_net.make_parallel(n)
         self._output_spec = self._projection_net.output_spec
@@ -341,8 +341,8 @@ class UnitNormalActorDistributionNetwork(Network):
         outer_dims = alf.nest.get_nest_shape(inputs)[:outer_rank]
         means = self._action_spec.zeros(outer_dims)
         stds = self._action_spec.ones(outer_dims)
-        normal_dist = alf.utils.dist_utils.DiagMultivariateNormal(
-            loc=means, scale=stds)
+        normal_dist = alf.utils.dist_utils.DiagMultivariateNormal(loc=means,
+                                                                  scale=stds)
         return normal_dist, state
 
 
@@ -414,8 +414,8 @@ class LatentActorDistributionNetwork(Network):
                 action_spec)
             self._squash_transforms = [
                 dist_squashing_transform,
-                alf.utils.dist_utils.AffineTransform(
-                    loc=means, scale=magnitudes)
+                alf.utils.dist_utils.AffineTransform(loc=means,
+                                                     scale=magnitudes)
             ]
 
     def forward(self, inputs, state=()):

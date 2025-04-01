@@ -48,15 +48,13 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
         """
         goal_spec = TensorSpec((num_of_goals, ))
         train_state_spec = GoalState(goal=goal_spec)
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=BoundedTensorSpec(
-                shape=(num_of_goals, ),
-                dtype='float32',
-                minimum=0.,
-                maximum=1.),
-            train_state_spec=train_state_spec,
-            name=name)
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=BoundedTensorSpec(shape=(num_of_goals, ),
+                                                       dtype='float32',
+                                                       minimum=0.,
+                                                       maximum=1.),
+                         train_state_spec=train_state_spec,
+                         name=name)
         self._num_of_goals = num_of_goals
 
     def _generate_goal(self, observation, state):
@@ -70,8 +68,9 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
             Tensor: a batch of one-hot goal tensors.
         """
         batch_size = alf.nest.get_nest_batch_size(observation)
-        goals = torch.randint(
-            high=self._num_of_goals, size=(batch_size, ), dtype=torch.int64)
+        goals = torch.randint(high=self._num_of_goals,
+                              size=(batch_size, ),
+                              dtype=torch.int64)
         goals_onehot = torch.nn.functional.one_hot(
             goals, self._num_of_goals).to(torch.float32)
         return goals_onehot
@@ -112,10 +111,9 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
         observation = time_step.observation
         step_type = time_step.step_type
         new_goal = self._update_goal(observation, state, step_type)
-        return AlgStep(
-            output=(new_goal, ()),
-            state=GoalState(goal=new_goal),
-            info=GoalInfo(goal=new_goal))
+        return AlgStep(output=(new_goal, ()),
+                       state=GoalState(goal=new_goal),
+                       info=GoalInfo(goal=new_goal))
 
     def rollout_step(self, inputs: TimeStep, state):
         return self._step(inputs, state)
@@ -144,8 +142,9 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
             - info (GoalInfo): for training.
         """
         goal = rollout_info.goal
-        return AlgStep(
-            output=(goal, ()), state=state, info=GoalInfo(goal=goal))
+        return AlgStep(output=(goal, ()),
+                       state=state,
+                       info=GoalInfo(goal=goal))
 
     def calc_loss(self, info: GoalInfo):
         return LossInfo()

@@ -28,19 +28,17 @@ def define_config(name, default_value):
     return alf.get_config_value('_CONFIG._USER.' + name)
 
 
-alf.config(
-    'create_environment',
-    env_name='BreakoutNoFrameskip-v4',
-    num_parallel_environments=30)
+alf.config('create_environment',
+           env_name='BreakoutNoFrameskip-v4',
+           num_parallel_environments=30)
 
 FC_LAYER_PARAMS = define_config('FC_LAYER_PARAMS', (512, ))
 CONV_LAYER_PARAMS = define_config('CONV_LAYER_PARAMS',
                                   ac_breakout_conf.CONV_LAYER_PARAMS)
 
-q_network_cls = functools.partial(
-    QNetwork,
-    fc_layer_params=FC_LAYER_PARAMS,
-    conv_layer_params=CONV_LAYER_PARAMS)
+q_network_cls = functools.partial(QNetwork,
+                                  fc_layer_params=FC_LAYER_PARAMS,
+                                  conv_layer_params=CONV_LAYER_PARAMS)
 
 critic_loss_ctor = functools.partial(TDLoss, td_lambda=0.95)
 
@@ -49,26 +47,24 @@ critic_optimizer = AdamTF(lr=lr)
 alpha_optimizer = AdamTF(lr=lr)
 alf.config('calc_default_target_entropy', min_prob=0.1)
 
-alf.config(
-    'SacAlgorithm',
-    actor_network_cls=None,
-    critic_network_cls=None,
-    q_network_cls=q_network_cls,
-    critic_loss_ctor=critic_loss_ctor,
-    critic_optimizer=critic_optimizer,
-    alpha_optimizer=alpha_optimizer,
-    target_update_tau=0.05,
-    target_update_period=20)
+alf.config('SacAlgorithm',
+           actor_network_cls=None,
+           critic_network_cls=None,
+           q_network_cls=q_network_cls,
+           critic_loss_ctor=critic_loss_ctor,
+           critic_optimizer=critic_optimizer,
+           alpha_optimizer=alpha_optimizer,
+           target_update_tau=0.05,
+           target_update_period=20)
 
 gamma = define_config('gamma', 0.99)
 alf.config('OneStepTDLoss', gamma=gamma)
 alf.config('ReplayBuffer', gamma=gamma, reward_clip=(-1, 1))
 
 # training config
-alf.config(
-    'suite_gym.load',
-    max_episode_steps=10000,
-    alf_env_wrappers=[AtariTerminalOnLifeLossWrapper])
+alf.config('suite_gym.load',
+           max_episode_steps=10000,
+           alf_env_wrappers=[AtariTerminalOnLifeLossWrapper])
 
 alf.config(
     'TrainerConfig',

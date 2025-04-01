@@ -20,6 +20,7 @@ from enum import IntEnum, auto, Enum
 import math
 import numpy as np
 import matplotlib
+
 matplotlib.use('Agg')  # 'Agg' no need for xserver!
 import matplotlib.pyplot as plt
 # Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
@@ -176,8 +177,9 @@ class CollisionSensor(SensorBase):
         self._max_num_collisions = max_num_collisions
         world = self._parent.get_world()
         bp = world.get_blueprint_library().find('sensor.other.collision')
-        self._sensor = world.spawn_actor(
-            bp, carla.Transform(), attach_to=self._parent)
+        self._sensor = world.spawn_actor(bp,
+                                         carla.Transform(),
+                                         attach_to=self._parent)
         # We need to pass the lambda a weak reference to self to avoid circular
         # reference.
         weak_self = weakref.ref(self)
@@ -225,8 +227,8 @@ class CollisionSensor(SensorBase):
             "with zeros if there are less than %d collisions. "
             "If include_other_actor is True, the observation will also include "
             "the position (x, y, z) of the other actor relative to the ego "
-            "actor in a new array dimension" % (self._max_num_collisions,
-                                                self._max_num_collisions))
+            "actor in a new array dimension" %
+            (self._max_num_collisions, self._max_num_collisions))
 
     def get_current_observation(self, current_frame):
         """Get the current observation.
@@ -269,8 +271,8 @@ class CollisionSensor(SensorBase):
                         collision_locations[i] = _calculate_relative_position(
                             self._parent.get_transform(), loc)
 
-                collision_locations = np.array(
-                    collision_locations, dtype=np.float32)
+                collision_locations = np.array(collision_locations,
+                                               dtype=np.float32)
                 self._collision_locations = []
 
         n = impulses.shape[0]
@@ -329,8 +331,9 @@ class LaneInvasionSensor(SensorBase):
         super().__init__(parent_actor)
         world = self._parent.get_world()
         bp = world.get_blueprint_library().find('sensor.other.lane_invasion')
-        self._sensor = world.spawn_actor(
-            bp, carla.Transform(), attach_to=self._parent)
+        self._sensor = world.spawn_actor(bp,
+                                         carla.Transform(),
+                                         attach_to=self._parent)
         # We need to pass the lambda a weak reference to self to avoid circular
         # reference.
         weak_self = weakref.ref(self)
@@ -367,10 +370,10 @@ class GnssSensor(SensorBase):
         super().__init__(parent_actor)
         world = self._parent.get_world()
         bp = world.get_blueprint_library().find('sensor.other.gnss')
-        self._sensor = world.spawn_actor(
-            bp,
-            carla.Transform(carla.Location(x=1.0, z=2.8)),
-            attach_to=self._parent)
+        self._sensor = world.spawn_actor(bp,
+                                         carla.Transform(
+                                             carla.Location(x=1.0, z=2.8)),
+                                         attach_to=self._parent)
         # We need to pass the lambda a weak reference to self to avoid circular
         # reference.
         weak_self = weakref.ref(self)
@@ -421,8 +424,9 @@ class IMUSensor(SensorBase):
         self._compass = 0.0
         world = self._parent.get_world()
         bp = world.get_blueprint_library().find('sensor.other.imu')
-        self._sensor = world.spawn_actor(
-            bp, carla.Transform(), attach_to=self._parent)
+        self._sensor = world.spawn_actor(bp,
+                                         carla.Transform(),
+                                         attach_to=self._parent)
         # We need to pass the lambda a weak reference to self to avoid circular
         # reference.
         weak_self = weakref.ref(self)
@@ -493,10 +497,11 @@ class RadarSensor(SensorBase):
         bp = world.get_blueprint_library().find('sensor.other.radar')
         bp.set_attribute('horizontal_fov', str(35))
         bp.set_attribute('vertical_fov', str(20))
-        self._sensor = world.spawn_actor(
-            bp,
-            carla.Transform(carla.Location(*xyz), carla.Rotation(*pyr)),
-            attach_to=self._parent)
+        self._sensor = world.spawn_actor(bp,
+                                         carla.Transform(
+                                             carla.Location(*xyz),
+                                             carla.Rotation(*pyr)),
+                                         attach_to=self._parent)
         # We need a weak reference to self to avoid circular reference.
         weak_self = weakref.ref(self)
         self._sensor.listen(lambda radar_data: RadarSensor._Radar_callback(
@@ -584,18 +589,18 @@ class CameraSensor(SensorBase):
     """CameraSensor."""
 
     def __init__(
-            self,
-            parent_actor,
-            sensor_type='sensor.camera.rgb',
-            xyz=(1.6, 0., 1.7),
-            pyr=(0., 0., 0.),
-            attachment_type='rigid',
-            fov=90.0,
-            fstop=1.4,
-            gamma=2.2,
-            image_size_x=640,
-            image_size_y=480,
-            iso=1200.0,
+        self,
+        parent_actor,
+        sensor_type='sensor.camera.rgb',
+        xyz=(1.6, 0., 1.7),
+        pyr=(0., 0., 0.),
+        attachment_type='rigid',
+        fov=90.0,
+        fstop=1.4,
+        gamma=2.2,
+        image_size_x=640,
+        image_size_y=480,
+        iso=1200.0,
     ):
         """
         Args:
@@ -623,15 +628,15 @@ class CameraSensor(SensorBase):
         assert attachment_type in attachment_type_map, (
             "Unknown attachment_type %s" % attachment_type)
         self._attachment_type = attachment_type_map[attachment_type]
-        self._camera_transform = carla.Transform(
-            carla.Location(*xyz), carla.Rotation(*pyr))
+        self._camera_transform = carla.Transform(carla.Location(*xyz),
+                                                 carla.Rotation(*pyr))
         self._sensor_type = sensor_type
 
         sensor_map = {
             'sensor.camera.rgb': (carla.ColorConverter.Raw, 3),
             'sensor.camera.depth': (carla.ColorConverter.LogarithmicDepth, 1),
-            'sensor.camera.semantic_segmentation': (carla.ColorConverter.Raw,
-                                                    1),
+            'sensor.camera.semantic_segmentation':
+                (carla.ColorConverter.Raw, 1),
         }
         assert sensor_type in sensor_map, "Unknown sensor type %s" % sensor_type
         conversion, num_channels = sensor_map[sensor_type]
@@ -643,13 +648,12 @@ class CameraSensor(SensorBase):
         world = self._parent.get_world()
         bp = world.get_blueprint_library().find(sensor_type)
 
-        attributes = dict(
-            fov=fov,
-            fstop=fstop,
-            gamma=gamma,
-            image_size_x=image_size_x,
-            image_size_y=image_size_y,
-            iso=iso)
+        attributes = dict(fov=fov,
+                          fstop=fstop,
+                          gamma=gamma,
+                          image_size_x=image_size_x,
+                          image_size_y=image_size_y,
+                          iso=iso)
         for name, val in attributes.items():
             if bp.has_attribute(name):
                 bp.set_attribute(name, str(val))
@@ -688,10 +692,9 @@ class CameraSensor(SensorBase):
             scaled_height, scaled_width = get_scaled_image_size(height, width)
 
             if scaled_height != height or scaled_width != width:
-                image = cv2.resize(
-                    image,
-                    dsize=(scaled_height, scaled_width),
-                    interpolation=cv2.INTER_NEAREST)
+                image = cv2.resize(image,
+                                   dsize=(scaled_height, scaled_width),
+                                   interpolation=cv2.INTER_NEAREST)
             surface = pygame.surfarray.make_surface(image)
             display.blit(surface, (0, 0))
 
@@ -905,11 +908,10 @@ dummy_lane_marking = NumpyLaneMarking(
 
 
 def _to_numpy_lane_marking(lane_marking: carla.LaneMarking):
-    return NumpyLaneMarking(
-        color=np.int64(lane_marking.color),
-        lane_change=np.int64(lane_marking.lane_change),
-        type=np.int64(lane_marking.type),
-        width=np.float64(lane_marking.width))
+    return NumpyLaneMarking(color=np.int64(lane_marking.color),
+                            lane_change=np.int64(lane_marking.lane_change),
+                            type=np.int64(lane_marking.type),
+                            width=np.float64(lane_marking.width))
 
 
 def _to_numpy_waypoint(wp: carla.Waypoint):
@@ -1080,8 +1082,8 @@ class World(object):
         self._actor_locations = {}
         self._route_resolution = route_resolution
 
-        dao = GlobalRoutePlannerDAO(
-            world.get_map(), sampling_resolution=route_resolution)
+        dao = GlobalRoutePlannerDAO(world.get_map(),
+                                    sampling_resolution=route_resolution)
         self._global_route_planner = GlobalRoutePlanner(dao)
         self._global_route_planner.setup()
         self._prepare_traffic_light_data()
@@ -1166,8 +1168,8 @@ class World(object):
         self._speed_limit_locations = np.stack(speed_limit_locations)
         self._speed_limit_values = np.stack(speed_limit_values)
 
-        logging.info(
-            "Found %d speed limit signs" % len(self._speed_limit_locations))
+        logging.info("Found %d speed limit signs" %
+                     len(self._speed_limit_locations))
 
     def get_active_speed_limit(self, actor, dis_threshold=1.0):
         """Get active speed limit for the actor.
@@ -1217,8 +1219,8 @@ class World(object):
                 if len(waypoints) > max_num_traffic_light_waypoints:
                     max_num_traffic_light_waypoints = len(waypoints)
 
-        logging.info(
-            "Found %d traffic lights" % len(self._traffic_light_actors))
+        logging.info("Found %d traffic lights" %
+                     len(self._traffic_light_actors))
 
         self._traffic_light_centers = np.array(traffic_light_centers,
                                                np.float32)
@@ -1371,8 +1373,9 @@ class World(object):
             right_lane_wp = location_wp + right_lane_wp
 
             # red-light id for red-light violation
-            if np.any(same_lane & _is_segments_intersecting(
-                    veh_seg, (left_lane_wp, right_lane_wp))):
+            if np.any(same_lane
+                      & _is_segments_intersecting(veh_seg, (left_lane_wp,
+                                                            right_lane_wp))):
                 # If veh_seg intersects with (left_lane_wp, right_lane_wp), that
                 # means the vehicle is crossing the line dividing intersection
                 # and the outside area.
@@ -1393,8 +1396,10 @@ class World(object):
 
             size = 0.2
             color = carla.Color(255, 0, 0)
-            self._world.debug.draw_point(
-                loc, size=size, color=color, life_time=persistency)
+            self._world.debug.draw_point(loc,
+                                         size=size,
+                                         color=color,
+                                         life_time=persistency)
 
 
 class NavigationSensor(SensorBase):
@@ -1451,8 +1456,8 @@ class NavigationSensor(SensorBase):
         return alf.TensorSpec([len(self._future_indices), 3])
 
     def observation_desc(self):
-        return ("Positions of the %s future locations in the route." % len(
-            self._future_indices))
+        return ("Positions of the %s future locations in the route." %
+                len(self._future_indices))
 
     def _update_nearest_index(self):
         """Update the ``nearest_index``, which represents the index to the
@@ -1460,8 +1465,9 @@ class NavigationSensor(SensorBase):
         """
         loc = self._alf_world.get_actor_location(self._parent.id)
         loc = np.array([loc.x, loc.y, loc.z])
-        nearby_waypoints = self._waypoints[self._nearest_index:self.
-                                           _nearest_index + self.WINDOW]
+        nearby_waypoints = self._waypoints[self.
+                                           _nearest_index:self._nearest_index +
+                                           self.WINDOW]
         dist = np.linalg.norm(nearby_waypoints - loc, axis=1)
         self._nearest_index = self._nearest_index + np.argmin(dist)
 
@@ -1499,8 +1505,9 @@ class NavigationSensor(SensorBase):
         if future_number == -1:
             return self._route_waypoints[self._nearest_index::5]
         else:
-            return self._route_waypoints[self._nearest_index:self.
-                                         _nearest_index + int(future_number):5]
+            return self._route_waypoints[self.
+                                         _nearest_index:self._nearest_index +
+                                         int(future_number):5]
 
     @property
     def num_waypoints(self):
@@ -1560,8 +1567,8 @@ class RedlightSensor(SensorBase):
             that affects the current ``Player``.
         """
 
-        return np.array(
-            [self._player._prev_encountered_red_light_dist]).astype(np.float32)
+        return np.array([self._player._prev_encountered_red_light_dist
+                         ]).astype(np.float32)
 
 
 # ==============================================================================
@@ -1681,8 +1688,8 @@ class BEVSensor(SensorBase):
         # register traffic lights
         TrafficLightHandler.reset(self._alf_world)
 
-        self._distance_threshold = np.ceil(
-            self._height / self._pixels_per_meter)
+        self._distance_threshold = np.ceil(self._height /
+                                           self._pixels_per_meter)
 
         if self._observation_mode == "rgb":
             self._observation_spec = alf.TensorSpec(
@@ -1748,10 +1755,9 @@ class BEVSensor(SensorBase):
             vehicle_bbox_list,
             is_within_distance,
             scale=self._vehicle_bbox_factor)
-        walkers = self._get_surrounding_actors(
-            walker_bbox_list,
-            is_within_distance,
-            scale=self._walker_bbox_factor)
+        walkers = self._get_surrounding_actors(walker_bbox_list,
+                                               is_within_distance,
+                                               scale=self._walker_bbox_factor)
 
         tl_green, tl_yellow, tl_red = TrafficLightHandler.get_stopline_vtx(
             ev_loc)
@@ -1759,8 +1765,8 @@ class BEVSensor(SensorBase):
         # TODO: add stop sign
         stops = []
 
-        self._history_queue.append((vehicles, walkers, tl_green, tl_yellow,
-                                    tl_red, stops))
+        self._history_queue.append(
+            (vehicles, walkers, tl_green, tl_yellow, tl_red, stops))
 
     def generate_observation_masks(self):
         """Generate all the masks required for rendering the BEV observation.
@@ -1800,11 +1806,11 @@ class BEVSensor(SensorBase):
         if route_in_pixel != []:
             route_warped = cv2.transform(route_in_pixel, M_warp)
 
-            cv2.polylines(
-                route_mask, [np.round(route_warped).astype(np.int32)],
-                False,
-                1,
-                thickness=max(1, 3 * self._pixels_per_meter))
+            cv2.polylines(route_mask,
+                          [np.round(route_warped).astype(np.int32)],
+                          False,
+                          1,
+                          thickness=max(1, 3 * self._pixels_per_meter))
         route_mask = route_mask.astype(np.bool)
 
         # ev_mask
@@ -1941,8 +1947,8 @@ class BEVSensor(SensorBase):
             bb_ext.x = max(bb_ext.x, bb_ext.y)
             bb_ext.y = max(bb_ext.x, bb_ext.y)
             trans = stop_sign.get_transform()
-            stops = [(carla.Transform(trans.location, trans.rotation), bb_loc,
-                      bb_ext)]
+            stops = [(carla.Transform(trans.location,
+                                      trans.rotation), bb_loc, bb_ext)]
         return stops
 
     def _get_history_masks(self, M_warp):
@@ -1957,8 +1963,8 @@ class BEVSensor(SensorBase):
 
             vehicle_masks.append(
                 self._get_mask_from_actor_list(vehicles, M_warp))
-            walker_masks.append(
-                self._get_mask_from_actor_list(walkers, M_warp))
+            walker_masks.append(self._get_mask_from_actor_list(
+                walkers, M_warp))
             tl_green_masks.append(
                 self._get_mask_from_stopline_vtx(tl_green, M_warp))
             tl_yellow_masks.append(
@@ -1972,15 +1978,14 @@ class BEVSensor(SensorBase):
     def _get_mask_from_stopline_vtx(self, stopline_vtx, M_warp):
         mask = np.zeros([self._width, self._width], dtype=np.uint8)
         for sp_locs in stopline_vtx:
-            stopline_in_pixel = np.array(
-                [[self._world_to_pixel(x)] for x in sp_locs])
+            stopline_in_pixel = np.array([[self._world_to_pixel(x)]
+                                          for x in sp_locs])
             stopline_warped = cv2.transform(stopline_in_pixel, M_warp)
-            cv2.line(
-                mask,
-                tuple(np.round(stopline_warped[0, 0]).astype(np.int32)),
-                tuple(np.round(stopline_warped[1, 0]).astype(np.int32)),
-                color=1,
-                thickness=6)
+            cv2.line(mask,
+                     tuple(np.round(stopline_warped[0, 0]).astype(np.int32)),
+                     tuple(np.round(stopline_warped[1, 0]).astype(np.int32)),
+                     color=1,
+                     thickness=6)
         return mask.astype(bool)
 
     def _get_mask_from_actor_list(self, actor_list, M_warp):
@@ -1997,8 +2002,8 @@ class BEVSensor(SensorBase):
             corners = [bb_loc + corner for corner in corners]
 
             corners = [actor_transform.transform(corner) for corner in corners]
-            corners_in_pixel = np.array(
-                [[self._world_to_pixel(corner)] for corner in corners])
+            corners_in_pixel = np.array([[self._world_to_pixel(corner)]
+                                         for corner in corners])
             corners_warped = cv2.transform(corners_in_pixel, M_warp)
 
             cv2.fillConvexPoly(mask,
@@ -2035,12 +2040,12 @@ class BEVSensor(SensorBase):
 
         bottom_left = ev_loc_in_px - self._pixels_ev_to_bottom * forward_vec - (
             0.5 * self._width) * right_vec
-        top_left = ev_loc_in_px + (
-            self._height - self._pixels_ev_to_bottom) * forward_vec - (
-                0.5 * self._width) * right_vec
-        top_right = ev_loc_in_px + (
-            self._height - self._pixels_ev_to_bottom) * forward_vec + (
-                0.5 * self._width) * right_vec
+        top_left = ev_loc_in_px + (self._height -
+                                   self._pixels_ev_to_bottom) * forward_vec - (
+                                       0.5 * self._width) * right_vec
+        top_right = ev_loc_in_px + (self._height - self._pixels_ev_to_bottom
+                                    ) * forward_vec + (0.5 *
+                                                       self._width) * right_vec
 
         src_pts = np.stack((bottom_left, top_left, top_right),
                            axis=0).astype(np.float32)
@@ -2117,10 +2122,11 @@ class ObstacleDetectionSensor(SensorBase):
         else:
             bp.set_attribute('only_dynamics', 'false')
 
-        self._sensor_transform = carla.Transform(
-            carla.Location(*xyz), carla.Rotation(*pyr))
-        self._sensor = world.spawn_actor(
-            bp, self._sensor_transform, attach_to=self._parent)
+        self._sensor_transform = carla.Transform(carla.Location(*xyz),
+                                                 carla.Rotation(*pyr))
+        self._sensor = world.spawn_actor(bp,
+                                         self._sensor_transform,
+                                         attach_to=self._parent)
         # We need to pass the lambda a weak reference to self to avoid circular
         # reference.
         weak_self = weakref.ref(self)
@@ -2316,10 +2322,9 @@ class DynamicObjectSensor(SensorBase):
 
         if poly_world != []:
             # 2d -> 3d
-            poly_world = np.pad(
-                poly_world, [(0, 0), (0, 1)],
-                mode='constant',
-                constant_values=0)
+            poly_world = np.pad(poly_world, [(0, 0), (0, 1)],
+                                mode='constant',
+                                constant_values=0)
             poly_ego = _calculate_relative_position(ev_transform, poly_world)
             return poly_ego
         else:
@@ -2415,8 +2420,8 @@ class DynamicObjectSensor(SensorBase):
             # set default presence to 0
             full_feature_mat[..., -1] = 0
             # set presence to 1
-            full_feature_mat[:feature_mat.shape[-3], :feature_mat.
-                             shape[-2], -1] = 1
+            full_feature_mat[:feature_mat.shape[-3], :feature_mat.shape[-2],
+                             -1] = 1
 
             v_fea_set.append(full_feature_mat.astype(np.float32))
 
@@ -2524,21 +2529,19 @@ class DynamicObjectSensor(SensorBase):
             valid_data = data_j[valid_ind, ...]
 
             if valid_data.shape[0] > 1:
-                ax.plot(
-                    valid_data[:, 1],
-                    valid_data[:, 0],
-                    "-.",
-                    linewidth=linewidth,
-                    color=__colors__[j])
+                ax.plot(valid_data[:, 1],
+                        valid_data[:, 0],
+                        "-.",
+                        linewidth=linewidth,
+                        color=__colors__[j])
 
             if valid_data.shape[0] > 0:
-                ax.plot(
-                    valid_data[-1, 1],
-                    valid_data[-1, 0],
-                    marker='s',
-                    linewidth=marker_size,
-                    color=__colors__[j],
-                    **kwargs)
+                ax.plot(valid_data[-1, 1],
+                        valid_data[-1, 0],
+                        marker='s',
+                        linewidth=marker_size,
+                        color=__colors__[j],
+                        **kwargs)
 
         if y_range:
             ax.set_ylim(y_range)

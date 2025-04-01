@@ -38,6 +38,7 @@ from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 
 
 class RlpdAlgorithmTestInit(alf.test.TestCase):
+
     def test_rlpd_algorithm_init(self):
         observation_spec = BoundedTensorSpec((10, ))
         continuous_action_spec = [
@@ -45,20 +46,18 @@ class RlpdAlgorithmTestInit(alf.test.TestCase):
             BoundedTensorSpec((10, ))
         ]
 
-        critic_network = partial(
-            CriticNetwork, action_preprocessing_combiner=NestConcat())
+        critic_network = partial(CriticNetwork,
+                                 action_preprocessing_combiner=NestConcat())
 
-        self.assertRaises(
-            AssertionError,
-            RlpdAlgorithm,
-            observation_spec=observation_spec,
-            action_spec=continuous_action_spec,
-            critic_network_cls=None)
+        self.assertRaises(AssertionError,
+                          RlpdAlgorithm,
+                          observation_spec=observation_spec,
+                          action_spec=continuous_action_spec,
+                          critic_network_cls=None)
 
-        rlpd = RlpdAlgorithm(
-            observation_spec=observation_spec,
-            action_spec=continuous_action_spec,
-            critic_network_cls=critic_network)
+        rlpd = RlpdAlgorithm(observation_spec=observation_spec,
+                             action_spec=continuous_action_spec,
+                             critic_network_cls=critic_network)
         self.assertEqual(rlpd._act_type, SacActionType.Continuous)
         self.assertEqual(rlpd.train_state_spec.action.critic, ())
 
@@ -70,15 +69,15 @@ class RlpdAlgorithmTestInit(alf.test.TestCase):
         ]
         # None critic_network_cls could also mean predict_step only.
         alf.config("RLAlgorithm", is_eval=True)
-        rlpd = RlpdAlgorithm(
-            observation_spec=observation_spec,
-            action_spec=continuous_action_spec,
-            critic_network_cls=None)
+        rlpd = RlpdAlgorithm(observation_spec=observation_spec,
+                             action_spec=continuous_action_spec,
+                             critic_network_cls=None)
         self.assertTrue(rlpd._is_eval)
         self.assertEqual(rlpd._critic_networks, None)
 
 
 class RlpdAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((True, 1, 1), (False, 3, 2), (True, 1, 1, 1),
                               (True, 2, 1, 2, True))
     def test_rlpd_algorithm(self,
@@ -89,28 +88,25 @@ class RlpdAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                             critic_utd=None,
                             use_bootstrap_critics=False):
         num_env = 4
-        config = TrainerConfig(
-            root_dir="dummy",
-            unroll_length=1,
-            mini_batch_length=2,
-            mini_batch_size=64,
-            initial_collect_steps=100,
-            num_updates_per_train_iter=5,
-            whole_replay_buffer_training=False,
-            clear_replay_buffer=False)
+        config = TrainerConfig(root_dir="dummy",
+                               unroll_length=1,
+                               mini_batch_length=2,
+                               mini_batch_size=64,
+                               initial_collect_steps=100,
+                               num_updates_per_train_iter=5,
+                               whole_replay_buffer_training=False,
+                               clear_replay_buffer=False)
         env_class = PolicyUnittestEnv
         steps_per_episode = 13
-        env = env_class(
-            num_env,
-            steps_per_episode,
-            action_type=ActionType.Continuous,
-            reward_dim=reward_dim)
+        env = env_class(num_env,
+                        steps_per_episode,
+                        action_type=ActionType.Continuous,
+                        reward_dim=reward_dim)
 
-        eval_env = env_class(
-            100,
-            steps_per_episode,
-            action_type=ActionType.Continuous,
-            reward_dim=reward_dim)
+        eval_env = env_class(100,
+                             steps_per_episode,
+                             action_type=ActionType.Continuous,
+                             reward_dim=reward_dim)
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
@@ -168,8 +164,9 @@ class RlpdAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                 "%d reward=%f" % (i, float(eval_time_step.reward.mean())),
                 n_seconds=1)
 
-        self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=0.3)
+        self.assertAlmostEqual(1.0,
+                               float(eval_time_step.reward.mean()),
+                               delta=0.3)
 
 
 if __name__ == '__main__':

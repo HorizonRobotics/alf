@@ -78,8 +78,9 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         self._batch_size = batch_size
         self._observation_spec = observation_spec
         self._action_spec = action_spec
-        self._time_step_spec = ds.time_step_spec(
-            self._observation_spec, action_spec, ts.TensorSpec(()))
+        self._time_step_spec = ds.time_step_spec(self._observation_spec,
+                                                 action_spec, ts.TensorSpec(
+                                                     ()))
         self._episode_end_probability = episode_end_probability
         discount = np.asarray(discount, dtype=np.float32)
         if env_id is None:
@@ -145,11 +146,10 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
     def _reset(self):
         self._done = False
         batched = self._batch_size is not None
-        time_step = ds.restart(
-            self._get_observation(),
-            self._action_spec,
-            env_id=self._env_id,
-            batched=batched)
+        time_step = ds.restart(self._get_observation(),
+                               self._action_spec,
+                               env_id=self._env_id,
+                               batched=batched)
         if self._use_tensor_time_step:
             time_step = nest.map_structure(torch.as_tensor, time_step)
         return time_step
@@ -197,18 +197,19 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         if self._done:
             reward = self._reward_fn(ds.StepType.LAST, action, observation)
             self._check_reward_shape(reward)
-            time_step = ds.termination(
-                observation, action, reward, env_id=self._env_id)
+            time_step = ds.termination(observation,
+                                       action,
+                                       reward,
+                                       env_id=self._env_id)
             self._num_steps = 0
         else:
             reward = self._reward_fn(ds.StepType.MID, action, observation)
             self._check_reward_shape(reward)
-            time_step = ds.transition(
-                observation,
-                action,
-                reward,
-                discount=self._discount,
-                env_id=self._env_id)
+            time_step = ds.transition(observation,
+                                      action,
+                                      reward,
+                                      discount=self._discount,
+                                      env_id=self._env_id)
 
         if self._use_tensor_time_step:
             time_step = nest.map_structure(torch.as_tensor, time_step)
@@ -221,8 +222,10 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
                 "Only rendering mode supported is 'rgb_array', got {} instead."
                 .format(mode))
 
-        return self._rng.randint(
-            0, 256, size=self._render_size, dtype=np.uint8)
+        return self._rng.randint(0,
+                                 256,
+                                 size=self._render_size,
+                                 dtype=np.uint8)
 
     def seed(self, seed):
         self._rng.seed(seed)

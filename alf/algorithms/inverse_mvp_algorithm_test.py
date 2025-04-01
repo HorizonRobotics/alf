@@ -31,6 +31,7 @@ from alf.initializers import variance_scaling_init
 
 
 class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
+
     def assertArrayEqual(self, x, y, eps):
         self.assertEqual(x.shape, y.shape)
         self.assertLessEqual(float(torch.max(abs(x - y))), eps)
@@ -54,15 +55,15 @@ class InverseMVPTest(parameterized.TestCase, alf.test.TestCase):
         vec_spec = TensorSpec(shape=(vec_dim, ))
         input_tensor_spec = (input_spec, vec_spec)
         optimizer = alf.optimizers.Adam(lr=5e-4)
-        self.inverse_mvp = InverseMVPAlgorithm(
-            input_dim,
-            output_dim,
-            hidden_size=300,
-            num_hidden_layers=1,
-            optimizer=optimizer)
+        self.inverse_mvp = InverseMVPAlgorithm(input_dim,
+                                               output_dim,
+                                               hidden_size=300,
+                                               num_hidden_layers=1,
+                                               optimizer=optimizer)
         mlp_spec = TensorSpec((input_dim, ))
-        self.mlp = ReluMLP(
-            mlp_spec, output_size=output_dim, hidden_layers=(2, ))
+        self.mlp = ReluMLP(mlp_spec,
+                           output_size=output_dim,
+                           hidden_layers=(2, ))
         # make Jac better behaved
         w1 = torch.tensor([[1., 2.], [2., 1.]])
         w2 = torch.tensor([[2., 1.], [1, 1], [1., 2.]])

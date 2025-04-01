@@ -35,31 +35,29 @@ from alf.utils.math_ops import clipped_exp
 
 
 class QRSACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((True, 1, False, False), (False, 3, True, True))
     def test_qrsac_algorithm(self, use_naive_parallel_network, reward_dim,
                              use_n_step_td, min_critic_by_critic_mean):
         num_env = 1
-        config = TrainerConfig(
-            root_dir="dummy",
-            unroll_length=1,
-            mini_batch_length=4,
-            mini_batch_size=64,
-            initial_collect_steps=500,
-            whole_replay_buffer_training=False,
-            clear_replay_buffer=False)
+        config = TrainerConfig(root_dir="dummy",
+                               unroll_length=1,
+                               mini_batch_length=4,
+                               mini_batch_size=64,
+                               initial_collect_steps=500,
+                               whole_replay_buffer_training=False,
+                               clear_replay_buffer=False)
         env_class = PolicyUnittestEnv
         steps_per_episode = 13
-        env = env_class(
-            num_env,
-            steps_per_episode,
-            action_type=ActionType.Continuous,
-            reward_dim=reward_dim)
+        env = env_class(num_env,
+                        steps_per_episode,
+                        action_type=ActionType.Continuous,
+                        reward_dim=reward_dim)
 
-        eval_env = env_class(
-            100,
-            steps_per_episode,
-            action_type=ActionType.Continuous,
-            reward_dim=reward_dim)
+        eval_env = env_class(100,
+                             steps_per_episode,
+                             action_type=ActionType.Continuous,
+                             reward_dim=reward_dim)
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
@@ -120,8 +118,9 @@ class QRSACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
                 "%d reward=%f" % (i, float(eval_time_step.reward.mean())),
                 n_seconds=1)
 
-        self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=0.3)
+        self.assertAlmostEqual(1.0,
+                               float(eval_time_step.reward.mean()),
+                               delta=0.3)
 
 
 def unroll(env, algorithm, steps, epsilon_greedy: float = 0.1):

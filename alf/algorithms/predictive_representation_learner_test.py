@@ -27,6 +27,7 @@ from alf.utils import common, dist_utils
 
 
 class PredictiveRepresentationLearnerTest(alf.test.TestCase):
+
     def test_preprocess_experience(self):
         """
         The following summarizes how the data is generated:
@@ -58,11 +59,10 @@ class PredictiveRepresentationLearnerTest(alf.test.TestCase):
             observation_spec,
             action_spec,
             num_unroll_steps=num_unroll_steps,
-            decoder_ctor=partial(
-                SimpleDecoder,
-                target_field='reward',
-                decoder_net_ctor=partial(
-                    EncodingNetwork, fc_layer_params=(4, ))),
+            decoder_ctor=partial(SimpleDecoder,
+                                 target_field='reward',
+                                 decoder_net_ctor=partial(
+                                     EncodingNetwork, fc_layer_params=(4, ))),
             encoding_net_ctor=LSTMEncodingNetwork,
             dynamics_net_ctor=LSTMEncodingNetwork)
 
@@ -76,11 +76,10 @@ class PredictiveRepresentationLearnerTest(alf.test.TestCase):
         experience = ds.make_experience(time_step, alg_step, state)
         experience_spec = ds.make_experience(time_step_spec, alg_step_spec,
                                              repr_learner.train_state_spec)
-        replay_buffer = ReplayBuffer(
-            data_spec=experience_spec,
-            num_environments=batch_size,
-            max_length=16,
-            keep_episodic_info=True)
+        replay_buffer = ReplayBuffer(data_spec=experience_spec,
+                                     num_environments=batch_size,
+                                     max_length=16,
+                                     keep_episodic_info=True)
 
         #             01234567890123
         step_type0 = 'FMMMLFMMLFMMMM'
@@ -113,17 +112,16 @@ class PredictiveRepresentationLearnerTest(alf.test.TestCase):
             state = alg_step.state
 
         env_ids = torch.tensor([0] * 14 + [1] * 14, dtype=torch.int64)
-        positions = torch.tensor(
-            list(range(14)) + list(range(14)), dtype=torch.int64)
+        positions = torch.tensor(list(range(14)) + list(range(14)),
+                                 dtype=torch.int64)
         experience = replay_buffer.get_field(None,
                                              env_ids.unsqueeze(-1).cpu(),
                                              positions.unsqueeze(-1).cpu())
         processed_experience, processed_rollout_info = repr_learner.preprocess_experience(
             experience, experience.rollout_info,
-            BatchInfo(
-                env_ids=env_ids,
-                positions=positions,
-                replay_buffer=replay_buffer))
+            BatchInfo(env_ids=env_ids,
+                      positions=positions,
+                      replay_buffer=replay_buffer))
         pprint.pprint(processed_rollout_info)
 
         # yapf: disable

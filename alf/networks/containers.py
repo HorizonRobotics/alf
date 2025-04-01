@@ -106,15 +106,15 @@ def Sequential(*modules,
     # does not allow *args for __init__() (see _NetworkMeta.__new__()). And we
     # want to use *modules here to make the interface consistent with
     # torch.nn.Sequential and alf.layers.Sequential to avoid confusion.
-    return _Sequential(
-        modules,
-        named_modules,
-        output=output,
-        input_tensor_spec=input_tensor_spec,
-        name=name)
+    return _Sequential(modules,
+                       named_modules,
+                       output=output,
+                       input_tensor_spec=input_tensor_spec,
+                       name=name)
 
 
 class _Sequential(Network):
+
     def __init__(self,
                  elements=(),
                  element_dict={},
@@ -128,8 +128,8 @@ class _Sequential(Network):
         simple = True
         named_elements = list(zip([''] * len(elements), elements)) + list(
             element_dict.items())
-        is_nested_str = lambda s: all(
-            map(lambda x: type(x) == str, flatten(s)))
+        is_nested_str = lambda s: all(map(lambda x: type(x) == str, flatten(s))
+                                      )
         for i, (out, element) in enumerate(named_elements):
             input = ''
             if isinstance(element, tuple) and len(element) == 2:
@@ -137,9 +137,9 @@ class _Sequential(Network):
             else:
                 module = element
             if not (isinstance(module, Callable) and is_nested_str(input)):
-                raise ValueError(
-                    "Argument %s is not in the form of Callable "
-                    "or (nested str, Callable): %s" % (out or str(i), element))
+                raise ValueError("Argument %s is not in the form of Callable "
+                                 "or (nested str, Callable): %s" %
+                                 (out or str(i), element))
             if isinstance(module, type):
                 raise ValueError(
                     "module should not be a type. Did you forget "
@@ -156,8 +156,8 @@ class _Sequential(Network):
                 simple = False
         if output:
             simple = False
-        assert is_nested_str(output), (
-            "output should be a nested str: %s" % output)
+        assert is_nested_str(output), ("output should be a nested str: %s" %
+                                       output)
         if len(flatten(state_spec)) == 0:
             state_spec = ()
         if input_tensor_spec is None and not inputs[0]:
@@ -300,9 +300,9 @@ class Parallel(Network):
 
     def forward(self, inputs, state=()):
         if self._state_spec == ():
-            output = map_structure_up_to(
-                self._networks, lambda net, input: net(input)[0],
-                self._networks, inputs)
+            output = map_structure_up_to(self._networks,
+                                         lambda net, input: net(input)[0],
+                                         self._networks, inputs)
         else:
             output_and_state = map_structure_up_to(
                 self._networks, lambda net, input, s: net(input, s),
@@ -363,11 +363,14 @@ def Branch(*modules, input_tensor_spec=None, name="Branch", **named_modules):
     """
     # The reason that we use a wrapper function for _Branch is that Network
     # does not allow *args for __init__() (see _NetworkMeta.__new__()).
-    return _Branch(
-        modules, named_modules, input_tensor_spec=input_tensor_spec, name=name)
+    return _Branch(modules,
+                   named_modules,
+                   input_tensor_spec=input_tensor_spec,
+                   name=name)
 
 
 class _Branch(Network):
+
     def __init__(self,
                  modules,
                  named_modules,
@@ -432,10 +435,9 @@ class _Branch(Network):
         networks = map_structure(
             lambda net: alf.layers.make_parallel_net(net, n), self._networks)
         input_spec = make_parallel_spec(self._input_tensor_spec, n)
-        return Branch(
-            networks,
-            input_tensor_spec=input_spec,
-            name='parallel_' + self.name)
+        return Branch(networks,
+                      input_tensor_spec=input_spec,
+                      name='parallel_' + self.name)
 
 
 class Echo(Network):
@@ -487,9 +489,9 @@ class Echo(Network):
             input_tensor_spec (nested TensorSpec): If provided, it must match
                 the ``block.input_tensor_spec[0]`` or ``block.input_tensor_spec['input']``
         """
-        assert isinstance(
-            block, Network), ("block must be an instance of "
-                              "alf.networks.Network. Got %s" % type(block))
+        assert isinstance(block, Network), ("block must be an instance of "
+                                            "alf.networks.Network. Got %s" %
+                                            type(block))
         if (isinstance(block.input_tensor_spec, tuple)
                 and len(block.input_tensor_spec) == 2):
             self._is_tuple_input = True
@@ -531,8 +533,8 @@ class Echo(Network):
                 (input_tensor_spec, real_input_spec))
 
         state_spec = (block.state_spec, echo_input_spec)
-        super().__init__(
-            input_tensor_spec=real_input_spec, state_spec=state_spec)
+        super().__init__(input_tensor_spec=real_input_spec,
+                         state_spec=state_spec)
         self._block = block
 
     def forward(self, input, state):
@@ -557,6 +559,5 @@ class Echo(Network):
         Returns:
             the parallelized version of this network
         """
-        return Echo(
-            alf.layers.make_parallel_net(self._block),
-            make_parallel_spec(self._input_tensor_spec, n))
+        return Echo(alf.layers.make_parallel_net(self._block),
+                    make_parallel_spec(self._input_tensor_spec, n))

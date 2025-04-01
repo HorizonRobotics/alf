@@ -116,8 +116,8 @@ class EntropyTargetAlgorithm(Algorithm):
         self.register_buffer('_stage', torch.tensor(-2, dtype=torch.int32))
         self._avg_entropy = ScalarWindowAverager(average_window)
         self.register_buffer(
-            "_update_rate", torch.tensor(
-                fast_update_rate, dtype=torch.float32))
+            "_update_rate", torch.tensor(fast_update_rate,
+                                         dtype=torch.float32))
         self._action_spec = action_spec
         self._min_log_alpha = -100.
         if min_alpha >= 0.:
@@ -154,10 +154,10 @@ class EntropyTargetAlgorithm(Algorithm):
         # as required by the `torch.where` function later. This was not needed
         # in lower version of pytorch (e.g. 1.4) as it will cast a np.float64
         # to torch.float32.
-        self._slow_update_rate = torch.tensor(
-            slow_update_rate, dtype=torch.float32)
-        self._fast_update_rate = torch.tensor(
-            fast_update_rate, dtype=torch.float32)
+        self._slow_update_rate = torch.tensor(slow_update_rate,
+                                              dtype=torch.float32)
+        self._fast_update_rate = torch.tensor(fast_update_rate,
+                                              dtype=torch.float32)
 
     def predict_step(self, distribution_and_step_type, state):
         return AlgStep()
@@ -195,14 +195,13 @@ class EntropyTargetAlgorithm(Algorithm):
         """
         distribution, step_type = distribution_and_step_type
         entropy, entropy_for_gradient = entropy_with_fallback(distribution)
-        return AlgStep(
-            output=(),
-            state=(),
-            info=EntropyTargetInfo(
-                step_type=step_type,
-                loss=LossInfo(
-                    loss=-entropy_for_gradient,
-                    extra=EntropyTargetLossInfo(neg_entropy=-entropy))))
+        return AlgStep(output=(),
+                       state=(),
+                       info=EntropyTargetInfo(step_type=step_type,
+                                              loss=LossInfo(
+                                                  loss=-entropy_for_gradient,
+                                                  extra=EntropyTargetLossInfo(
+                                                      neg_entropy=-entropy))))
 
     def calc_loss(self, info: EntropyTargetInfo, valid_mask=None):
         """Calculate loss.
@@ -387,11 +386,10 @@ class NestedEntropyTargetAlgorithm(Algorithm):
         super().__init__(debug_summaries=debug_summaries, name=name)
 
         def _create_et(path, action_spec, target_entropy, max_entropy):
-            kwargs.update(
-                action_spec=action_spec,
-                target_entropy=target_entropy,
-                max_entropy=max_entropy,
-                name=name + "/" + path)
+            kwargs.update(action_spec=action_spec,
+                          target_entropy=target_entropy,
+                          max_entropy=max_entropy,
+                          name=name + "/" + path)
             return EntropyTargetAlgorithm(**kwargs)
 
         alf.nest.assert_same_structure(target_entropy, action_spec)
@@ -422,8 +420,9 @@ class NestedEntropyTargetAlgorithm(Algorithm):
                    rollout_info=None):
         distribution, step_type = distribution_and_step_type
         infos = alf.nest.map_structure(
-            lambda alg, dist: alg.train_step((dist, step_type)).info._replace(
-                step_type=()), self._algs, distribution)
+            lambda alg, dist: alg.train_step(
+                (dist, step_type)).info._replace(step_type=()), self._algs,
+            distribution)
         return AlgStep(output=(), state=(), info=(step_type, infos))
 
     def calc_loss(self, info: EntropyTargetInfo, valid_mask=None):
@@ -467,8 +466,9 @@ class SGDEntropyTargetAlgorithm(Algorithm):
             name: name of the class
         """
 
-        super().__init__(
-            optimizer=optimizer, debug_summaries=debug_summaries, name=name)
+        super().__init__(optimizer=optimizer,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._log_alpha = torch.nn.Parameter(
             torch.tensor(np.log(initial_alpha), dtype=torch.float32))
@@ -517,14 +517,13 @@ class SGDEntropyTargetAlgorithm(Algorithm):
         """
         distribution, _ = distribution_and_step_type
         entropy, entropy_for_gradient = entropy_with_fallback(distribution)
-        return AlgStep(
-            output=(),
-            state=(),
-            info=EntropyTargetInfo(
-                step_type=(),
-                loss=LossInfo(
-                    loss=-entropy_for_gradient,
-                    extra=EntropyTargetLossInfo(neg_entropy=-entropy))))
+        return AlgStep(output=(),
+                       state=(),
+                       info=EntropyTargetInfo(step_type=(),
+                                              loss=LossInfo(
+                                                  loss=-entropy_for_gradient,
+                                                  extra=EntropyTargetLossInfo(
+                                                      neg_entropy=-entropy))))
 
     def calc_loss(self, info: EntropyTargetInfo):
         """Calculate the losses for training. It will compute two losses, one for
@@ -534,8 +533,8 @@ class SGDEntropyTargetAlgorithm(Algorithm):
         loss_info = info.loss
         avg_entropy = self._entropy_averager.average(
             -loss_info.extra.neg_entropy)
-        alpha_loss = (
-            (avg_entropy - self._target_entropy()).detach() * self._log_alpha)
+        alpha_loss = ((avg_entropy - self._target_entropy()).detach() *
+                      self._log_alpha)
         alpha = torch.exp(self._log_alpha).detach()
         entropy_loss = loss_info.loss * alpha
 
@@ -544,9 +543,7 @@ class SGDEntropyTargetAlgorithm(Algorithm):
                 alf.summary.scalar("alpha", alpha)
                 alf.summary.scalar("target_entropy", self._target_entropy())
 
-        return LossInfo(
-            loss=alpha_loss + entropy_loss,
-            extra=dict(
-                neg_entropy=loss_info.extra.neg_entropy,
-                alpha_loss=alpha_loss,
-                entropy_loss=entropy_loss))
+        return LossInfo(loss=alpha_loss + entropy_loss,
+                        extra=dict(neg_entropy=loss_info.extra.neg_entropy,
+                                   alpha_loss=alpha_loss,
+                                   entropy_loss=entropy_loss))

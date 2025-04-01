@@ -30,9 +30,8 @@ alf.config('FrameStacker', stack_size=4)
 alf.config('ImageScaleTransformer', min=0.0)
 alf.config('RewardClipping', minmax=(-1, 1))
 
-alf.config(
-    'TrainerConfig',
-    data_transformer_ctor=[
-        FrameStacker, ImageScaleTransformer, RewardClipping
-    ],
-    epsilon_greedy=0.1)
+alf.config('TrainerConfig',
+           data_transformer_ctor=[
+               FrameStacker, ImageScaleTransformer, RewardClipping
+           ],
+           epsilon_greedy=0.1)

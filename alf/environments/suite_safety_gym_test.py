@@ -22,6 +22,7 @@ import alf.nest as nest
 
 
 class SuiteSafetyGymTest(alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         if not suite_safety_gym.is_available():
@@ -68,8 +69,8 @@ class SuiteSafetyGymTest(alf.test.TestCase):
 
         constructor = functools.partial(ctor)
 
-        self._env = parallel_environment.ParallelAlfEnvironment(
-            [constructor] * env_num)
+        self._env = parallel_environment.ParallelAlfEnvironment([constructor] *
+                                                                env_num)
         self.assertTrue(self._env.batched)
         self.assertEqual(self._env.batch_size, env_num)
         self.assertEqual(torch.float32, self._env.observation_spec().dtype)

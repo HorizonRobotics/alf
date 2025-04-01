@@ -25,11 +25,11 @@ from alf.utils import dist_utils, tensor_utils
 
 BcState = namedtuple("BcState", ["actor"], default_value=())
 
-BcInfo = namedtuple(
-    "BcInfo", ["actor", "discriminator", "target"], default_value=())
+BcInfo = namedtuple("BcInfo", ["actor", "discriminator", "target"],
+                    default_value=())
 
-BcLossInfo = namedtuple(
-    "LossInfo", ["actor", "discriminator"], default_value=())
+BcLossInfo = namedtuple("LossInfo", ["actor", "discriminator"],
+                        default_value=())
 
 
 @alf.configurable
@@ -110,25 +110,24 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
             epsilon_greedy = alf.utils.common.get_epsilon_greedy(config)
         self._epsilon_greedy = epsilon_greedy
 
-        actor_network = actor_network_cls(
-            input_tensor_spec=observation_spec, action_spec=action_spec)
+        actor_network = actor_network_cls(input_tensor_spec=observation_spec,
+                                          action_spec=action_spec)
 
         discriminator_network = discriminator_network_cls(
             input_tensor_spec=observation_spec)
 
         action_state_spec = actor_network.state_spec
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=BcState(actor=action_state_spec),
-            predict_state_spec=BcState(actor=action_state_spec),
-            reward_weights=None,
-            env=env,
-            config=config,
-            checkpoint=checkpoint,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=BcState(actor=action_state_spec),
+                         predict_state_spec=BcState(actor=action_state_spec),
+                         reward_weights=None,
+                         env=env,
+                         config=config,
+                         checkpoint=checkpoint,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._actor_network = actor_network
         self._discriminator_network = discriminator_network
@@ -146,14 +145,14 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
         self._f_norm_penalty_weight = f_norm_penalty_weight
 
     def _predict_action(self, observation, state):
-        action_dist, actor_network_state = self._actor_network(
-            observation, state=state)
+        action_dist, actor_network_state = self._actor_network(observation,
+                                                               state=state)
 
         return action_dist, actor_network_state
 
     def predict_step(self, inputs: TimeStep, state: BcState):
-        action_dist, new_state = self._predict_action(
-            inputs.observation, state=state.actor)
+        action_dist, new_state = self._predict_action(inputs.observation,
+                                                      state=state.actor)
         action = dist_utils.epsilon_greedy_sample(action_dist,
                                                   self._epsilon_greedy)
 
@@ -189,18 +188,18 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
                            rollout_info,
                            pre_train=False):
 
-        action_dist, new_state = self._predict_action(
-            inputs.observation, state=state.actor)
+        action_dist, new_state = self._predict_action(inputs.observation,
+                                                      state=state.actor)
 
         predictions = dist_utils.get_rmode(action_dist)
         pred_residuals, _ = self._discriminator_network(inputs.observation)
 
-        info = BcInfo(
-            actor=predictions,
-            discriminator=pred_residuals,
-            target=rollout_info.action)
-        return AlgStep(
-            rollout_info.action, state=BcState(actor=new_state), info=info)
+        info = BcInfo(actor=predictions,
+                      discriminator=pred_residuals,
+                      target=rollout_info.action)
+        return AlgStep(rollout_info.action,
+                       state=BcState(actor=new_state),
+                       info=info)
 
     def calc_loss_offline(self, info, pre_train=False):
 
@@ -220,9 +219,8 @@ class CausalBcAlgorithm(OffPolicyAlgorithm):
 
         loss = actor_loss + discriminator_loss
         loss = tensor_utils.tensor_extend_zero(loss)
-        return LossInfo(
-            loss=loss,
-            extra=BcLossInfo(
-                actor=tensor_utils.tensor_extend_zero(actor_loss),
-                discriminator=tensor_utils.tensor_extend_zero(
-                    discriminator_loss)))
+        return LossInfo(loss=loss,
+                        extra=BcLossInfo(
+                            actor=tensor_utils.tensor_extend_zero(actor_loss),
+                            discriminator=tensor_utils.tensor_extend_zero(
+                                discriminator_loss)))

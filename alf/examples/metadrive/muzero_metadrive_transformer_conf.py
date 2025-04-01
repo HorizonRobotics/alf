@@ -41,17 +41,15 @@ num_envs = define_config('num_envs', 32)
 unroll_length = define_config('unroll_length', 4)
 discount = define_config('discount', 0.999)
 
-alf.config(
-    'create_environment',
-    env_name='Vectorized',
-    num_parallel_environments=num_envs)
+alf.config('create_environment',
+           env_name='Vectorized',
+           num_parallel_environments=num_envs)
 
-alf.config(
-    'metadrive.sensors.VectorizedObservation',
-    segment_resolution=2.0,
-    polyline_size=4,
-    polyline_limit=128,
-    history_window_size=24)
+alf.config('metadrive.sensors.VectorizedObservation',
+           segment_resolution=2.0,
+           polyline_size=4,
+           polyline_limit=128,
+           history_window_size=24)
 
 alf.config("AverageDiscountedReturnMetric", discount=discount)
 
@@ -67,8 +65,8 @@ num_heads = define_config('num_heads', 8)
 # Muzero Model Options
 rv_loss = define_config(
     'rv_loss',
-    losses.OrderedDiscreteRegressionLoss(
-        transform=alf.math.Sqrt1pTransform(), inverse_after_mean=False))
+    losses.OrderedDiscreteRegressionLoss(transform=alf.math.Sqrt1pTransform(),
+                                         inverse_after_mean=False))
 rv_bias_zero_init = define_config('rv_bias_zero_init', False)
 alf.config('multi_quantile_huber_loss', delta=0.0)
 rv_weight_decay = define_config('rv_weight_decay', 4e-6)
@@ -140,6 +138,7 @@ class ObservationCombiner(torch.nn.Module):
 
 
 class MaskedTransformer(torch.nn.Module):
+
     def __init__(self, num_layers, num_other_entities):
         super().__init__()
         self._memory_size = 1 + num_other_entities
@@ -147,18 +146,17 @@ class MaskedTransformer(torch.nn.Module):
         tf_layers = []
         for i in range(num_layers):
             tf_layers.append(
-                layers.TransformerBlock(
-                    d_model=d_model,
-                    num_heads=num_heads,
-                    memory_size=self._memory_size,
-                    positional_encoding='none'))
+                layers.TransformerBlock(d_model=d_model,
+                                        num_heads=num_heads,
+                                        memory_size=self._memory_size,
+                                        positional_encoding='none'))
         self._tf_layers = torch.nn.ModuleList(tf_layers)
 
     def forward(self, inputs):
         x, map_mask, agent_mask = inputs
         B = x.shape[0]
-        mask = torch.hstack((torch.zeros(B, 1, dtype=bool), map_mask,
-                             agent_mask))
+        mask = torch.hstack((torch.zeros(B, 1,
+                                         dtype=bool), map_mask, agent_mask))
         for layer in self._tf_layers:
             x = layer(memory=x, mask=mask)
         return x
@@ -205,8 +203,8 @@ def create_representation_net(observation_spec):
 def create_ego_centric_dynamics(input_tensor_spec):
     _, action_spec = input_tensor_spec
 
-    action_embedding = EmbeddingConfig(
-        d_input=action_spec.shape[-1], hidden=(128, ))
+    action_embedding = EmbeddingConfig(d_input=action_spec.shape[-1],
+                                       hidden=(128, ))
     transition = EmbeddingConfig(d_input=d_model * 2, hidden=(512, ))
 
     return alf.nn.Sequential(
@@ -234,8 +232,9 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
         if not x.requires_grad:
             return x
         if alf.summary.should_record_summaries():
-            return summarize_tensor_gradients(
-                "SimpleMCTSModel/" + name, x, clone=True)
+            return summarize_tensor_gradients("SimpleMCTSModel/" + name,
+                                              x,
+                                              clone=True)
         else:
             return x
 
@@ -263,26 +262,24 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
     value_net = layers.Sequential(
         partial(_summarize_grad, name='value_grad'),
         *_make_trunk(),
-        layers.FC(
-            dim,
-            num_quantiles,
-            weight_opt_args=dict(weight_decay=rv_weight_decay),
-            bias_opt_args=dict(weight_decay=rv_bias_decay),
-            bias_initializer=_get_rv_bias_initializer(),
-            kernel_initializer=torch.nn.init.zeros_),
+        layers.FC(dim,
+                  num_quantiles,
+                  weight_opt_args=dict(weight_decay=rv_weight_decay),
+                  bias_opt_args=dict(weight_decay=rv_bias_decay),
+                  bias_initializer=_get_rv_bias_initializer(),
+                  kernel_initializer=torch.nn.init.zeros_),
         *reshape_layer,
     )
 
     reward_net = [
         partial(_summarize_grad, name='reward_grad'),
         *_make_trunk(lstm=True),
-        layers.FC(
-            dim,
-            num_quantiles,
-            weight_opt_args=dict(weight_decay=rv_weight_decay),
-            bias_opt_args=dict(weight_decay=rv_bias_decay),
-            bias_initializer=_get_rv_bias_initializer(),
-            kernel_initializer=torch.nn.init.zeros_),
+        layers.FC(dim,
+                  num_quantiles,
+                  weight_opt_args=dict(weight_decay=rv_weight_decay),
+                  bias_opt_args=dict(weight_decay=rv_bias_decay),
+                  bias_initializer=_get_rv_bias_initializer(),
+                  kernel_initializer=torch.nn.init.zeros_),
         *reshape_layer,
     ]
 
@@ -294,11 +291,10 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
 
     game_over_net = layers.Sequential(
         *_make_trunk(),
-        layers.FC(
-            dim,
-            1,
-            kernel_initializer=torch.nn.init.zeros_,
-            bias_init_value=initial_game_over_bias),
+        layers.FC(dim,
+                  1,
+                  kernel_initializer=torch.nn.init.zeros_,
+                  bias_init_value=initial_game_over_bias),
         layers.Reshape(()),
     )
 
@@ -314,62 +310,60 @@ def create_prediction_net(state_spec, action_spec, initial_game_over_bias=-5):
 lr_schedule = StepScheduler("percent", [(0.8, initial_lr),
                                         (1.0, 0.05 * initial_lr)])
 
-alf.config(
-    "MCTSModel",
-    value_loss=rv_loss,
-    reward_loss=rv_loss,
-    repr_loss=losses.AsymmetricSimSiamLoss(
-        input_size=d_model,
-        proj_hidden_size=512,
-        pred_hidden_size=512,
-        output_size=1024),
-    predict_reward_sum=True,
-    policy_loss_weight=1.1,
-    value_loss_weight=0.5,
-    repr_prediction_loss_weight=20.0,
-    reward_loss_weight=2.0,
-    initial_loss_weight=1.0)
+alf.config("MCTSModel",
+           value_loss=rv_loss,
+           reward_loss=rv_loss,
+           repr_loss=losses.AsymmetricSimSiamLoss(input_size=d_model,
+                                                  proj_hidden_size=512,
+                                                  pred_hidden_size=512,
+                                                  output_size=1024),
+           predict_reward_sum=True,
+           policy_loss_weight=1.1,
+           value_loss_weight=0.5,
+           repr_prediction_loss_weight=20.0,
+           reward_loss_weight=2.0,
+           initial_loss_weight=1.0)
 
-alf.config(
-    "SimpleMCTSModel",
-    num_sampled_actions=16,
-    encoding_net_ctor=create_representation_net,
-    dynamics_net_ctor=create_ego_centric_dynamics,
-    prediction_net_ctor=create_prediction_net,
-    train_repr_prediction=True,
-    train_game_over_function=True,
-    initial_alpha=0.)
+alf.config("SimpleMCTSModel",
+           num_sampled_actions=16,
+           encoding_net_ctor=create_representation_net,
+           dynamics_net_ctor=create_ego_centric_dynamics,
+           prediction_net_ctor=create_prediction_net,
+           train_repr_prediction=True,
+           train_game_over_function=True,
+           initial_alpha=0.)
 
-alf.config(
-    "MCTSAlgorithm",
-    num_simulations=81,
-    num_parallel_sims=3,
-    root_dirichlet_alpha=0.3,
-    root_exploration_fraction=0.,
-    pb_c_init=1.5,
-    pb_c_base=19652,
-    is_two_player_game=False,
-    value_min_max_delta=0.01,
-    ucb_break_tie_eps=1e-6,
-    visit_softmax_temperature_fn=VisitSoftmaxTemperatureByProgress(
-        [(0.5, 1.0), (0.75, 0.5), (1, 0.25)]),
-    discount=discount,
-    act_with_exploration_policy=True,
-    learn_with_exploration_policy=True,
-    search_with_exploration_policy=True,
-    unexpanded_value_score='mean',
-    expand_all_children=False,
-    expand_all_root_children=False,
-    max_unroll_length=8,
-    learn_policy_temperature=1.0)
+alf.config("MCTSAlgorithm",
+           num_simulations=81,
+           num_parallel_sims=3,
+           root_dirichlet_alpha=0.3,
+           root_exploration_fraction=0.,
+           pb_c_init=1.5,
+           pb_c_base=19652,
+           is_two_player_game=False,
+           value_min_max_delta=0.01,
+           ucb_break_tie_eps=1e-6,
+           visit_softmax_temperature_fn=VisitSoftmaxTemperatureByProgress([
+               (0.5, 1.0), (0.75, 0.5), (1, 0.25)
+           ]),
+           discount=discount,
+           act_with_exploration_policy=True,
+           learn_with_exploration_policy=True,
+           search_with_exploration_policy=True,
+           unexpanded_value_score='mean',
+           expand_all_children=False,
+           expand_all_root_children=False,
+           max_unroll_length=8,
+           learn_policy_temperature=1.0)
 
 alf.config(
     "MuzeroRepresentationImpl",
     model_ctor=SimpleMCTSModel,
     num_unroll_steps=5,
     td_steps=10,  # Not used as reanalyze ratio is 1.0
-    reanalyze_algorithm_ctor=partial(
-        MCTSAlgorithm, num_simulations=52, num_parallel_sims=2),
+    reanalyze_algorithm_ctor=partial(MCTSAlgorithm,
+                                     num_simulations=52,
+                                     num_parallel_sims=2),
     reanalyze_td_steps=5,
     reanalyze_td_steps_func=  #LinearMaxAgeTdStepFunc(),
     LinearTdStepFunc(max_bootstrap_age=1.2, min_td_steps=1),
@@ -381,39 +375,36 @@ alf.config(
     target_update_period=1,
     target_update_tau=1.0)
 
-alf.config(
-    "MuzeroAlgorithm",
-    discount=discount,
-    enable_amp=True,
-    representation_learner_ctor=MuzeroRepresentationImpl,
-    mcts_algorithm_ctor=MCTSAlgorithm)
+alf.config("MuzeroAlgorithm",
+           discount=discount,
+           enable_amp=True,
+           representation_learner_ctor=MuzeroRepresentationImpl,
+           mcts_algorithm_ctor=MCTSAlgorithm)
 
-opt_kwargs = dict(
-    lr=lr_schedule,
-    weight_decay=weight_decay,
-    gradient_clipping=1e9,
-    clip_by_global_norm=True)
+opt_kwargs = dict(lr=lr_schedule,
+                  weight_decay=weight_decay,
+                  gradient_clipping=1e9,
+                  clip_by_global_norm=True)
 
 optimizer = AdamTF(betas=(0.9, 0.999), eps=1e-7, **opt_kwargs)
 
 alf.config("Agent", optimizer=optimizer)
 
-alf.config(
-    "TrainerConfig",
-    unroll_length=unroll_length,
-    mini_batch_size=mini_batch_size,
-    num_updates_per_train_iter=3,
-    update_counter_every_mini_batch=False,
-    priority_replay=True,
-    priority_replay_alpha=1.2,
-    priority_replay_beta=0,
-    num_iterations=0,
-    num_env_steps=3_000_000,
-    num_checkpoints=10,
-    evaluate=False,
-    enable_amp=False,
-    debug_summaries=True,
-    summary_interval=int(10000 // (unroll_length * num_envs)),
-    replay_buffer_length=1_000_000 // num_envs,
-    initial_collect_steps=5000,
-    summarize_grads_and_vars=True)
+alf.config("TrainerConfig",
+           unroll_length=unroll_length,
+           mini_batch_size=mini_batch_size,
+           num_updates_per_train_iter=3,
+           update_counter_every_mini_batch=False,
+           priority_replay=True,
+           priority_replay_alpha=1.2,
+           priority_replay_beta=0,
+           num_iterations=0,
+           num_env_steps=3_000_000,
+           num_checkpoints=10,
+           evaluate=False,
+           enable_amp=False,
+           debug_summaries=True,
+           summary_interval=int(10000 // (unroll_length * num_envs)),
+           replay_buffer_length=1_000_000 // num_envs,
+           initial_collect_steps=5000,
+           summarize_grads_and_vars=True)

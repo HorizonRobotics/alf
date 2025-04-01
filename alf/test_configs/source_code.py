@@ -70,6 +70,7 @@ def test_func11(a=1, b=2, c=3):
 
 @alf.configurable
 class Test(object):
+
     def __init__(self, a, b, c=10):
         self._a = a
         self._b = b
@@ -85,6 +86,7 @@ class Test(object):
 
 @alf.configurable
 class Test2(Test):
+
     def __init__(self, a, b):
         super().__init__(a, b, 5)
 
@@ -97,6 +99,7 @@ class Test2(Test):
 
 @alf.configurable
 class Test3(Test):
+
     def func(self, a):
         return a
 
@@ -106,11 +109,13 @@ class Test3(Test):
 
 @alf.repr_wrapper
 class MyClass(object):
+
     def __init__(self, a, b, c=100, d=200):
         pass
 
 
 @alf.repr_wrapper
 class MySubClass(MyClass):
+
     def __init__(self, x):
         super().__init__(3, 5)

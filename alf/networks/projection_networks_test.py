@@ -34,15 +34,16 @@ import alf.utils.math_ops as math_ops
 
 class TestCategoricalProjectionNetwork(parameterized.TestCase,
                                        alf.test.TestCase):
+
     def test_uniform_projection_net(self):
         """A zero-weight net generates uniform actions."""
         input_spec = TensorSpec((10, ), torch.float32)
         embedding = input_spec.ones(outer_dims=(1, ))
 
-        net = CategoricalProjectionNetwork(
-            input_size=input_spec.shape[0],
-            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
-            logits_init_output_factor=0)
+        net = CategoricalProjectionNetwork(input_size=input_spec.shape[0],
+                                           action_spec=BoundedTensorSpec(
+                                               (1, ), minimum=0, maximum=4),
+                                           logits_init_output_factor=0)
         dist, _ = net(embedding)
         self.assertTrue(isinstance(net.output_spec, DistributionSpec))
         self.assertEqual(dist.batch_shape, (1, ))
@@ -54,10 +55,10 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
         input_spec = TensorSpec((10, ), torch.float32)
         embeddings = input_spec.ones(outer_dims=(100, ))
 
-        net = CategoricalProjectionNetwork(
-            input_size=input_spec.shape[0],
-            action_spec=BoundedTensorSpec((3, 2), minimum=0, maximum=4),
-            logits_init_output_factor=1.0)
+        net = CategoricalProjectionNetwork(input_size=input_spec.shape[0],
+                                           action_spec=BoundedTensorSpec(
+                                               (3, 2), minimum=0, maximum=4),
+                                           logits_init_output_factor=1.0)
         dists, _ = net(embeddings)
         self.assertEqual(dists.batch_shape, (100, ))
         self.assertEqual(dists.base_dist.batch_shape, (100, 3, 2))
@@ -71,10 +72,10 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
         input_spec = TensorSpec((10, ), torch.float32)
         embedding = input_spec.ones(outer_dims=(outer_dim, ))
 
-        net = CategoricalProjectionNetwork(
-            input_size=input_spec.shape[0],
-            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
-            logits_init_output_factor=0)
+        net = CategoricalProjectionNetwork(input_size=input_spec.shape[0],
+                                           action_spec=BoundedTensorSpec(
+                                               (1, ), minimum=0, maximum=4),
+                                           logits_init_output_factor=0)
         parallel_net = net.make_parallel(replicas)
         dist, _ = parallel_net(embedding)
         self.assertTrue(isinstance(parallel_net.output_spec, DistributionSpec))
@@ -84,6 +85,7 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
 
 
 class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((True, ), (False, ))
     def test_zero_normal_projection_net(self, state_dependent_std):
         """A zero-weight net generates zero actions."""
@@ -91,14 +93,13 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         action_spec = TensorSpec((8, ), torch.float32)
         embedding = input_spec.ones(outer_dims=(2, ))
 
-        net = NormalProjectionNetwork(
-            input_size=input_spec.shape[0],
-            action_spec=action_spec,
-            projection_output_init_gain=0,
-            std_bias_initializer_value=0,
-            squash_mean=False,
-            state_dependent_std=state_dependent_std,
-            std_transform=math_ops.identity)
+        net = NormalProjectionNetwork(input_size=input_spec.shape[0],
+                                      action_spec=action_spec,
+                                      projection_output_init_gain=0,
+                                      std_bias_initializer_value=0,
+                                      squash_mean=False,
+                                      state_dependent_std=state_dependent_std,
+                                      std_transform=math_ops.identity)
 
         out = net(embedding)[0].sample((10, ))
         self.assertTrue(isinstance(net.output_spec, DistributionSpec))
@@ -125,8 +126,9 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
                                         torch.float32,
                                         minimum=(0, -0.01),
                                         maximum=(0.01, 0))
-        net = network_ctor(
-            input_spec.shape[0], action_spec, projection_output_init_gain=1.0)
+        net = network_ctor(input_spec.shape[0],
+                           action_spec,
+                           projection_output_init_gain=1.0)
         dist, _ = net(embedding)
         self.assertTrue(dist.mean.std() > 0)
         self.assertTrue(
@@ -152,12 +154,11 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
                                         torch.float32,
                                         minimum=(0, -0.01),
                                         maximum=(0.01, 0))
-        net = network_ctor(
-            input_spec.shape[0],
-            action_spec,
-            projection_output_init_gain=1.0,
-            squash_mean=True,
-            scale_distribution=True)
+        net = network_ctor(input_spec.shape[0],
+                           action_spec,
+                           projection_output_init_gain=1.0,
+                           squash_mean=True,
+                           scale_distribution=True)
 
         dist, _ = net(embedding)
 
@@ -189,11 +190,10 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
                                         torch.float32,
                                         minimum=(0, -0.01),
                                         maximum=(0.01, 0))
-        net = network_ctor(
-            input_spec.shape[0],
-            action_spec,
-            state_dependent_std=state_dependent_std,
-            projection_output_init_gain=1.0).make_parallel(5)
+        net = network_ctor(input_spec.shape[0],
+                           action_spec,
+                           state_dependent_std=state_dependent_std,
+                           projection_output_init_gain=1.0).make_parallel(5)
         dist, _ = net(embedding)
 
         self.assertEqual((100, 5), dist.batch_shape)
@@ -211,15 +211,14 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
         action_spec = TensorSpec((8, ), torch.float32)
 
         min_std, max_std, init_std = 0.2, 0.4, 0.3
-        net = StableNormalProjectionNetwork(
-            input_spec.shape[0],
-            action_spec,
-            projection_output_init_gain=1.0,
-            state_dependent_std=True,
-            squash_mean=False,
-            init_std=init_std,
-            min_std=min_std,
-            max_std=max_std)
+        net = StableNormalProjectionNetwork(input_spec.shape[0],
+                                            action_spec,
+                                            projection_output_init_gain=1.0,
+                                            state_dependent_std=True,
+                                            squash_mean=False,
+                                            init_std=init_std,
+                                            min_std=min_std,
+                                            max_std=max_std)
 
         dist, _ = net(embedding)
         self.assertTrue(isinstance(net.output_spec, DistributionSpec))
@@ -235,8 +234,9 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
                                         maximum=1.,
                                         dtype=torch.float32)
 
-        net = BetaProjectionNetwork(
-            input_spec.shape[0], action_spec, projection_output_init_gain=.0)
+        net = BetaProjectionNetwork(input_spec.shape[0],
+                                    action_spec,
+                                    projection_output_init_gain=.0)
 
         dist, _ = net(embedding)
         self.assertTrue(isinstance(net.output_spec, DistributionSpec))
@@ -273,8 +273,9 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
                                         maximum=1.,
                                         dtype=torch.float32)
 
-        net = TruncatedProjectionNetwork(
-            input_spec.shape[0], action_spec, projection_output_init_gain=.0)
+        net = TruncatedProjectionNetwork(input_spec.shape[0],
+                                         action_spec,
+                                         projection_output_init_gain=.0)
 
         dist, _ = net(embedding)
         self.assertTrue(isinstance(net.output_spec, DistributionSpec))
@@ -287,6 +288,7 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
 
 class TestOnehotCategoricalProjectionNetwork(parameterized.TestCase,
                                              alf.test.TestCase):
+
     @parameterized.parameters('st', 'st-gumbel', 'plain', 'gumbel')
     def test_onehot_categorical_uniform_projection_net(self, mode):
         """A zero-weight net generates uniform actions."""
@@ -366,10 +368,10 @@ class TestOnehotCategoricalProjectionNetwork(parameterized.TestCase,
         onehot_mode1 = dist_utils.get_mode(dist1)
 
         # create a categorical projection network for comparison
-        net2 = CategoricalProjectionNetwork(
-            input_size=input_spec.shape[0],
-            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
-            logits_init_output_factor=0)
+        net2 = CategoricalProjectionNetwork(input_size=input_spec.shape[0],
+                                            action_spec=BoundedTensorSpec(
+                                                (1, ), minimum=0, maximum=4),
+                                            logits_init_output_factor=0)
 
         # copy parameters from net1 -> net2
         for ws, wt in zip(net1.parameters(), net2.parameters()):
@@ -384,6 +386,7 @@ class TestOnehotCategoricalProjectionNetwork(parameterized.TestCase,
 
 
 class TestMixtureProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
+
     def test_mixture_of_gaussian_1d_action(self):
         input_spec = TensorSpec((10, ), torch.float32)
 
@@ -391,13 +394,12 @@ class TestMixtureProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
             input_size=input_spec.shape[0],
             action_spec=BoundedTensorSpec((1, ), minimum=0.0, maximum=4.0),
             num_components=3,
-            component_ctor=partial(
-                NormalProjectionNetwork,
-                projection_output_init_gain=0,
-                std_bias_initializer_value=0,
-                squash_mean=False,
-                state_dependent_std=True,
-                std_transform=math_ops.identity))
+            component_ctor=partial(NormalProjectionNetwork,
+                                   projection_output_init_gain=0,
+                                   std_bias_initializer_value=0,
+                                   squash_mean=False,
+                                   state_dependent_std=True,
+                                   std_transform=math_ops.identity))
 
         self.assertEqual(3, net.num_components)
 
@@ -419,13 +421,12 @@ class TestMixtureProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
             input_size=input_spec.shape[0],
             action_spec=BoundedTensorSpec((2, ), minimum=0.0, maximum=4.0),
             num_components=3,
-            component_ctor=partial(
-                StableNormalProjectionNetwork,
-                state_dependent_std=True,
-                squash_mean=False,
-                scale_distribution=True,
-                min_std=1e-3,
-                max_std=10.0))
+            component_ctor=partial(StableNormalProjectionNetwork,
+                                   state_dependent_std=True,
+                                   squash_mean=False,
+                                   scale_distribution=True,
+                                   min_std=1e-3,
+                                   max_std=10.0))
 
         self.assertEqual(3, net.num_components)
 
@@ -447,8 +448,8 @@ class TestMixtureProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
             input_size=input_spec.shape[0],
             action_spec=BoundedTensorSpec((2, ), minimum=0.0, maximum=4.0),
             num_components=3,
-            component_ctor=partial(
-                BetaProjectionNetwork, min_concentration=1.0))
+            component_ctor=partial(BetaProjectionNetwork,
+                                   min_concentration=1.0))
 
         self.assertEqual(3, net.num_components)
 

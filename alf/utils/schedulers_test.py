@@ -60,16 +60,15 @@ class CyclicalSchedulerTest(parameterized.TestCase, unittest.TestCase):
         trainer_progress.set_termination_criterion(
             num_iterations=num_iterations, num_env_steps=num_env_steps)
 
-        scheduler = CyclicalScheduler(
-            progress_type=progress_type,
-            base_lr=0,
-            bound_lr=1,
-            half_cycle_size=half_cycle_size,
-            switch_mode=switch_mode)
+        scheduler = CyclicalScheduler(progress_type=progress_type,
+                                      base_lr=0,
+                                      bound_lr=1,
+                                      half_cycle_size=half_cycle_size,
+                                      switch_mode=switch_mode)
 
-        effective_half_cycle_size = (
-            half_cycle_size if half_cycle_size >= 1 else
-            half_cycle_size * max(num_iterations, num_env_steps))
+        effective_half_cycle_size = (half_cycle_size if half_cycle_size >= 1
+                                     else half_cycle_size *
+                                     max(num_iterations, num_env_steps))
 
         if switch_mode == "step":
             if effective_half_cycle_size == 1:
@@ -138,16 +137,15 @@ class CyclicalSchedulerTest(parameterized.TestCase, unittest.TestCase):
         trainer_progress.set_termination_criterion(
             num_iterations=num_iterations, num_env_steps=num_env_steps)
 
-        scheduler = CyclicalScheduler(
-            progress_type=progress_type,
-            base_lr=1,
-            bound_lr=0,
-            half_cycle_size=half_cycle_size,
-            switch_mode=switch_mode)
+        scheduler = CyclicalScheduler(progress_type=progress_type,
+                                      base_lr=1,
+                                      bound_lr=0,
+                                      half_cycle_size=half_cycle_size,
+                                      switch_mode=switch_mode)
 
-        effective_half_cycle_size = (
-            half_cycle_size if half_cycle_size >= 1 else
-            half_cycle_size * max(num_iterations, num_env_steps))
+        effective_half_cycle_size = (half_cycle_size if half_cycle_size >= 1
+                                     else half_cycle_size *
+                                     max(num_iterations, num_env_steps))
 
         if switch_mode == "step":
             if effective_half_cycle_size == 1:

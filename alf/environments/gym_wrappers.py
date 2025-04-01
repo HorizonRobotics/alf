@@ -48,12 +48,12 @@ def transform_space(observation_space, field, func):
         level = levels[0]
 
         new_val = copy.deepcopy(space)
-        new_val.spaces[level] = _traverse_transform(
-            space=space.spaces[level], levels=levels[1:])
+        new_val.spaces[level] = _traverse_transform(space=space.spaces[level],
+                                                    levels=levels[1:])
         return new_val
 
-    return _traverse_transform(
-        space=observation_space, levels=field.split('.') if field else [])
+    return _traverse_transform(space=observation_space,
+                               levels=field.split('.') if field else [])
 
 
 @alf.configurable
@@ -88,10 +88,9 @@ class BaseObservationWrapper(gym.ObservationWrapper):
 
     def observation(self, observation):
         for field in self._fields:
-            observation = transform_nest(
-                nested=observation,
-                field=field,
-                func=self.transform_observation)
+            observation = transform_nest(nested=observation,
+                                         field=field,
+                                         func=self.transform_observation)
         return observation
 
     def transform_space(self, observation_space):
@@ -134,18 +133,18 @@ class ImageChannelFirst(BaseObservationWrapper):
                 if np.isscalar(low) and np.isscalar(high):
                     shape = (observation_space.shape[-1:] +
                              observation_space.shape[1:])
-                    return gym.spaces.Box(
-                        low=low,
-                        high=high,
-                        shape=shape,
-                        dtype=observation_space.dtype)
+                    return gym.spaces.Box(low=low,
+                                          high=high,
+                                          shape=shape,
+                                          dtype=observation_space.dtype)
                 else:
-                    low = self._make_channel_first(
-                        observation_space.low, transpose=True)
-                    high = self._make_channel_first(
-                        observation_space.high, transpose=True)
-                    return gym.spaces.Box(
-                        low=low, high=high, dtype=observation_space.dtype)
+                    low = self._make_channel_first(observation_space.low,
+                                                   transpose=True)
+                    high = self._make_channel_first(observation_space.high,
+                                                    transpose=True)
+                    return gym.spaces.Box(low=low,
+                                          high=high,
+                                          dtype=observation_space.dtype)
         return observation_space
 
     def transform_observation(self, observation):
@@ -215,19 +214,18 @@ class FrameStack(BaseObservationWrapper):
 
     def transform_space(self, observation_space):
         if isinstance(observation_space, gym.spaces.Box):
-            low = np.repeat(
-                observation_space.low,
-                repeats=self._stack_size,
-                axis=self._stack_axis)
-            high = np.repeat(
-                observation_space.high,
-                repeats=self._stack_size,
-                axis=self._stack_axis)
-            return gym.spaces.Box(
-                low=low, high=high, dtype=observation_space.dtype)
+            low = np.repeat(observation_space.low,
+                            repeats=self._stack_size,
+                            axis=self._stack_axis)
+            high = np.repeat(observation_space.high,
+                             repeats=self._stack_size,
+                             axis=self._stack_axis)
+            return gym.spaces.Box(low=low,
+                                  high=high,
+                                  dtype=observation_space.dtype)
         elif isinstance(observation_space, gym.spaces.MultiDiscrete):
-            return gym.spaces.MultiDiscrete(
-                [observation_space.nvec] * self._stack_size)
+            return gym.spaces.MultiDiscrete([observation_space.nvec] *
+                                            self._stack_size)
         else:
             raise ValueError("Unsupported space:%s" % observation_space)
 
@@ -302,6 +300,7 @@ class FrameSkip(gym.Wrapper):
 
 @alf.configurable
 class FrameResize(BaseObservationWrapper):
+
     def __init__(self,
                  env,
                  width=84,
@@ -326,16 +325,15 @@ class FrameResize(BaseObservationWrapper):
     def transform_space(self, observation_space):
         obs_shape = observation_space.shape
         assert len(obs_shape) == 3, "observation shape should be (H,W,C)"
-        return gym.spaces.Box(
-            low=observation_space.low.min(),
-            high=observation_space.high.max(),
-            shape=[self._height, self._width] + list(obs_shape[2:]),
-            dtype=observation_space.dtype)
+        return gym.spaces.Box(low=observation_space.low.min(),
+                              high=observation_space.high.max(),
+                              shape=[self._height, self._width] +
+                              list(obs_shape[2:]),
+                              dtype=observation_space.dtype)
 
     def transform_observation(self, observation):
-        obs = cv2.resize(
-            observation, (self._width, self._height),
-            interpolation=self._interpolation)
+        obs = cv2.resize(observation, (self._width, self._height),
+                         interpolation=self._interpolation)
         if len(obs.shape) != 3:
             obs = obs[:, :, np.newaxis]
         return obs
@@ -343,6 +341,7 @@ class FrameResize(BaseObservationWrapper):
 
 @alf.configurable
 class EpisodicRandomFrameCrop(BaseObservationWrapper):
+
     def __init__(self,
                  env: gym.Env,
                  cropping_fraction=0.8,
@@ -388,14 +387,13 @@ class EpisodicRandomFrameCrop(BaseObservationWrapper):
         for field in self._fields:
             syx = alf.nest.get_field(self._syx, field)
             space = alf.nest.get_field(self._observation_space, field)
-            observation = transform_nest(
-                nested=observation,
-                field=field,
-                func=partial(
-                    self.transform_observation,
-                    sy=syx[0],
-                    sx=syx[1],
-                    space=space))
+            observation = transform_nest(nested=observation,
+                                         field=field,
+                                         func=partial(
+                                             self.transform_observation,
+                                             sy=syx[0],
+                                             sx=syx[1],
+                                             space=space))
         return observation
 
     def _get_hwc(self, space):
@@ -417,23 +415,23 @@ class EpisodicRandomFrameCrop(BaseObservationWrapper):
                 H, W, _ = self._get_hwc(ori_space)
                 h, w, _ = self._get_hwc(space)
                 sy, sx = np.random.randint(H - h), np.random.randint(W - w)
-            self._syx = alf.nest.set_field(
-                nested=self._syx, field=field, new_value=(sy, sx))
+            self._syx = alf.nest.set_field(nested=self._syx,
+                                           field=field,
+                                           new_value=(sy, sx))
         return super().reset(**kwargs)
 
     def transform_space(self, observation_space):
         H, W, C = self._get_hwc(observation_space)
-        h, w = int(self._cropping_fraction * H), int(
-            self._cropping_fraction * W)
+        h, w = int(self._cropping_fraction * H), int(self._cropping_fraction *
+                                                     W)
         if self._channel_order == "channels_last":
             new_shape = (h, w, C)
         else:
             new_shape = (C, h, w)
-        return gym.spaces.Box(
-            low=observation_space.low.min(),
-            high=observation_space.high.max(),
-            shape=new_shape,
-            dtype=observation_space.dtype)
+        return gym.spaces.Box(low=observation_space.low.min(),
+                              high=observation_space.high.max(),
+                              shape=new_shape,
+                              dtype=observation_space.dtype)
 
     def transform_observation(self, observation, sy, sx, space):
         h, w, _ = self._get_hwc(space)
@@ -446,6 +444,7 @@ class EpisodicRandomFrameCrop(BaseObservationWrapper):
 
 @alf.configurable
 class FrameFlip(BaseObservationWrapper):
+
     def __init__(self,
                  env: gym.Env,
                  ud_flip_prob: float = 0.5,
@@ -515,6 +514,7 @@ class FrameFlip(BaseObservationWrapper):
 
 @alf.configurable
 class FrameCrop(BaseObservationWrapper):
+
     def __init__(self,
                  env,
                  sx=0,
@@ -568,11 +568,11 @@ class FrameCrop(BaseObservationWrapper):
 
     def transform_observation(self, observation):
         if self._channel_order == "channels_last":
-            obs = observation[self._sy:self._sy +
-                              self._height, self._sx:self._sx + self._width]
+            obs = observation[self._sy:self._sy + self._height,
+                              self._sx:self._sx + self._width]
         else:
-            obs = observation[:, self._sy:self._sy +
-                              self._height, self._sx:self._sx + self._width]
+            obs = observation[:, self._sy:self._sy + self._height,
+                              self._sx:self._sx + self._width]
 
         return obs
 
@@ -595,8 +595,10 @@ class FrameGrayScale(BaseObservationWrapper):
         obs_shape = observation_space.shape
         assert len(obs_shape) == 3 and obs_shape[-1] == 3, \
             "observation shape should be (H, W, C) where C=3"
-        return gym.spaces.Box(
-            low=0, high=255, shape=list(obs_shape[:-1]) + [1], dtype=np.uint8)
+        return gym.spaces.Box(low=0,
+                              high=255,
+                              shape=list(obs_shape[:-1]) + [1],
+                              dtype=np.uint8)
 
     def transform_observation(self, obs):
         obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
@@ -648,8 +650,9 @@ class DMAtariPreprocessing(gym.Wrapper):
         """
         super().__init__(env)
         if frame_skip <= 0:
-            raise ValueError('Frame skip should be strictly positive, got {}'.
-                             format(frame_skip))
+            raise ValueError(
+                'Frame skip should be strictly positive, got {}'.format(
+                    frame_skip))
         if screen_size <= 0:
             raise ValueError(
                 'Target screen size should be strictly positive, got {}'.
@@ -680,11 +683,12 @@ class DMAtariPreprocessing(gym.Wrapper):
                          dtype=np.uint8)
             ]
 
-        self.observation_space = gym.spaces.Box(
-            low=0,
-            high=255,
-            shape=(self.screen_size, self.screen_size, num_channels),
-            dtype=np.uint8)
+        self.observation_space = gym.spaces.Box(low=0,
+                                                high=255,
+                                                shape=(self.screen_size,
+                                                       self.screen_size,
+                                                       num_channels),
+                                                dtype=np.uint8)
 
         self._lives = 0
 
@@ -809,14 +813,13 @@ class DMAtariPreprocessing(gym.Wrapper):
         """
         # Pool if there are enough screens to do so.
         if self.frame_skip > 1:
-            np.maximum(
-                self.screen_buffer[0],
-                self.screen_buffer[1],
-                out=self.screen_buffer[0])
+            np.maximum(self.screen_buffer[0],
+                       self.screen_buffer[1],
+                       out=self.screen_buffer[0])
 
-        transformed_image = cv2.resize(
-            self.screen_buffer[0], (self.screen_size, self.screen_size),
-            interpolation=cv2.INTER_AREA)
+        transformed_image = cv2.resize(self.screen_buffer[0],
+                                       (self.screen_size, self.screen_size),
+                                       interpolation=cv2.INTER_AREA)
         int_image = np.asarray(transformed_image, dtype=np.uint8)
         if self.gray_scale:
             return np.expand_dims(int_image, axis=2)
@@ -868,8 +871,8 @@ class ContinuousActionClip(gym.ActionWrapper):
 
         def _space_bounds(space):
             if isinstance(space, gym.spaces.Box):
-                return np.maximum(space.low, min_v), np.minimum(
-                    space.high, max_v)
+                return np.maximum(space.low,
+                                  min_v), np.minimum(space.high, max_v)
             else:
                 return min_v, max_v
 
@@ -879,6 +882,7 @@ class ContinuousActionClip(gym.ActionWrapper):
                                              self._nested_action_space)
 
     def action(self, action):
+
         def _clip_action(space, action, bounds):
             # Check if the action is corrupted or not.
             if np.any(np.isnan(action)):
@@ -926,6 +930,7 @@ class ContinuousActionMapping(gym.ActionWrapper):
             self._nested_action_space)
 
     def action(self, action):
+
         def _scale_back(a, b, space):
             if isinstance(space, gym.spaces.Box):
                 # a and b should be mutually broadcastable

@@ -21,6 +21,7 @@ from alf.environments.suite_go import GoBoard, GoEnvironment
 
 
 class BoardTest(alf.test.TestCase):
+
     def _get_test_cases(self):
         # yapf: disable
         sequence1 = [
@@ -281,8 +282,8 @@ class BoardTest(alf.test.TestCase):
                 ]
                 step['y'] = torch.tensor(step['y'], dtype=torch.int64)
                 step['x'] = torch.tensor(step['x'], dtype=torch.int64)
-                step['board'] = torch.tensor(
-                    board, dtype=torch.int8).reshape(4, 4)
+                step['board'] = torch.tensor(board,
+                                             dtype=torch.int8).reshape(4, 4)
                 if 'suicidal' in step:
                     suicidal = torch.tensor(step['suicidal'], dtype=torch.bool)
                 else:
@@ -342,12 +343,11 @@ class BoardTest(alf.test.TestCase):
     def test_environment(self):
         sequences, areas, invalids = self._get_test_cases()
         batch_size = len(sequences)
-        env = GoEnvironment(
-            batch_size=batch_size,
-            height=4,
-            width=4,
-            winning_thresh=0,
-            allow_suicidal_move=False)
+        env = GoEnvironment(batch_size=batch_size,
+                            height=4,
+                            width=4,
+                            winning_thresh=0,
+                            allow_suicidal_move=False)
         time_step = env.reset()
         to_play = torch.tensor([0] * batch_size, dtype=torch.int8)
         self.assertEqual(time_step.observation['board'],
@@ -407,12 +407,11 @@ class BoardTest(alf.test.TestCase):
         """Test whether too_long is correctly handled."""
         height = 4
         width = 4
-        env = GoEnvironment(
-            batch_size=1,
-            height=height,
-            width=width,
-            winning_thresh=0,
-            allow_suicidal_move=False)
+        env = GoEnvironment(batch_size=1,
+                            height=height,
+                            width=width,
+                            winning_thresh=0,
+                            allow_suicidal_move=False)
         env.reset()
         pass_action = height * width
         for i in range(height * width * 2 - 3):

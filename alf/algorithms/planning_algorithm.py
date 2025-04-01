@@ -54,14 +54,13 @@ class PlanAlgorithm(OffPolicyAlgorithm):
                 action_spec.minimum will be used if not specified
             particles_per_replica (int): number of particles used for each replica
         """
-        super().__init__(
-            feature_spec,
-            action_spec,
-            reward_spec=reward_spec,
-            train_state_spec=PlannerState(
-                prev_plan=TensorSpec((planning_horizon,
-                                      action_spec.shape[-1]))),
-            name=name)
+        super().__init__(feature_spec,
+                         action_spec,
+                         reward_spec=reward_spec,
+                         train_state_spec=PlannerState(
+                             prev_plan=TensorSpec((planning_horizon,
+                                                   action_spec.shape[-1]))),
+                         name=name)
 
         flat_action_spec = nest.flatten(action_spec)
         assert len(flat_action_spec) == 1, "doesn't support nested action_spec"
@@ -156,14 +155,13 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             lower_bound (int): lower bound for elements in solution;
                 action_spec.minimum will be used if not specified
         """
-        super().__init__(
-            feature_spec=feature_spec,
-            action_spec=action_spec,
-            reward_spec=reward_spec,
-            planning_horizon=planning_horizon,
-            upper_bound=upper_bound,
-            lower_bound=lower_bound,
-            name=name)
+        super().__init__(feature_spec=feature_spec,
+                         action_spec=action_spec,
+                         reward_spec=reward_spec,
+                         planning_horizon=planning_horizon,
+                         upper_bound=upper_bound,
+                         lower_bound=lower_bound,
+                         name=name)
 
         flat_action_spec = nest.flatten(action_spec)
         assert len(flat_action_spec) == 1, ("RandomShootingAlgorithm doesn't "
@@ -293,15 +291,14 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
             lower_bound (int): lower bound for elements in solution;
                 action_spec.minimum will be used if not specified
         """
-        super().__init__(
-            feature_spec=feature_spec,
-            action_spec=action_spec,
-            population_size=population_size,
-            reward_spec=reward_spec,
-            planning_horizon=planning_horizon,
-            upper_bound=upper_bound,
-            lower_bound=lower_bound,
-            name=name)
+        super().__init__(feature_spec=feature_spec,
+                         action_spec=action_spec,
+                         population_size=population_size,
+                         reward_spec=reward_spec,
+                         planning_horizon=planning_horizon,
+                         upper_bound=upper_bound,
+                         lower_bound=lower_bound,
+                         name=name)
 
         solution_size = planning_horizon * self._num_actions
 

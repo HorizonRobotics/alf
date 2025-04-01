@@ -37,6 +37,7 @@ def average_outer_dims(tensor, spec):
 
 @alf.configurable
 class WindowAverager(nn.Module):
+
     def __init__(self,
                  tensor_spec: TensorSpec,
                  window_size,
@@ -115,10 +116,9 @@ class ScalarWindowAverager(WindowAverager):
             dtype (torch.dtype): dtype of the scalar
             name (str): name of this averager
         """
-        super().__init__(
-            tensor_spec=TensorSpec(shape=(), dtype=dtype),
-            window_size=window_size,
-            name=name)
+        super().__init__(tensor_spec=TensorSpec(shape=(), dtype=dtype),
+                         window_size=window_size,
+                         name=name)
 
 
 @alf.configurable
@@ -141,7 +141,9 @@ class EMAverager(nn.Module):
     a variable, the update rate can be changed by the user.
     """
 
-    def __init__(self, tensor_spec: TensorSpec, update_rate,
+    def __init__(self,
+                 tensor_spec: TensorSpec,
+                 update_rate,
                  name="EMAverager"):
         """
 
@@ -179,8 +181,8 @@ class EMAverager(nn.Module):
         """
         alf.nest.map_structure(
             lambda average, t, spec: average.add_(
-                torch.as_tensor(self._update_rate, dtype=t.dtype) * (
-                    average_outer_dims(t.detach(), spec) - average)),
+                torch.as_tensor(self._update_rate, dtype=t.dtype) *
+                (average_outer_dims(t.detach(), spec) - average)),
             self._average, tensor, self._tensor_spec)
         self._mass.add_(
             torch.as_tensor(self._update_rate, dtype=torch.float64) *
@@ -225,10 +227,9 @@ class ScalarEMAverager(EMAverager):
             dtype (torch.dtype): dtype of the scalar
             name (str): name of this averager
         """
-        super().__init__(
-            tensor_spec=TensorSpec(shape=(), dtype=dtype),
-            update_rate=update_rate,
-            name=name)
+        super().__init__(tensor_spec=TensorSpec(shape=(), dtype=dtype),
+                         update_rate=update_rate,
+                         name=name)
 
 
 @alf.configurable
@@ -268,8 +269,8 @@ class AdaptiveAverager(EMAverager):
             tensor (nested Tensor): a value for updating the average; outer dims
                 will be first averaged before being added to the average
         """
-        self._update_ema_rate.fill_(
-            self._speed / self._total_steps.to(torch.float64))
+        self._update_ema_rate.fill_(self._speed /
+                                    self._total_steps.to(torch.float64))
         self._total_steps.add_(1)
         super().update(tensor)
 
@@ -289,7 +290,6 @@ class ScalarAdaptiveAverager(AdaptiveAverager):
             dtype (torch.dtype): dtype of the scalar
             name (str): name of this averager
         """
-        super().__init__(
-            tensor_spec=TensorSpec(shape=(), dtype=dtype),
-            speed=speed,
-            name=name)
+        super().__init__(tensor_spec=TensorSpec(shape=(), dtype=dtype),
+                         speed=speed,
+                         name=name)

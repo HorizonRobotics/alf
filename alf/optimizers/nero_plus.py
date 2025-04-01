@@ -145,16 +145,15 @@ class NeroPlus(Optimizer):
                  l2_regularization: float = 0,
                  fixed_norm: bool = True,
                  zero_mean: bool = True):
-        defaults = dict(
-            lr=lr,
-            betas=betas,
-            eps=eps,
-            normalizing_grad_by_norm=normalizing_grad_by_norm,
-            weight_decay=weight_decay,
-            l2_regularization=l2_regularization,
-            max_norm=max_norm,
-            fixed_norm=fixed_norm,
-            zero_mean=zero_mean)
+        defaults = dict(lr=lr,
+                        betas=betas,
+                        eps=eps,
+                        normalizing_grad_by_norm=normalizing_grad_by_norm,
+                        weight_decay=weight_decay,
+                        l2_regularization=l2_regularization,
+                        max_norm=max_norm,
+                        fixed_norm=fixed_norm,
+                        zero_mean=zero_mean)
         super().__init__(params, defaults)
         assert 0 <= betas[0] < 1, ("Invalid value for betas[0]=%s" % betas[0])
         assert 0 < betas[1] < 1, ("Invalid value for betas[1]=%s" % betas[1])

@@ -114,11 +114,11 @@ class GoBoard(object):
             (batch_size, num_previous_boards, height + 2, width + 2),
             2,
             dtype=torch.int8)
-        self._prev_boards[self._B.reshape(-1, 1, 1, 1),
-                          torch.arange(num_previous_boards).
-                          reshape(1, -1, 1, 1),
-                          self._y.unsqueeze(0),
-                          self._x.unsqueeze(0)] = 0
+        self._prev_boards[
+            self._B.reshape(-1, 1, 1, 1),
+            torch.arange(num_previous_boards).reshape(1, -1, 1, 1),
+            self._y.unsqueeze(0),
+            self._x.unsqueeze(0)] = 0
         self._num_moves = torch.zeros(batch_size, dtype=torch.int64)
 
     def update(self, board_indices, y, x, player):
@@ -345,11 +345,11 @@ class GoBoard(object):
         self._cc_qi[B, :] = 0
         self._num_ccs[B] = 1
         self._num_moves[B] = 0
-        self._prev_boards[B.reshape(-1, 1, 1, 1),
-                          torch.arange(self._num_previous_boards).
-                          reshape(1, -1, 1, 1),
-                          self._y.unsqueeze(0),
-                          self._x.unsqueeze(0)] = 0
+        self._prev_boards[
+            B.reshape(-1, 1, 1, 1),
+            torch.arange(self._num_previous_boards).reshape(1, -1, 1, 1),
+            self._y.unsqueeze(0),
+            self._x.unsqueeze(0)] = 0
 
     def classify_all_moves(self, player, board_indices=None):
         """Classify all the moves on the board.
@@ -378,13 +378,13 @@ class GoBoard(object):
         # process is very similar to ``update()``.
 
         # [B * H * W]
-        x = torch.arange(1, self._width + 1).repeat(
-            board_indices.shape[0] * self._height)
+        x = torch.arange(1, self._width + 1).repeat(board_indices.shape[0] *
+                                                    self._height)
         # [B * H * W]
         y = torch.arange(1, self._height + 1).repeat_interleave(
             self._width).repeat(board_indices.shape[0])
-        board_indices = board_indices.repeat_interleave(
-            self._height * self._width)
+        board_indices = board_indices.repeat_interleave(self._height *
+                                                        self._width)
         player = player.repeat_interleave(self._height * self._width)
         opponent = -player
 
@@ -614,30 +614,29 @@ class GoEnvironment(AlfEnvironment):
         self._game_over.fill_(False)
         self._prev_action.fill_(self._pass_action)
 
-        return TimeStep(
-            observation=OrderedDict(
-                board=self._board.get_board().detach().unsqueeze(1),
-                prev_action=self._prev_action,
-                valid_action_mask=self._get_valid_action_mask(),
-                steps=self._num_moves,
-                to_play=torch.zeros((self._batch_size), dtype=torch.int8)),
-            step_type=torch.full((self._batch_size, ),
-                                 StepType.FIRST,
-                                 dtype=torch.int32),
-            reward=torch.zeros((self._batch_size, )),
-            discount=torch.ones((self._batch_size, )),
+        return TimeStep(observation=OrderedDict(
+            board=self._board.get_board().detach().unsqueeze(1),
             prev_action=self._prev_action,
-            env_id=self._env_ids,
-            env_info={
-                "player0_win": torch.zeros(self._batch_size),
-                "player1_win": torch.zeros(self._batch_size),
-                "player0_pass": torch.zeros(self._batch_size),
-                "player1_pass": torch.zeros(self._batch_size),
-                "draw": torch.zeros(self._batch_size),
-                "invalid_move": torch.zeros(self._batch_size),
-                "too_long": torch.zeros(self._batch_size),
-                "bad_move": torch.zeros(self._batch_size),
-            })
+            valid_action_mask=self._get_valid_action_mask(),
+            steps=self._num_moves,
+            to_play=torch.zeros((self._batch_size), dtype=torch.int8)),
+                        step_type=torch.full((self._batch_size, ),
+                                             StepType.FIRST,
+                                             dtype=torch.int32),
+                        reward=torch.zeros((self._batch_size, )),
+                        discount=torch.ones((self._batch_size, )),
+                        prev_action=self._prev_action,
+                        env_id=self._env_ids,
+                        env_info={
+                            "player0_win": torch.zeros(self._batch_size),
+                            "player1_win": torch.zeros(self._batch_size),
+                            "player0_pass": torch.zeros(self._batch_size),
+                            "player1_pass": torch.zeros(self._batch_size),
+                            "draw": torch.zeros(self._batch_size),
+                            "invalid_move": torch.zeros(self._batch_size),
+                            "too_long": torch.zeros(self._batch_size),
+                            "bad_move": torch.zeros(self._batch_size),
+                        })
 
     def _get_valid_action_mask(self):
         player = ((self._num_moves % 2) * 2 - 1).to(torch.int8)
@@ -721,28 +720,27 @@ class GoEnvironment(AlfEnvironment):
         draw = game_over & (reward == 0)
         self._previous_board = current_board
 
-        return TimeStep(
-            observation=OrderedDict(
-                board=self._board.get_board().detach().unsqueeze(1),
-                prev_action=self._prev_action,
-                valid_action_mask=self._get_valid_action_mask(),
-                steps=self._num_moves,
-                to_play=(self._num_moves % 2).to(torch.int8)),
-            reward=reward.detach(),
-            step_type=step_type.detach(),
-            discount=discount.detach(),
+        return TimeStep(observation=OrderedDict(
+            board=self._board.get_board().detach().unsqueeze(1),
             prev_action=self._prev_action,
-            env_id=self._env_ids,
-            env_info={
-                "player0_win": player0_win.to(torch.float32),
-                "player1_win": player1_win.to(torch.float32),
-                "player0_pass": is_pass & (player == -1),
-                "player1_pass": is_pass & (player == 1),
-                "draw": draw.to(torch.float32),
-                "invalid_move": (~valid).to(torch.float32),
-                "too_long": too_long.to(torch.float32),
-                "bad_move": bad_move.to(torch.float32),
-            })
+            valid_action_mask=self._get_valid_action_mask(),
+            steps=self._num_moves,
+            to_play=(self._num_moves % 2).to(torch.int8)),
+                        reward=reward.detach(),
+                        step_type=step_type.detach(),
+                        discount=discount.detach(),
+                        prev_action=self._prev_action,
+                        env_id=self._env_ids,
+                        env_info={
+                            "player0_win": player0_win.to(torch.float32),
+                            "player1_win": player1_win.to(torch.float32),
+                            "player0_pass": is_pass & (player == -1),
+                            "player1_pass": is_pass & (player == 1),
+                            "draw": draw.to(torch.float32),
+                            "invalid_move": (~valid).to(torch.float32),
+                            "too_long": too_long.to(torch.float32),
+                            "bad_move": bad_move.to(torch.float32),
+                        })
 
     def _step(self, action):
         """When there is a human player, the human player is part of the environment
@@ -789,8 +787,8 @@ class GoEnvironment(AlfEnvironment):
                     y = int((my - offset) / grid_size + 0.5)
                     gx = offset + x * grid_size
                     gy = offset + y * grid_size
-                    if ((mx - gx) * (mx - gx) +
-                        (my - gy) * (my - gy) <= stone_radius * stone_radius
+                    if ((mx - gx) * (mx - gx) + (my - gy) *
+                        (my - gy) <= stone_radius * stone_radius
                             and 0 <= x < self._width and 0 <= y < self._height
                             and valid_action_mask[y * self._width + x]):
                         action = y * self._width + x
@@ -820,8 +818,8 @@ class GoEnvironment(AlfEnvironment):
                     (self._width * grid_size, self._height * grid_size),
                     pygame.HWSURFACE | pygame.DOUBLEBUF)
             else:
-                self._surface = pygame.Surface((self._width * grid_size,
-                                                self._height * grid_size))
+                self._surface = pygame.Surface(
+                    (self._width * grid_size, self._height * grid_size))
 
         self._surface.fill((128, 128, 64))
         for y in range(self._height):
@@ -833,8 +831,8 @@ class GoEnvironment(AlfEnvironment):
         for x in range(self._width):
             pygame.draw.line(self._surface, (0, 0, 0),
                              (offset + x * grid_size, offset),
-                             (offset + x * grid_size,
-                              offset + (self._height - 1) * grid_size))
+                             (offset + x * grid_size, offset +
+                              (self._height - 1) * grid_size))
 
         action = self._prev_action[0].cpu().numpy()
         ay = action // self._width
@@ -859,8 +857,8 @@ class GoEnvironment(AlfEnvironment):
             time.sleep(0.1)
         elif mode == 'rgb_array':
             # (x, y, c) => (y, x, c)
-            return np.transpose(
-                pygame.surfarray.array3d(self._surface), (1, 0, 2))
+            return np.transpose(pygame.surfarray.array3d(self._surface),
+                                (1, 0, 2))
         else:
             raise ValueError("Unsupported render mode: %s" % mode)
 

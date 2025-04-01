@@ -63,6 +63,7 @@ class LRBatchEnsemble(nn.Module):
 
 
 class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
+
     def cov(self, data, rowvar=False):
         """Estimate a covariance matrix given data.
 
@@ -107,8 +108,9 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         y = layer(x)
         loss = torch.sum(y**2)
         clip_norm = 1e-4
-        opt = AdamTF(
-            lr=0.1, gradient_clipping=clip_norm, clip_by_global_norm=True)
+        opt = AdamTF(lr=0.1,
+                     gradient_clipping=clip_norm,
+                     clip_by_global_norm=True)
         opt.add_param_group({'params': layer.parameters()})
         opt.zero_grad()
         loss.backward()
@@ -150,11 +152,10 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         opt.step()
 
         # Gradient update with ParVIAlgorithm
-        alg = ParVIAlgorithm(
-            param_dim,
-            num_particles=ensemble_size,
-            par_vi=parvi,
-            optimizer=AdamTF(lr=0.1))
+        alg = ParVIAlgorithm(param_dim,
+                             num_particles=ensemble_size,
+                             par_vi=parvi,
+                             optimizer=AdamTF(lr=0.1))
         w2 = init_w.clone()
         w2.requires_grad = True
         w2 = torch.nn.Parameter(w2)
@@ -254,37 +255,33 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLess(cov_err, 0.5)
 
     @parameterized.parameters(
-        dict(
-            opt_cls=Adam,
-            capacity_ratio=0.2,
-            masked_out_value=None,
-            opt_steps=3),
-        dict(
-            opt_cls=AdamTF,
-            capacity_ratio=0.7,
-            masked_out_value=0,
-            opt_steps=5))
+        dict(opt_cls=Adam,
+             capacity_ratio=0.2,
+             masked_out_value=None,
+             opt_steps=3),
+        dict(opt_cls=AdamTF,
+             capacity_ratio=0.7,
+             masked_out_value=0,
+             opt_steps=5))
     def test_capacity_scheduling(self, opt_cls, capacity_ratio,
                                  masked_out_value, opt_steps):
         layer = torch.nn.Linear(512, 512)
         clip_norm = 1e-4
-        opt = opt_cls(
-            lr=0.1,
-            gradient_clipping=clip_norm,
-            clip_by_global_norm=True,
-            capacity_ratio=capacity_ratio,
-            masked_out_value=masked_out_value,
-            min_capacity=1)
+        opt = opt_cls(lr=0.1,
+                      gradient_clipping=clip_norm,
+                      clip_by_global_norm=True,
+                      capacity_ratio=capacity_ratio,
+                      masked_out_value=masked_out_value,
+                      min_capacity=1)
         opt.add_param_group({'params': layer.parameters()})
 
         # test load_state_dict
-        opt2 = opt_cls(
-            lr=0.1,
-            gradient_clipping=clip_norm,
-            clip_by_global_norm=True,
-            capacity_ratio=capacity_ratio,
-            masked_out_value=masked_out_value,
-            min_capacity=1)
+        opt2 = opt_cls(lr=0.1,
+                       gradient_clipping=clip_norm,
+                       clip_by_global_norm=True,
+                       capacity_ratio=capacity_ratio,
+                       masked_out_value=masked_out_value,
+                       min_capacity=1)
         opt2.add_param_group({'params': layer.parameters()})
         state_dict = opt.state_dict()
         opt2.load_state_dict(state_dict)
@@ -335,8 +332,9 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         capacity_ratios = alf.nest.map_structure(
             lambda x: 1 - x.float().mean(), capacity_mask)
         empirical_capacity_ratio = sum(capacity_ratios) / len(capacity_ratios)
-        self.assertAlmostEqual(
-            empirical_capacity_ratio, capacity_ratio, delta=0.1)
+        self.assertAlmostEqual(empirical_capacity_ratio,
+                               capacity_ratio,
+                               delta=0.1)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 
 class ActorNetworkTest(alf.test.TestCase, parameterized.TestCase):
+
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
             actor_fc_layer_params = (6, 4)
@@ -55,11 +56,10 @@ class ActorNetworkTest(alf.test.TestCase, parameterized.TestCase):
 
         network_ctor, state = self._init(lstm_hidden_size)
 
-        actor_net = network_ctor(
-            obs_spec,
-            action_spec,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params)
+        actor_net = network_ctor(obs_spec,
+                                 action_spec,
+                                 conv_layer_params=conv_layer_params,
+                                 fc_layer_params=fc_layer_params)
 
         action, state = actor_net(image, state)
 

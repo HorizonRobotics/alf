@@ -140,13 +140,12 @@ def _worker(conn: multiprocessing.connection,
             threadpoolctl.threadpool_limits(torch_num_threads_per_env)
         if start_method == "spawn":
             _init_after_spawn(
-                SpawnedProcessContext(
-                    ddp_num_procs=ddp_num_procs,
-                    ddp_rank=ddp_rank,
-                    local_rank=local_rank,
-                    env_id=env_id,
-                    env_ctor=env_constructor,
-                    pre_configs=pre_configs))
+                SpawnedProcessContext(ddp_num_procs=ddp_num_procs,
+                                      ddp_rank=ddp_rank,
+                                      local_rank=local_rank,
+                                      env_id=env_id,
+                                      env_ctor=env_constructor,
+                                      pre_configs=pre_configs))
             # env may have been created during parse_conf_file called by _init_after_spawn
             # so we should not create it again using env_constructor
             env = alf.get_env()
@@ -232,6 +231,7 @@ def process_call(conn, env, flatten, action_spec):
 
 
 class ProcessEnvironment(object):
+
     def __init__(self,
                  env_constructor: Callable,
                  env_id: int = None,

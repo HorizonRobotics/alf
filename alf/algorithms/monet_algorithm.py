@@ -73,14 +73,13 @@ class MoNetUNet(alf.networks.Network):
         channels = input_tensor_spec.shape[0]
         for i in range(len(filters)):
             block = [
-                alf.layers.Conv2D(
-                    channels,
-                    filters[i],
-                    3,
-                    strides=1,
-                    padding=1,
-                    use_bias=not use_instance_norm,
-                    activation=alf.math.identity),
+                alf.layers.Conv2D(channels,
+                                  filters[i],
+                                  3,
+                                  strides=1,
+                                  padding=1,
+                                  use_bias=not use_instance_norm,
+                                  activation=alf.math.identity),
                 *([torch.nn.InstanceNorm2d(filters[i], affine=True)]
                   if use_instance_norm else []),
                 torch.nn.ReLU()
@@ -113,14 +112,13 @@ class MoNetUNet(alf.networks.Network):
             out_channels = filters[i +
                                    1] if i < len(filters) - 1 else filters[-1]
             block = [
-                alf.layers.Conv2D(
-                    channels * 2,
-                    out_channels,
-                    3,
-                    strides=1,
-                    padding=1,
-                    use_bias=not use_instance_norm,
-                    activation=alf.math.identity),
+                alf.layers.Conv2D(channels * 2,
+                                  out_channels,
+                                  3,
+                                  strides=1,
+                                  padding=1,
+                                  use_bias=not use_instance_norm,
+                                  activation=alf.math.identity),
                 *([torch.nn.InstanceNorm2d(out_channels, affine=True)]
                   if use_instance_norm else []),
                 torch.nn.ReLU()
@@ -129,12 +127,11 @@ class MoNetUNet(alf.networks.Network):
                 block.append(torch.nn.UpsamplingNearest2d(scale_factor=2))
             else:
                 block.append(
-                    alf.layers.Conv2D(
-                        out_channels,
-                        output_channels,
-                        1,
-                        strides=1,
-                        activation=alf.math.identity))
+                    alf.layers.Conv2D(out_channels,
+                                      output_channels,
+                                      1,
+                                      strides=1,
+                                      activation=alf.math.identity))
             deconv_blocks.append(torch.nn.Sequential(*block))
             channels = out_channels
 
@@ -312,11 +309,10 @@ class MoNetAlgorithm(Algorithm):
                 last_activation=alf.math.identity))
 
         self._decoder = alf.networks.BatchSquashNetwork(
-            decoder_cls(
-                input_size=slot_size,
-                output_height=H,
-                output_width=W,
-                output_activation=alf.math.identity))
+            decoder_cls(input_size=slot_size,
+                        output_height=H,
+                        output_width=W,
+                        output_activation=alf.math.identity))
         assert self._decoder.output_spec.shape[0] == C + 1, (
             "The decoder's output channels should be RGBA")
 
@@ -333,9 +329,8 @@ class MoNetAlgorithm(Algorithm):
         z_mean = z_mean_and_log_var[..., :D]
         z_log_var = z_mean_and_log_var[..., D:]
         # [B,G,D]
-        return td.Independent(
-            td.Normal(loc=z_mean, scale=z_log_var.exp()),
-            reinterpreted_batch_ndims=2)
+        return td.Independent(td.Normal(loc=z_mean, scale=z_log_var.exp()),
+                              reinterpreted_batch_ndims=2)
 
     def _compute_mask_logprobs(self, img):
         if self._recurrent_attention:
@@ -363,8 +358,9 @@ class MoNetAlgorithm(Algorithm):
         # [B,G,H,W]
         mask_logprobs = self._compute_mask_logprobs(inputs)
         # [B,G,C,H,W]
-        inputs = tensor_utils.tensor_extend_new_dim(
-            inputs, dim=1, n=self._n_slots)
+        inputs = tensor_utils.tensor_extend_new_dim(inputs,
+                                                    dim=1,
+                                                    n=self._n_slots)
         # Even though the MoNet paper appends the mask in the log space,
         # a linear space is actually more numerically stable.
         # [B,G,C+1,H,W]
@@ -402,9 +398,10 @@ class MoNetAlgorithm(Algorithm):
 
         mask_rec = torch.nn.functional.log_softmax(mask_rec, dim=1)
         mask_rec_loss = _reduce_loss(
-            torch.nn.functional.kl_div(
-                input=mask_rec, target=mask, reduction='none',
-                log_target=True).sum(dim=1))
+            torch.nn.functional.kl_div(input=mask_rec,
+                                       target=mask,
+                                       reduction='none',
+                                       log_target=True).sum(dim=1))
         return rec_loss, mask_rec_loss  # [B]
 
     def train_step(self, inputs: torch.Tensor, state=()):
@@ -430,8 +427,8 @@ class MoNetAlgorithm(Algorithm):
         """
         z_mean_log_var, mask_logprobs = self._encoder_step(inputs)
         z_dist = self.make_gaussian(z_mean_log_var)
-        output = VAEOutput(
-            z=z_dist.rsample(), z_mode=alf.utils.dist_utils.get_mode(z_dist))
+        output = VAEOutput(z=z_dist.rsample(),
+                           z_mode=alf.utils.dist_utils.get_mode(z_dist))
 
         if self._beta == 0:
             kld = ()
@@ -462,9 +459,7 @@ class MoNetAlgorithm(Algorithm):
         loss = info.rec_loss + self._gamma * info.mask_rec_loss
         if info.kld != ():
             loss = loss + self._beta * info.kld
-        return LossInfo(
-            loss=loss,
-            extra=MoNetInfo(
-                kld=info.kld,
-                rec_loss=info.rec_loss,
-                mask_rec_loss=info.mask_rec_loss))
+        return LossInfo(loss=loss,
+                        extra=MoNetInfo(kld=info.kld,
+                                        rec_loss=info.rec_loss,
+                                        mask_rec_loss=info.mask_rec_loss))

@@ -24,6 +24,7 @@ MyACInfo = namedtuple("MyACInfo", ["ac", "zeros"])
 
 
 class MyACAlgorithm(ActorCriticAlgorithm):
+
     def rollout_step(self, inputs, state):
         alg_step = super().rollout_step(inputs, state)
         action = alg_step.output
@@ -50,8 +51,7 @@ class MyACAlgorithm(ActorCriticAlgorithm):
 
 
 # configure which RL algorithm to use
-alf.config(
-    'TrainerConfig',
-    algorithm_ctor=partial(
-        MyACAlgorithm, optimizer=alf.optimizers.Adam(lr=1e-3)),
-    num_iterations=1)
+alf.config('TrainerConfig',
+           algorithm_ctor=partial(MyACAlgorithm,
+                                  optimizer=alf.optimizers.Adam(lr=1e-3)),
+           num_iterations=1)

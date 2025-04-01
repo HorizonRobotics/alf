@@ -78,8 +78,9 @@ def _env_constructor(env_load_fn, env_name, batch_size_per_env, seed, env_id):
     # following env IDs: env_id, env_id + 1, ... ,env_id + batch_size - 1
     batched = getattr(_get_wrapped_fn(env_load_fn), 'batched', False)
     if batched:
-        return env_load_fn(
-            env_name, env_id=env_id, batch_size=batch_size_per_env)
+        return env_load_fn(env_name,
+                           env_id=env_id,
+                           batch_size=batch_size_per_env)
     if batch_size_per_env == 1:
         return env_load_fn(env_name, env_id)
     envs = [
@@ -189,8 +190,8 @@ def create_environment(env_name='CartPole-v0',
     # env_load_fn may be a functools.partial, so we need to get the wrapped
     # function to get its attributes
     batched = getattr(_get_wrapped_fn(env_load_fn), 'batched', False)
-    no_thread_env = getattr(
-        _get_wrapped_fn(env_load_fn), 'no_thread_env', False)
+    no_thread_env = getattr(_get_wrapped_fn(env_load_fn), 'no_thread_env',
+                            False)
 
     if nonparallel:
         assert num_parallel_environments == 1, "nonparallel is True"
@@ -289,5 +290,5 @@ def load_with_random_max_episode_steps(env_name,
     Returns:
         AlfEnvironment:
     """
-    return env_load_fn(
-        env_name, max_episode_steps=random.randint(min_steps, max_steps))
+    return env_load_fn(env_name,
+                       max_episode_steps=random.randint(min_steps, max_steps))

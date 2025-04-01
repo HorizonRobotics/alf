@@ -24,8 +24,9 @@ from alf.networks import Network, NormalProjectionNetwork, CategoricalProjection
 def _create_projection_net_based_on_action_spec(
         discrete_projection_net_ctor: Callable[[int, BoundedTensorSpec],
                                                Network],
-        continuous_projection_net_ctor: Callable[
-            [int, BoundedTensorSpec], Network], input_size: int, action_spec):
+        continuous_projection_net_ctor: Callable[[int, BoundedTensorSpec],
+                                                 Network], input_size: int,
+        action_spec):
     """Create project network(s) for the potentially nested action spec.
 
     This function basically creates a projection network for each of the leaf
@@ -199,8 +200,8 @@ class DisjointPolicyValueNetwork(Network):
                     alf.nn.Sequential(
                         # Use the same encoder, but the encoder is DETACHED.
                         alf.layers.Detach(),
-                        alf.layers.FC(
-                            input_size=encoder_output_size, output_size=1),
+                        alf.layers.FC(input_size=encoder_output_size,
+                                      output_size=1),
                         alf.layers.Reshape(()),
                         input_tensor_spec=self._actor_encoder.output_spec),
                     alf.layers.Identity()))
@@ -214,15 +215,13 @@ class DisjointPolicyValueNetwork(Network):
                 alf.nn.Branch(
                     alf.nn.Sequential(
                         self._actor_encoder,
-                        alf.nn.Branch(
-                            self._policy_head,
-                            alf.layers.Identity(),
-                            name='PolicyComponent')),
+                        alf.nn.Branch(self._policy_head,
+                                      alf.layers.Identity(),
+                                      name='PolicyComponent')),
                     alf.nn.Sequential(
                         self._value_encoder,
-                        alf.layers.FC(
-                            input_size=encoder_output_size, output_size=1),
-                        alf.layers.Reshape(()))),
+                        alf.layers.FC(input_size=encoder_output_size,
+                                      output_size=1), alf.layers.Reshape(()))),
                 # Order: policy, value, aux value
                 lambda heads: (heads[0][0], heads[1], heads[0][1]))
 
@@ -256,8 +255,7 @@ class DisjointPolicyValueNetwork(Network):
 
         """
         (action_distribution, value,
-         encoded), output_state = self._composition(
-             observation, state=state)
+         encoded), output_state = self._composition(observation, state=state)
 
         if require_aux:
             aux, _ = self._aux_head(encoded)

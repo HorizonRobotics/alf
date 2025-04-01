@@ -25,12 +25,13 @@ from alf.utils.schedulers import LinearScheduler
 from alf.examples.sac_breakout_conf import q_network_cls, critic_loss_ctor, \
     critic_optimizer
 
-alf.config(
-    'DqnAlgorithm',
-    q_network_cls=q_network_cls,
-    rollout_epsilon_greedy=LinearScheduler(
-        progress_type="percent", schedule=[(0, 1.), (0.1, 0.1), (1., 0.1)]),
-    critic_loss_ctor=critic_loss_ctor,
-    q_optimizer=critic_optimizer)
+alf.config('DqnAlgorithm',
+           q_network_cls=q_network_cls,
+           rollout_epsilon_greedy=LinearScheduler(progress_type="percent",
+                                                  schedule=[(0, 1.),
+                                                            (0.1, 0.1),
+                                                            (1., 0.1)]),
+           critic_loss_ctor=critic_loss_ctor,
+           q_optimizer=critic_optimizer)
 
 alf.config('Agent', rl_algorithm_cls=DqnAlgorithm)

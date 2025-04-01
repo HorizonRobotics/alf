@@ -46,16 +46,16 @@ def create_model(ntokens,
     return networks.Sequential(
         embedding_layer,
         layers.Reshape(1, -1),
-        networks.TransformerNetwork(
-            input_tensor_spec=alf.TensorSpec((1, embedding_dim)),
-            num_prememory_layers=0,
-            num_attention_heads=num_heads,
-            d_ff=4 * embedding_dim,
-            core_size=1,
-            use_core_embedding=False,
-            memory_size=memory_size,
-            num_memory_layers=num_layers,
-            centralized_memory=False),
+        networks.TransformerNetwork(input_tensor_spec=alf.TensorSpec(
+            (1, embedding_dim)),
+                                    num_prememory_layers=0,
+                                    num_attention_heads=num_heads,
+                                    d_ff=4 * embedding_dim,
+                                    core_size=1,
+                                    use_core_embedding=False,
+                                    memory_size=memory_size,
+                                    num_memory_layers=num_layers,
+                                    centralized_memory=False),
         layers.FC(embedding_dim, ntokens, kernel_init_gain=0.),
         input_tensor_spec=alf.TensorSpec((), dtype=torch.int64),
     )
@@ -63,6 +63,7 @@ def create_model(ntokens,
 
 @alf.configurable
 class LMAlgorithm(Algorithm):
+
     def __init__(self, data_creator, optimizer, config: TrainerConfig):
         """
         Args:
@@ -73,12 +74,11 @@ class LMAlgorithm(Algorithm):
         )
         ntokens = len(self._vocab.stoi)  # the size of vocabulary
         model = create_model(ntokens)
-        super().__init__(
-            train_state_spec=model.state_spec,
-            optimizer=optimizer,
-            config=config,
-            debug_summaries=True,
-            name="LM")
+        super().__init__(train_state_spec=model.state_spec,
+                         optimizer=optimizer,
+                         config=config,
+                         debug_summaries=True,
+                         name="LM")
         self._model = model
         self._lossf = nn.CrossEntropyLoss(reduction='none')
 

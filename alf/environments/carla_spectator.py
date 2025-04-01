@@ -98,12 +98,11 @@ def main(_):
     view = 0
 
     def _make_camera(vehicle, view):
-        return CameraSensor(
-            vehicle,
-            image_size_x=width,
-            image_size_y=height,
-            xyz=xyz[view],
-            pyr=pyr[view])
+        return CameraSensor(vehicle,
+                            image_size_x=width,
+                            image_size_y=height,
+                            xyz=xyz[view],
+                            pyr=pyr[view])
 
     camera = _make_camera(vehicles[vehicle_id], view)
     clock = pygame.time.Clock()

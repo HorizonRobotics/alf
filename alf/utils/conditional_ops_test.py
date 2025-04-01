@@ -20,7 +20,9 @@ from alf.utils.conditional_ops import conditional_update, select_from_mask
 
 
 class ConditionalOpsTest(alf.test.TestCase):
+
     def test_conditional_update(self):
+
         def _func(x, y):
             return x + 1, y - 1
 
@@ -41,12 +43,10 @@ class ConditionalOpsTest(alf.test.TestCase):
 
         cond = torch.rand((batch_size, )) < 0.5
         updated_target = conditional_update(target, cond, _func, x, y)
-        self.assertTensorEqual(
-            select_from_mask(updated_target[0], cond),
-            select_from_mask(x + 1, cond))
-        self.assertTensorEqual(
-            select_from_mask(updated_target[1], cond),
-            select_from_mask(y - 1, cond))
+        self.assertTensorEqual(select_from_mask(updated_target[0], cond),
+                               select_from_mask(x + 1, cond))
+        self.assertTensorEqual(select_from_mask(updated_target[1], cond),
+                               select_from_mask(y - 1, cond))
 
         vx = torch.zeros(())
         vy = torch.zeros(())
@@ -62,6 +62,7 @@ class ConditionalOpsTest(alf.test.TestCase):
         self.assertEqual(vy, torch.sum(select_from_mask(y, cond)))
 
     def test_conditional_update_high_dims(self):
+
         def _func(x):
             return x**2
 
@@ -71,10 +72,10 @@ class ConditionalOpsTest(alf.test.TestCase):
         cond = torch.randint(high=2, size=[batch_size]).to(torch.bool)
 
         updated_y = conditional_update(y, cond, _func, x)
-        self.assertTensorEqual(
-            select_from_mask(updated_y, cond), select_from_mask(x**2, cond))
-        self.assertTensorEqual(
-            select_from_mask(updated_y, ~cond), select_from_mask(y, ~cond))
+        self.assertTensorEqual(select_from_mask(updated_y, cond),
+                               select_from_mask(x**2, cond))
+        self.assertTensorEqual(select_from_mask(updated_y, ~cond),
+                               select_from_mask(y, ~cond))
 
     def test_select_from_mask(self):
         data = torch.as_tensor([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10],

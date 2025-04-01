@@ -21,8 +21,9 @@ from alf.utils.losses import element_wise_huber_loss
 from alf.algorithms.ppg_algorithm import PPGAuxOptions
 
 # Environment Configuration
-alf.config(
-    'create_environment', env_name='CartPole-v0', num_parallel_environments=8)
+alf.config('create_environment',
+           env_name='CartPole-v0',
+           num_parallel_environments=8)
 
 # Reward Scailing
 alf.config('TrainerConfig', data_transformer_ctor=RewardScaling)
@@ -44,19 +45,17 @@ alf.config(
         num_updates_per_train_iter=3,
     ))
 
-alf.config(
-    'PPOLoss',
-    compute_advantages_internally=True,
-    entropy_regularization=1e-4,
-    gamma=0.98,
-    td_error_loss_fn=element_wise_huber_loss,
-    normalize_advantages=False)
+alf.config('PPOLoss',
+           compute_advantages_internally=True,
+           entropy_regularization=1e-4,
+           gamma=0.98,
+           td_error_loss_fn=element_wise_huber_loss,
+           normalize_advantages=False)
 
-alf.config(
-    'PPGAuxPhaseLoss',
-    td_error_loss_fn=element_wise_huber_loss,
-    policy_kl_loss_weight=0.005,
-    gamma=0.98)
+alf.config('PPGAuxPhaseLoss',
+           td_error_loss_fn=element_wise_huber_loss,
+           policy_kl_loss_weight=0.005,
+           gamma=0.98)
 
 alf.config(
     'TrainerConfig',

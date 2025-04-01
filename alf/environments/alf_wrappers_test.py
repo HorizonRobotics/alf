@@ -32,6 +32,7 @@ import alf.tensor_specs as ts
 
 
 class AlfEnvironmentBaseWrapperTest(parameterized.TestCase):
+
     @parameterized.named_parameters(
         {
             'testcase_name': 'scalar',
@@ -82,6 +83,7 @@ class AlfEnvironmentBaseWrapperTest(parameterized.TestCase):
 
 
 class TimeLimitWrapperTest(parameterized.TestCase, alf.test.TestCase):
+
     def test_limit_duration_wrapped_env_forwards_calls(self):
         cartpole_env = gym.spec('CartPole-v1').make()
         env = alf_gym_wrapper.AlfGymWrapper(cartpole_env)
@@ -201,6 +203,7 @@ class TimeLimitWrapperTest(parameterized.TestCase, alf.test.TestCase):
 
 
 class MultitaskWrapperTest(alf.test.TestCase):
+
     def test_multitask_wrapper(self):
         env = alf_wrappers.MultitaskWrapper.load(
             suite_gym.load, ['CartPole-v0', 'CartPole-v1'])
@@ -216,6 +219,7 @@ class MultitaskWrapperTest(alf.test.TestCase):
 
 
 class CurriculumWrapperTest(alf.test.TestCase):
+
     def test_curriculum_wrapper(self):
         task_names = ['CartPole-v0', 'CartPole-v1']
         env = create_environment(
@@ -253,12 +257,12 @@ class CurriculumWrapperTest(alf.test.TestCase):
         for j in range(500):
             time_step = env.step(time_step.prev_action)
             self.assertEqual(time_step.env_id, torch.arange(4))
-            self.assertEqual(
-                len(env.env_info_spec()['curriculum_task_count']), 2)
-            self.assertEqual(
-                len(env.env_info_spec()['curriculum_task_score']), 2)
-            self.assertEqual(
-                len(env.env_info_spec()['curriculum_task_prob']), 2)
+            self.assertEqual(len(env.env_info_spec()['curriculum_task_count']),
+                             2)
+            self.assertEqual(len(env.env_info_spec()['curriculum_task_score']),
+                             2)
+            self.assertEqual(len(env.env_info_spec()['curriculum_task_prob']),
+                             2)
             for i in task_names:
                 self.assertEqual(
                     time_step.env_info['curriculum_task_count'][i].shape,
@@ -275,6 +279,7 @@ class CurriculumWrapperTest(alf.test.TestCase):
 
 
 class DiscreteWrapperTest(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((
         5,
         "MountainCarContinuous-v0",
@@ -285,6 +290,7 @@ class DiscreteWrapperTest(parameterized.TestCase, alf.test.TestCase):
         low, high = unwrapped.action_space.low, unwrapped.action_space.high
 
         class ActionInfoWrapper(gym.Wrapper):
+
             def __init__(self, env):
                 super().__init__(env)
 
@@ -295,28 +301,24 @@ class DiscreteWrapperTest(parameterized.TestCase, alf.test.TestCase):
 
         if batched:
             batched_wrappers = [
-                partial(
-                    alf_wrappers.DiscreteActionWrapper,
-                    actions_num=actions_num)
+                partial(alf_wrappers.DiscreteActionWrapper,
+                        actions_num=actions_num)
             ]
-            load_fn = partial(
-                suite_gym.load, gym_env_wrappers=[ActionInfoWrapper])
+            load_fn = partial(suite_gym.load,
+                              gym_env_wrappers=[ActionInfoWrapper])
         else:
             batched_wrappers = []
-            load_fn = partial(
-                suite_gym.load,
-                gym_env_wrappers=[ActionInfoWrapper],
-                alf_env_wrappers=[
-                    partial(
-                        alf_wrappers.DiscreteActionWrapper,
-                        actions_num=actions_num)
-                ])
+            load_fn = partial(suite_gym.load,
+                              gym_env_wrappers=[ActionInfoWrapper],
+                              alf_env_wrappers=[
+                                  partial(alf_wrappers.DiscreteActionWrapper,
+                                          actions_num=actions_num)
+                              ])
 
-        env = create_environment(
-            env_name=env_name,
-            env_load_fn=load_fn,
-            num_parallel_environments=4,
-            batched_wrappers=batched_wrappers)
+        env = create_environment(env_name=env_name,
+                                 env_load_fn=load_fn,
+                                 num_parallel_environments=4,
+                                 batched_wrappers=batched_wrappers)
 
         self.assertTrue(env.action_spec().is_discrete)
 

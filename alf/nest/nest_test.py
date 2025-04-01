@@ -30,6 +30,7 @@ NTuple = namedtuple('NTuple', ['a', 'b'])  # default value will be None
 
 
 class TestIsNested(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(nest.is_nested, cnest._is_nested)
     def test_is_nested(self, is_nested):
         self.assertFalse(is_nested(1))
@@ -41,6 +42,7 @@ class TestIsNested(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestFlatten(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(nest.py_flatten, cnest.flatten)
     def test_flatten(self, flatten):
         ntuple = NTuple(a=1, b=NTuple(a=NTuple(a=(2, ), b=[3]), b=dict(x=2)))
@@ -56,6 +58,7 @@ class TestFlatten(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestFlattenUpTo(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((nest.py_flatten_up_to, AssertionError),
                               (nest.flatten_up_to, RuntimeError),
                               (cnest.flatten_up_to, RuntimeError))
@@ -67,8 +70,8 @@ class TestFlattenUpTo(parameterized.TestCase, alf.test.TestCase):
         shallow_nest = NTuple(a=1, b=2)
         self.assertEqual(flatten_up_to(shallow_nest, ntuple), [1, ntuple.b])
         shallow_nest = NTuple(a=1, b=NTuple(a=1, b=dict(x=3)))
-        self.assertEqual(
-            flatten_up_to(shallow_nest, ntuple), [1, ntuple.b.a, 2])
+        self.assertEqual(flatten_up_to(shallow_nest, ntuple),
+                         [1, ntuple.b.a, 2])
 
         shallow_nest = NTuple(a=dict(x=1), b=1)
         self.assertRaises(error, flatten_up_to, shallow_nest, ntuple)
@@ -77,21 +80,21 @@ class TestFlattenUpTo(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestAssertSameStructure(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((nest.py_assert_same_structure, AssertionError),
                               (nest.assert_same_structure, RuntimeError),
                               (cnest.assert_same_structure, RuntimeError))
     def test_assert_same_structure(self, assert_same_structure, error):
         assert_same_structure(1.0, 10)
-        nest1 = NTuple(
-            a=1,
-            b=NTuple(a=NTuple(a=(2, ), b=[3]), b=dict(x=NTuple(a=[100], b=1))))
-        nest2 = NTuple(
-            b=NTuple(
-                a=NTuple(a=(2, ), b=[300]), b=dict(x=NTuple(a=[1], b=100))),
-            a=3.0)
+        nest1 = NTuple(a=1,
+                       b=NTuple(a=NTuple(a=(2, ), b=[3]),
+                                b=dict(x=NTuple(a=[100], b=1))))
+        nest2 = NTuple(b=NTuple(a=NTuple(a=(2, ), b=[300]),
+                                b=dict(x=NTuple(a=[1], b=100))),
+                       a=3.0)
         assert_same_structure(nest1, nest2)
-        assert_same_structure(
-            dict(x=1, y=NTuple(a=[1], b=3)), dict(y=NTuple(a=[3], b=1), x=1))
+        assert_same_structure(dict(x=1, y=NTuple(a=[1], b=3)),
+                              dict(y=NTuple(a=[3], b=1), x=1))
         self.assertRaises(error, assert_same_structure, dict(x=1, y=[2]),
                           dict(x=[2], y=1))
         self.assertRaises(error, assert_same_structure, dict(y=[2]),
@@ -108,16 +111,17 @@ class TestAssertSameStructure(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestAssertSameStructureUpTo(parameterized.TestCase, alf.test.TestCase):
+
     def test_assert_same_structure_up_to(self):
         nest.assert_same_structure_up_to(1.0, 10)
-        nest.assert_same_structure_up_to(
-            NTuple(a=1, b=2), NTuple(a=[2, 3], b=(1, 2)))
-        nest.assert_same_structure_up_to(
-            dict(x=1, y=NTuple(a=[1], b=3)), dict(y=NTuple(a=[3], b=1), x=1))
-        nest.assert_same_structure_up_to(
-            dict(x=1, y=2), dict(y=NTuple(a=[3], b=1), x=1))
-        nest.assert_same_structure_up_to(
-            dict(x=5, y=NTuple(a=2, b=3)), dict(y=NTuple(a=[3], b=1), x=1))
+        nest.assert_same_structure_up_to(NTuple(a=1, b=2),
+                                         NTuple(a=[2, 3], b=(1, 2)))
+        nest.assert_same_structure_up_to(dict(x=1, y=NTuple(a=[1], b=3)),
+                                         dict(y=NTuple(a=[3], b=1), x=1))
+        nest.assert_same_structure_up_to(dict(x=1, y=2),
+                                         dict(y=NTuple(a=[3], b=1), x=1))
+        nest.assert_same_structure_up_to(dict(x=5, y=NTuple(a=2, b=3)),
+                                         dict(y=NTuple(a=[3], b=1), x=1))
         self.assertRaises(RuntimeError, nest.assert_same_structure_up_to,
                           dict(x=1, y=[2]), dict(x=[2], y=1))
         self.assertRaises(RuntimeError, nest.assert_same_structure_up_to,
@@ -129,6 +133,7 @@ class TestAssertSameStructureUpTo(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestMapStructure(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((nest.py_map_structure, AssertionError),
                               (cnest.map_structure, RuntimeError))
     def test_map_structure(self, map_structure, error):
@@ -139,8 +144,8 @@ class TestMapStructure(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(
             map_structure(lambda a, b, c: a + b + c, nest1, nest2, nest3),
             expected_result)
-        self.assertEqual(
-            map_structure(lambda a, b: a + b, [1, 3], [4, 5]), [5, 8])
+        self.assertEqual(map_structure(lambda a, b: a + b, [1, 3], [4, 5]),
+                         [5, 8])
         self.assertEqual(map_structure(lambda a, b: a * b, 1, 3), 3)
 
         add = lambda a, b: a + b
@@ -153,6 +158,7 @@ class TestMapStructure(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestFastMapStructure(alf.test.TestCase):
+
     def test_fast_map_structure(self):
         nest1 = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
         nest2 = NTuple(a=dict(x=1, y=-2), b=[100.0, (10, )])
@@ -168,28 +174,26 @@ class TestFastMapStructure(alf.test.TestCase):
 
 
 class TestMapStructureUpTo(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((nest.py_map_structure_up_to, AssertionError),
                               (nest.map_structure_up_to, RuntimeError),
                               (cnest.map_structure_up_to, RuntimeError))
     def test_different_keys(self, map_structure_up_to, error):
-        self.assertRaises(error, map_structure_up_to,
-                          dict(x=1, z=2), lambda a, b: a * b, dict(x=1, y=2),
-                          dict(y=1, x=2))
-        self.assertRaises(error, map_structure_up_to,
-                          dict(x=1, y=2), lambda a, b: a * b, dict(x=1, y=2),
-                          dict(y=1, z=2))
+        self.assertRaises(error, map_structure_up_to, dict(x=1, z=2),
+                          lambda a, b: a * b, dict(x=1, y=2), dict(y=1, x=2))
+        self.assertRaises(error, map_structure_up_to, dict(x=1, y=2),
+                          lambda a, b: a * b, dict(x=1, y=2), dict(y=1, z=2))
 
     @parameterized.parameters((nest.py_map_structure_up_to, AssertionError),
                               (nest.map_structure_up_to, RuntimeError),
                               (cnest.map_structure_up_to, RuntimeError))
     def test_different_lengths(self, map_structure_up_to, error):
-        self.assertRaises(error, map_structure_up_to,
-                          [1, 2, 3], lambda x: x * 2, [1, 2])
-        self.assertRaises(error, map_structure_up_to,
-                          [1, 2], lambda x, y: x * y, [1, 2, 3], [4, 5])
-        self.assertRaises(error, map_structure_up_to,
-                          [1, [2, 3]], lambda x: x * 2,
-                          [[1], [[2, 4], [3, 5], 3]])
+        self.assertRaises(error, map_structure_up_to, [1, 2, 3],
+                          lambda x: x * 2, [1, 2])
+        self.assertRaises(error, map_structure_up_to, [1, 2],
+                          lambda x, y: x * y, [1, 2, 3], [4, 5])
+        self.assertRaises(error, map_structure_up_to, [1, [2, 3]],
+                          lambda x: x * 2, [[1], [[2, 4], [3, 5], 3]])
 
     @parameterized.parameters(nest.py_map_structure_up_to,
                               cnest.map_structure_up_to)
@@ -216,13 +220,13 @@ class TestMapStructureUpTo(parameterized.TestCase, alf.test.TestCase):
         op_tuple = namedtuple("op_tuple", "add, mul")
         inp_val = ab_tuple(a=2, b=3)
         inp_ops = ab_tuple(a=op_tuple(add=1, mul=2), b=op_tuple(add=2, mul=3))
-        out = map_structure_up_to(
-            inp_val, lambda val, ops: (val + ops.add) * ops.mul, inp_val,
-            inp_ops)
+        out = map_structure_up_to(inp_val, lambda val, ops:
+                                  (val + ops.add) * ops.mul, inp_val, inp_ops)
         self.assertEqual(out, ab_tuple(a=6, b=15))
 
 
 class TestPackSequenceAs(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(nest.py_pack_sequence_as, cnest.pack_sequence_as)
     def test_pack_sequence_as(self, pack_sequence_as):
         ntuple = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
@@ -257,6 +261,7 @@ class TestPackSequenceAs(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestFindField(alf.test.TestCase):
+
     def test_find_field(self):
         ntuple = NTuple(a=1, b=NTuple(a=NTuple(a=2, b=3), b=2))
         ret = nest.find_field(ntuple, 'a')
@@ -277,22 +282,22 @@ class TestFindField(alf.test.TestCase):
 
 
 class TestNestConcat(alf.test.TestCase):
+
     def test_nest_concat_tensors(self):
-        ntuple = NTuple(
-            a=dict(x=torch.zeros((2, 3)), y=torch.zeros((2, 4))),
-            b=torch.zeros((2, 10)))
+        ntuple = NTuple(a=dict(x=torch.zeros((2, 3)), y=torch.zeros((2, 4))),
+                        b=torch.zeros((2, 10)))
         ret = NestConcat()(ntuple)
         self.assertTensorEqual(ret, torch.zeros((2, 17)))
 
     def test_nest_concat_specs(self):
-        ntuple = NTuple(
-            a=dict(x=TensorSpec((2, 3)), y=TensorSpec((2, 4))),
-            b=TensorSpec((2, 10)))
+        ntuple = NTuple(a=dict(x=TensorSpec((2, 3)), y=TensorSpec((2, 4))),
+                        b=TensorSpec((2, 10)))
         ret = NestConcat()(ntuple)
         self.assertEqual(ret, TensorSpec((2, 17)))
 
 
 class TestNestSelectiveConcat(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters(
         (NTuple(a=dict(x=1, y=0), b=0), torch.zeros((2, 3))),
         (NTuple(a=dict(x=0, y=1), b=0), torch.zeros((2, 4))),
@@ -304,9 +309,8 @@ class TestNestSelectiveConcat(parameterized.TestCase, alf.test.TestCase):
         (None, torch.zeros((2, 17))),
     )
     def test_nest_selective_concat_tensors(self, mask, expected):
-        ntuple = NTuple(
-            a=dict(x=torch.zeros((2, 3)), y=torch.zeros((2, 4))),
-            b=torch.zeros((2, 10)))
+        ntuple = NTuple(a=dict(x=torch.zeros((2, 3)), y=torch.zeros((2, 4))),
+                        b=torch.zeros((2, 10)))
         ret = NestConcat(mask)(ntuple)
         self.assertTensorEqual(ret, expected)
 
@@ -321,51 +325,49 @@ class TestNestSelectiveConcat(parameterized.TestCase, alf.test.TestCase):
         (None, TensorSpec((2, 17))),
     )
     def test_nest_selective_concat_specs(self, mask, expected):
-        ntuple = NTuple(
-            a=dict(x=TensorSpec((2, 3)), y=TensorSpec((2, 4))),
-            b=TensorSpec((2, 10)))
+        ntuple = NTuple(a=dict(x=TensorSpec((2, 3)), y=TensorSpec((2, 4))),
+                        b=TensorSpec((2, 10)))
         ret = NestConcat(mask)(ntuple)
         self.assertEqual(ret, expected)
 
 
 class TestNestSum(alf.test.TestCase):
+
     def test_nest_sum_tensors(self):
-        ntuple = NTuple(
-            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
-            b=torch.zeros((4, )))
+        ntuple = NTuple(a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+                        b=torch.zeros((4, )))
         ret = NestSum()(ntuple)  # broadcasting
         self.assertTensorEqual(ret, torch.zeros((2, 4)))
 
     def test_nest_sum_specs(self):
-        ntuple = NTuple(
-            a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
-            b=TensorSpec((4, )))
+        ntuple = NTuple(a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
+                        b=TensorSpec((4, )))
         ret = NestSum()(ntuple)  # broadcasting
         self.assertEqual(ret, TensorSpec((2, 4)))
 
 
 class TestNestMultiply(alf.test.TestCase):
+
     def test_nest_multiply_tensors(self):
-        ntuple = NTuple(
-            a=dict(x=torch.zeros(()), y=torch.ones((2, 4))),
-            b=torch.ones((4, )))
+        ntuple = NTuple(a=dict(x=torch.zeros(()), y=torch.ones((2, 4))),
+                        b=torch.ones((4, )))
         ret = NestMultiply()(ntuple)  # broadcasting
         self.assertTensorEqual(ret, torch.zeros((2, 4)))
 
     def test_nest_multiply_specs(self):
-        ntuple = NTuple(
-            a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
-            b=TensorSpec((4, )))
+        ntuple = NTuple(a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
+                        b=TensorSpec((4, )))
         ret = NestMultiply()(ntuple)  # broadcasting
         self.assertEqual(ret, TensorSpec((2, 4)))
 
 
 class TestNestOuterProduct(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((False, ), (True, ))
     def test_nest_outer_product(self, padding):
-        ntuple = NTuple(
-            a=dict(x=torch.zeros(2, 3, 4, 5), y=torch.ones((2, 3))),
-            b=torch.ones((2, 3, 10)))
+        ntuple = NTuple(a=dict(x=torch.zeros(2, 3, 4, 5), y=torch.ones(
+            (2, 3))),
+                        b=torch.ones((2, 3, 10)))
         ret = NestOuterProduct(batch_dims=2)(ntuple)
         self.assertTensorEqual(ret, torch.zeros((2, 3, 4 * 5 * 1 * 10)))
 
@@ -389,9 +391,8 @@ class TestNestOuterProduct(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters((False, ), (True, ))
     def test_nest_outer_product_specs(self, padding):
-        ntuple = NTuple(
-            a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
-            b=TensorSpec((4, )))
+        ntuple = NTuple(a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
+                        b=TensorSpec((4, )))
         ret = NestOuterProduct(batch_dims=0, padding=padding)(ntuple)
         self.assertEqual(
             ret,
@@ -399,13 +400,13 @@ class TestNestOuterProduct(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestPruneNestLike(parameterized.TestCase, alf.test.TestCase):
+
     @parameterized.parameters((nest.py_prune_nest_like, ValueError),
                               (nest.prune_nest_like, RuntimeError),
                               (cnest.prune_nest_like, RuntimeError))
     def test_prune_nest_like(self, prune_nest_like, error):
-        ntuple = NTuple(
-            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
-            b=NTuple(a=torch.zeros((4, )), b=[1]))
+        ntuple = NTuple(a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+                        b=NTuple(a=torch.zeros((4, )), b=[1]))
         spec = NTuple(a=dict(y=TensorSpec(())), b=NTuple(b=[TensorSpec(())]))
         pruned_ntuple = prune_nest_like(ntuple, spec)
 
@@ -429,22 +430,23 @@ class TestPruneNestLike(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestTransformNest(alf.test.TestCase):
+
     def test_transform_nest(self):
-        ntuple = NTuple(
-            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
-            b=torch.zeros((4, )))
-        transformed_ntuple = transform_nest(
-            ntuple, field='a.x', func=lambda x: x + 1.0)
+        ntuple = NTuple(a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+                        b=torch.zeros((4, )))
+        transformed_ntuple = transform_nest(ntuple,
+                                            field='a.x',
+                                            func=lambda x: x + 1.0)
         ntuple.a.update({'x': torch.ones(())})
         nest.map_structure(self.assertEqual, transformed_ntuple, ntuple)
 
-        ntuple = NTuple(
-            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
-            b=NTuple(a=torch.zeros((4, )), b=NTuple(a=[1], b=[1])))
-        transformed_ntuple = transform_nest(
-            ntuple, field='b.b.b', func=lambda _: [2])
-        ntuple = ntuple._replace(
-            b=ntuple.b._replace(b=ntuple.b.b._replace(b=[2])))
+        ntuple = NTuple(a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+                        b=NTuple(a=torch.zeros((4, )), b=NTuple(a=[1], b=[1])))
+        transformed_ntuple = transform_nest(ntuple,
+                                            field='b.b.b',
+                                            func=lambda _: [2])
+        ntuple = ntuple._replace(b=ntuple.b._replace(b=ntuple.b.b._replace(
+            b=[2])))
         nest.map_structure(self.assertEqual, transformed_ntuple, ntuple)
 
         ntuple = NTuple(a=1, b=2)
@@ -465,14 +467,13 @@ class TestTransformNest(alf.test.TestCase):
 
 
 class TestTransformNests(alf.test.TestCase):
-    def test_transform_nests(self):
-        ntuple_a = NTuple(
-            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
-            b=torch.zeros((4, )))
 
-        ntuple_b = NTuple(
-            a=dict(x=torch.ones(()), y=torch.ones((2, 4))),
-            b=torch.ones((4, )))
+    def test_transform_nests(self):
+        ntuple_a = NTuple(a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+                          b=torch.zeros((4, )))
+
+        ntuple_b = NTuple(a=dict(x=torch.ones(()), y=torch.ones((2, 4))),
+                          b=torch.ones((4, )))
 
         transformed_ntuple, _ = transform_nests(
             [ntuple_a, ntuple_b],
@@ -482,24 +483,25 @@ class TestTransformNests(alf.test.TestCase):
         ntuple_a.a.update({'x': torch.ones(()) + 1.0})
         nest.map_structure(self.assertEqual, transformed_ntuple, ntuple_a)
 
-        ntuple_a = NTuple(
-            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
-            b=NTuple(a=torch.zeros((4, )), b=NTuple(a=[1], b=[2])))
+        ntuple_a = NTuple(a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+                          b=NTuple(a=torch.zeros((4, )),
+                                   b=NTuple(a=[1], b=[2])))
 
-        ntuple_b = NTuple(
-            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
-            b=NTuple(a=torch.zeros((4, )), b=NTuple(a=[1], b=[5])))
+        ntuple_b = NTuple(a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+                          b=NTuple(a=torch.zeros((4, )),
+                                   b=NTuple(a=[1], b=[5])))
 
         transformed_ntuple, _ = transform_nests(
             [ntuple_a, ntuple_b],
             field='b.b.b',
             func=lambda x: ([x[0][0] + x[1][0]], [x[0][0] + x[1][0]]))
-        ntuple_a = ntuple_a._replace(
-            b=ntuple_a.b._replace(b=ntuple_a.b.b._replace(b=[7])))
+        ntuple_a = ntuple_a._replace(b=ntuple_a.b._replace(
+            b=ntuple_a.b.b._replace(b=[7])))
         nest.map_structure(self.assertEqual, transformed_ntuple, ntuple_a)
 
 
 class TestExtractAnyLeaf(alf.test.TestCase):
+
     def test_extract_any_leaf(self):
         nested = NTuple(a=dict(x=3, y=1), b=2)
         self.assertTrue(
@@ -509,6 +511,7 @@ class TestExtractAnyLeaf(alf.test.TestCase):
 
 
 class TestTransposeNest(alf.test.TestCase):
+
     def test_transpose_nest(self):
         self.assertEqual(1, nest.transpose(1))
 
@@ -518,21 +521,19 @@ class TestTransposeNest(alf.test.TestCase):
         self.assertEqual(transposed_nest,
                          dict(x=NTuple(a=3, b=[5]), y=NTuple(a=1, b=[10])))
 
-        nested = NTuple(
-            a=dict(x=3, y=dict(n=1, m=2)), b=dict(x=5, y=dict(n=1, m=3)))
+        nested = NTuple(a=dict(x=3, y=dict(n=1, m=2)),
+                        b=dict(x=5, y=dict(n=1, m=3)))
         transposed_nest1 = nest.transpose(nested)
         self.assertEqual(
             transposed_nest1,
-            dict(
-                x=NTuple(a=3, b=5),
-                y=NTuple(a=dict(n=1, m=2), b=dict(n=1, m=3))))
+            dict(x=NTuple(a=3, b=5),
+                 y=NTuple(a=dict(n=1, m=2), b=dict(n=1, m=3))))
 
         transposed_nest2 = nest.transpose(nested, new_shallow_nest=nested.a)
         self.assertEqual(
             transposed_nest2,
-            dict(
-                x=NTuple(a=3, b=5),
-                y=dict(n=NTuple(a=1, b=1), m=NTuple(a=2, b=3))))
+            dict(x=NTuple(a=3, b=5),
+                 y=dict(n=NTuple(a=1, b=1), m=NTuple(a=2, b=3))))
 
 
 if __name__ == '__main__':

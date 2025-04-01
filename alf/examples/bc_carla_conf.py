@@ -60,15 +60,15 @@ alf.config(
 # for data collection
 # from alf.examples import data_collection_carla_conf
 
-alf.config(
-    'CarlaMergedActionWrapper', throttle_damping=0.1, brake_damping=0.01)
+alf.config('CarlaMergedActionWrapper',
+           throttle_damping=0.1,
+           brake_damping=0.01)
 
 wrappers = [ActionObservationWrapper, ScalarRewardWrapper]
-alf.config(
-    'create_environment',
-    env_name='Town01',
-    env_load_fn=suite_carla.load,
-    num_parallel_environments=1)
+alf.config('create_environment',
+           env_name='Town01',
+           env_load_fn=suite_carla.load,
+           num_parallel_environments=1)
 
 alf.config('suite_carla.load', wrappers=wrappers)
 
@@ -78,11 +78,10 @@ latest_checkpoint_interval = 10000
 
 alf.config('Agent', rl_algorithm_cls=BcAlgorithm)
 
-alf.config(
-    'TrainerConfig',
-    algorithm_ctor=Agent,
-    whole_replay_buffer_training=False,
-    clear_replay_buffer=False)
+alf.config('TrainerConfig',
+           algorithm_ctor=Agent,
+           whole_replay_buffer_training=False,
+           clear_replay_buffer=False)
 
 lr = 1e-4
 num_iterations = 1000000
@@ -97,11 +96,10 @@ encoding_dim = 256
 use_batch_normalization = False
 activation = torch.relu_
 
-proj_net = partial(
-    alf.networks.NormalProjectionNetwork,
-    state_dependent_std=False,
-    scale_distribution=False,
-    std_transform=alf.math.clipped_exp)
+proj_net = partial(alf.networks.NormalProjectionNetwork,
+                   state_dependent_std=False,
+                   scale_distribution=False,
+                   std_transform=alf.math.clipped_exp)
 
 actor_distribution_network_cls = partial(
     alf.networks.ActorDistributionNetwork,
@@ -114,27 +112,25 @@ actor_distribution_network_cls = partial(
 
 optimizer_actor = alf.optimizers.AdamTF(lr=lr)
 
-alf.config(
-    'BcAlgorithm',
-    actor_network_cls=actor_distribution_network_cls,
-    actor_optimizer=optimizer_actor)
+alf.config('BcAlgorithm',
+           actor_network_cls=actor_distribution_network_cls,
+           actor_optimizer=optimizer_actor)
 
-alf.config(
-    "TrainerConfig",
-    rl_train_after_update_steps=rl_train_after_update_steps,
-    offline_buffer_dir=offline_buffer_dir,
-    offline_buffer_length=2,
-    initial_collect_steps=initial_collect_steps,
-    mini_batch_length=offline_mini_batch_length,
-    unroll_length=1,
-    mini_batch_size=offline_mini_batch_size,
-    num_updates_per_train_iter=1,
-    num_iterations=num_iterations,
-    num_checkpoints=1,
-    evaluate=False,
-    eval_interval=10000,
-    num_eval_episodes=3,
-    debug_summaries=True,
-    summarize_grads_and_vars=False,
-    summary_interval=1000,
-    whole_replay_buffer_training=False)
+alf.config("TrainerConfig",
+           rl_train_after_update_steps=rl_train_after_update_steps,
+           offline_buffer_dir=offline_buffer_dir,
+           offline_buffer_length=2,
+           initial_collect_steps=initial_collect_steps,
+           mini_batch_length=offline_mini_batch_length,
+           unroll_length=1,
+           mini_batch_size=offline_mini_batch_size,
+           num_updates_per_train_iter=1,
+           num_iterations=num_iterations,
+           num_checkpoints=1,
+           evaluate=False,
+           eval_interval=10000,
+           num_eval_episodes=3,
+           debug_summaries=True,
+           summarize_grads_and_vars=False,
+           summary_interval=1000,
+           whole_replay_buffer_training=False)

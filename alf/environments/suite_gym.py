@@ -59,14 +59,13 @@ def load(environment_name,
         else:
             max_episode_steps = 0
 
-    return wrap_env(
-        gym_env,
-        env_id=env_id,
-        discount=discount,
-        max_episode_steps=max_episode_steps,
-        gym_env_wrappers=gym_env_wrappers,
-        alf_env_wrappers=alf_env_wrappers,
-        image_channel_first=image_channel_first)
+    return wrap_env(gym_env,
+                    env_id=env_id,
+                    discount=discount,
+                    max_episode_steps=max_episode_steps,
+                    gym_env_wrappers=gym_env_wrappers,
+                    alf_env_wrappers=alf_env_wrappers,
+                    image_channel_first=image_channel_first)
 
 
 @alf.configurable

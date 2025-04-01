@@ -57,20 +57,23 @@ def tensor_spec_from_gym_space(space,
         # Discrete spaces span the set {0, 1, ... , n-1} while Bounded Array specs
         # are inclusive on their bounds.
         maximum = space.n - 1
-        return BoundedTensorSpec(
-            shape=(), dtype=space.dtype.name, minimum=0, maximum=maximum)
+        return BoundedTensorSpec(shape=(),
+                                 dtype=space.dtype.name,
+                                 minimum=0,
+                                 maximum=maximum)
     elif isinstance(space, gym.spaces.MultiDiscrete):
         maximum = try_simplify_array_to_value(
             np.asarray(space.nvec - 1, dtype=space.dtype))
-        return BoundedTensorSpec(
-            shape=space.shape,
-            dtype=space.dtype.name,
-            minimum=0,
-            maximum=maximum)
+        return BoundedTensorSpec(shape=space.shape,
+                                 dtype=space.dtype.name,
+                                 minimum=0,
+                                 maximum=maximum)
     elif isinstance(space, gym.spaces.MultiBinary):
         shape = (space.n, )
-        return BoundedTensorSpec(
-            shape=shape, dtype=space.dtype.name, minimum=0, maximum=1)
+        return BoundedTensorSpec(shape=shape,
+                                 dtype=space.dtype.name,
+                                 minimum=0,
+                                 maximum=1)
     elif isinstance(space, gym.spaces.Box):
 
         if float_dtype is not None and "float" in space.dtype.name:
@@ -83,11 +86,10 @@ def tensor_spec_from_gym_space(space,
         if simplify_box_bounds:
             minimum = try_simplify_array_to_value(minimum)
             maximum = try_simplify_array_to_value(maximum)
-        return BoundedTensorSpec(
-            shape=space.shape,
-            dtype=dtype.name,
-            minimum=minimum,
-            maximum=maximum)
+        return BoundedTensorSpec(shape=space.shape,
+                                 dtype=dtype.name,
+                                 minimum=minimum,
+                                 maximum=maximum)
     elif isinstance(space, gym.spaces.Tuple):
         return tuple([tensor_spec_from_gym_space(s) for s in space.spaces])
     elif isinstance(space, gym.spaces.Dict):
@@ -153,8 +155,9 @@ class AlfGymWrapper(AlfEnvironment):
                 self._gym_env.reward_space, simplify_box_bounds)
         else:
             self._reward_spec = TensorSpec(())
-        self._time_step_spec = ds.time_step_spec(
-            self._observation_spec, self._action_spec, self._reward_spec)
+        self._time_step_spec = ds.time_step_spec(self._observation_spec,
+                                                 self._action_spec,
+                                                 self._reward_spec)
         self._info = None
         self._done = True
         self._zero_info = self._obtain_zero_info()
@@ -199,12 +202,11 @@ class AlfGymWrapper(AlfEnvironment):
         self._done = False
 
         observation = self._to_spec_dtype_observation(observation)
-        return ds.restart(
-            observation=observation,
-            action_spec=self._action_spec,
-            reward_spec=self._reward_spec,
-            env_id=self._env_id,
-            env_info=self._zero_info)
+        return ds.restart(observation=observation,
+                          action_spec=self._action_spec,
+                          reward_spec=self._reward_spec,
+                          env_id=self._env_id,
+                          env_info=self._zero_info)
 
     @property
     def done(self):
@@ -226,22 +228,20 @@ class AlfGymWrapper(AlfEnvironment):
         self._info = _as_array(self._info)
 
         if self._done:
-            return ds.termination(
-                observation,
-                action,
-                reward,
-                self._reward_spec,
-                self._env_id,
-                env_info=self._info)
+            return ds.termination(observation,
+                                  action,
+                                  reward,
+                                  self._reward_spec,
+                                  self._env_id,
+                                  env_info=self._info)
         else:
-            return ds.transition(
-                observation,
-                action,
-                reward,
-                self._reward_spec,
-                self._discount,
-                self._env_id,
-                env_info=self._info)
+            return ds.transition(observation,
+                                 action,
+                                 reward,
+                                 self._reward_spec,
+                                 self._discount,
+                                 self._env_id,
+                                 env_info=self._info)
 
     def _to_spec_dtype_observation(self, observation):
         """Make sure observation from env is converted to the correct dtype.

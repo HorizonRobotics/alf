@@ -28,14 +28,13 @@ from absl.testing import parameterized
 
 
 def _create_timestep(reward, env_id, step_type, env_info):
-    return TimeStep(
-        step_type=to_tensor(step_type),
-        discount=torch.where(
-            to_tensor(step_type) == StepType.LAST, torch.tensor(0.0),
-            torch.tensor(1.0)),
-        reward=to_tensor(reward),
-        env_info=env_info,
-        env_id=to_tensor(env_id))
+    return TimeStep(step_type=to_tensor(step_type),
+                    discount=torch.where(
+                        to_tensor(step_type) == StepType.LAST,
+                        torch.tensor(0.0), torch.tensor(1.0)),
+                    reward=to_tensor(reward),
+                    env_info=env_info,
+                    env_id=to_tensor(env_id))
 
 
 def timestep_first(reward, env_id, env_info):
@@ -65,12 +64,11 @@ class AverageDrivingMetric(AverageEpisodicAggregationMetric):
                  prefix='Metrics',
                  dtype=torch.float32,
                  buffer_size=10):
-        super().__init__(
-            name=name,
-            dtype=dtype,
-            prefix=prefix,
-            buffer_size=buffer_size,
-            example_time_step=example_time_step)
+        super().__init__(name=name,
+                         dtype=dtype,
+                         prefix=prefix,
+                         buffer_size=buffer_size,
+                         example_time_step=example_time_step)
 
     def _extract_metric_values(self, time_step):
         return {
@@ -84,6 +82,7 @@ class AverageDrivingMetric(AverageEpisodicAggregationMetric):
 
 
 class THMetricsTest(parameterized.TestCase, unittest.TestCase):
+
     def _create_trajectories(self, vector_reward=False):
         # Order of args for timestep_* methods:
         # reward, env_id, env_info
@@ -94,43 +93,38 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
             else:
                 return reward
 
-        ts0 = timestep_first(
-            _vectorize_reward([0, 0]), [1, 2],
-            dict(x=to_tensor([1, 0]), y=to_tensor([1, 1])))
-        ts1 = timestep_mid(
-            _vectorize_reward([1, 2]), [1, 2],
-            dict(x=to_tensor([1, 2]), y=to_tensor([0, 3])))
-        ts2 = timestep_last(
-            _vectorize_reward([3, 4]), [1, 2],
-            dict(x=to_tensor([-1, -2]), y=to_tensor([1, -1])))
-        ts3 = timestep_first(
-            _vectorize_reward([0, 0]), [1, 2],
-            dict(x=to_tensor([1, 1]), y=to_tensor([1, 1])))
-        ts4 = timestep_mid(
-            _vectorize_reward([5, 6]), [1, 2],
-            dict(x=to_tensor([2, -2]), y=to_tensor([-1, -6])))
-        ts5 = timestep_last(
-            _vectorize_reward([7, 8]), [1, 2],
-            dict(x=to_tensor([10, 10]), y=to_tensor([5, 5])))
+        ts0 = timestep_first(_vectorize_reward([0, 0]), [1, 2],
+                             dict(x=to_tensor([1, 0]), y=to_tensor([1, 1])))
+        ts1 = timestep_mid(_vectorize_reward([1, 2]), [1, 2],
+                           dict(x=to_tensor([1, 2]), y=to_tensor([0, 3])))
+        ts2 = timestep_last(_vectorize_reward([3, 4]), [1, 2],
+                            dict(x=to_tensor([-1, -2]), y=to_tensor([1, -1])))
+        ts3 = timestep_first(_vectorize_reward([0, 0]), [1, 2],
+                             dict(x=to_tensor([1, 1]), y=to_tensor([1, 1])))
+        ts4 = timestep_mid(_vectorize_reward([5, 6]), [1, 2],
+                           dict(x=to_tensor([2, -2]), y=to_tensor([-1, -6])))
+        ts5 = timestep_last(_vectorize_reward([7, 8]), [1, 2],
+                            dict(x=to_tensor([10, 10]), y=to_tensor([5, 5])))
 
         return [ts0, ts1, ts2, ts3, ts4, ts5]
 
-    @parameterized.named_parameters(
-        [('testEnvironmentSteps', EnvironmentSteps, 5, 6, False),
-         ('testNumberOfEpisodes', NumberOfEpisodes, 4, 2, False),
-         ('testAverageReturn', AverageReturnMetric, 6, 9.0, False),
-         ('testAverageEpisodeLength', AverageEpisodeLengthMetric, 6, 2.0,
-          False),
-         ('testAverageEnvInfoMetric', AverageEnvInfoMetric, 6,
-          dict(x=torch.as_tensor(5.), y=torch.as_tensor(1.5)), False),
-         ('testAverageDiscountedReturnMetric', AverageDiscountedReturnMetric,
-          6, 7.2225, False),
-         ('testEpisodicStartAverageDiscountedReturnMetric',
-          EpisodicStartAverageDiscountedReturnMetric, 6, 8.945, False),
-         ('testAverageReturnVectorReward', AverageReturnMetric, 6, [9.0, 9.0],
-          True),
-         ('testAverageDiscountedReturnMetricVectorReward',
-          AverageDiscountedReturnMetric, 6, [7.2225, 7.2225], True)])
+    @parameterized.named_parameters([
+        ('testEnvironmentSteps', EnvironmentSteps, 5, 6, False),
+        ('testNumberOfEpisodes', NumberOfEpisodes, 4, 2, False),
+        ('testAverageReturn', AverageReturnMetric, 6, 9.0, False),
+        ('testAverageEpisodeLength', AverageEpisodeLengthMetric, 6, 2.0,
+         False),
+        ('testAverageEnvInfoMetric', AverageEnvInfoMetric, 6,
+         dict(x=torch.as_tensor(5.), y=torch.as_tensor(1.5)), False),
+        ('testAverageDiscountedReturnMetric', AverageDiscountedReturnMetric, 6,
+         7.2225, False),
+        ('testEpisodicStartAverageDiscountedReturnMetric',
+         EpisodicStartAverageDiscountedReturnMetric, 6, 8.945, False),
+        ('testAverageReturnVectorReward', AverageReturnMetric, 6, [9.0,
+                                                                   9.0], True),
+        ('testAverageDiscountedReturnMetricVectorReward',
+         AverageDiscountedReturnMetric, 6, [7.2225, 7.2225], True)
+    ])
     def testMetric(self, metric_class, num_trajectories, expected_result,
                    vector_reward):
         trajectories = self._create_trajectories(vector_reward)
@@ -161,49 +155,45 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
     def test_average_per_step(self):
         trajectories = []
         trajectories.append(
-            timestep_first(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'kinetics': {
-                        'velocity': to_tensor([4.0, 0.0]),
-                        'acceleration': to_tensor([1.0, 0.0]),
-                    },
-                    'success': to_tensor([0.0, 0.0])
-                }))
+            timestep_first(0.0,
+                           env_id=[1, 2],
+                           env_info={
+                               'kinetics': {
+                                   'velocity': to_tensor([4.0, 0.0]),
+                                   'acceleration': to_tensor([1.0, 0.0]),
+                               },
+                               'success': to_tensor([0.0, 0.0])
+                           }))
         trajectories.append(
-            timestep_mid(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'kinetics': {
-                        'velocity': to_tensor([4.0, 0.0]),
-                        'acceleration': to_tensor([1.0, 0.0]),
-                    },
-                    'success': to_tensor([0.0, 0.0])
-                }))
+            timestep_mid(0.0,
+                         env_id=[1, 2],
+                         env_info={
+                             'kinetics': {
+                                 'velocity': to_tensor([4.0, 0.0]),
+                                 'acceleration': to_tensor([1.0, 0.0]),
+                             },
+                             'success': to_tensor([0.0, 0.0])
+                         }))
         trajectories.append(
-            timestep_mid(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'kinetics': {
-                        'velocity': to_tensor([5.0, 0.0]),
-                        'acceleration': to_tensor([1.0, 0.0]),
-                    },
-                    'success': to_tensor([0.0, 0.0])
-                }))
+            timestep_mid(0.0,
+                         env_id=[1, 2],
+                         env_info={
+                             'kinetics': {
+                                 'velocity': to_tensor([5.0, 0.0]),
+                                 'acceleration': to_tensor([1.0, 0.0]),
+                             },
+                             'success': to_tensor([0.0, 0.0])
+                         }))
         trajectories.append(
-            timestep_last(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'kinetics': {
-                        'velocity': to_tensor([6.0, 0.0]),
-                        'acceleration': to_tensor([1.0, 0.0]),
-                    },
-                    'success': to_tensor([1.0, 0.0])
-                }))
+            timestep_last(0.0,
+                          env_id=[1, 2],
+                          env_info={
+                              'kinetics': {
+                                  'velocity': to_tensor([6.0, 0.0]),
+                                  'acceleration': to_tensor([1.0, 0.0]),
+                              },
+                              'success': to_tensor([1.0, 0.0])
+                          }))
 
         metric = AverageDrivingMetric(example_time_step=trajectories[0])
 
@@ -228,52 +218,47 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
         neg_inf = -float('inf')
         traj.append(
             # First step values will be ignored
-            timestep_first(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'velocity@max': to_tensor([-10, neg_inf]),
-                    'success': to_tensor([0.0, 0.0]),
-                    'value@step': to_tensor([0.0, 0.0]),
-                }))
+            timestep_first(0.0,
+                           env_id=[1, 2],
+                           env_info={
+                               'velocity@max': to_tensor([-10, neg_inf]),
+                               'success': to_tensor([0.0, 0.0]),
+                               'value@step': to_tensor([0.0, 0.0]),
+                           }))
         traj.append(
-            timestep_mid(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'velocity@max': to_tensor([neg_inf, -1.]),
-                    'success': to_tensor([1.0, -neg_inf]),
-                    'value@step': to_tensor([1.0, 2.0]),
-                }))
+            timestep_mid(0.0,
+                         env_id=[1, 2],
+                         env_info={
+                             'velocity@max': to_tensor([neg_inf, -1.]),
+                             'success': to_tensor([1.0, -neg_inf]),
+                             'value@step': to_tensor([1.0, 2.0]),
+                         }))
         traj.append(
-            timestep_last(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'velocity@max': to_tensor([neg_inf, -2.]),
-                    'success': to_tensor([0.0, 0.0]),
-                    'value@step': to_tensor([3.0, neg_inf]),
-                }))
+            timestep_last(0.0,
+                          env_id=[1, 2],
+                          env_info={
+                              'velocity@max': to_tensor([neg_inf, -2.]),
+                              'success': to_tensor([0.0, 0.0]),
+                              'value@step': to_tensor([3.0, neg_inf]),
+                          }))
         ####
         traj.append(
             # First step values will be ignored
-            timestep_first(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'velocity@max': to_tensor([-1., neg_inf]),
-                    'success': to_tensor([neg_inf, 1.0]),
-                    'value@step': to_tensor([0.0, 0.0]),
-                }))
+            timestep_first(0.0,
+                           env_id=[1, 2],
+                           env_info={
+                               'velocity@max': to_tensor([-1., neg_inf]),
+                               'success': to_tensor([neg_inf, 1.0]),
+                               'value@step': to_tensor([0.0, 0.0]),
+                           }))
         traj.append(
-            timestep_last(
-                0.0,
-                env_id=[1, 2],
-                env_info={
-                    'velocity@max': to_tensor([0., neg_inf]),
-                    'success': to_tensor([neg_inf, 1.0]),
-                    'value@step': to_tensor([neg_inf, 5.0]),
-                }))
+            timestep_last(0.0,
+                          env_id=[1, 2],
+                          env_info={
+                              'velocity@max': to_tensor([0., neg_inf]),
+                              'success': to_tensor([neg_inf, 1.0]),
+                              'value@step': to_tensor([neg_inf, 5.0]),
+                          }))
 
         metric = AverageEnvInfoMetric(example_time_step=traj[0])
 

@@ -133,9 +133,9 @@ class VectorizedObservation(ObservationBase):
             'map_mask':
                 TensorSpec(shape=(self.polyline_limit, ), dtype=torch.bool),
             'ego':
-                TensorSpec(
-                    shape=((self._position_history.point.shape[0] - 1) * 6, ),
-                    dtype=torch.float32),
+                TensorSpec(shape=((self._position_history.point.shape[0] - 1) *
+                                  6, ),
+                           dtype=torch.float32),
             'agents':
                 self._agent_perception.observation_spec,
             'agent_mask':
@@ -220,21 +220,20 @@ class BirdEyeObservation(TopDownMultiChannel):
                 by this factor before producing the feature.
 
         """
-        super().__init__(
-            env_config["vehicle_config"],
-            env_config["use_render"],
-            env_config["rgb_clip"],
-            frame_stack=env_config["frame_stack"],
-            post_stack=env_config["post_stack"],
-            frame_skip=env_config["frame_skip"],
-            resolution=(env_config["resolution_size"],
-                        env_config["resolution_size"]),
-            max_distance=env_config["distance"])
+        super().__init__(env_config["vehicle_config"],
+                         env_config["use_render"],
+                         env_config["rgb_clip"],
+                         frame_stack=env_config["frame_stack"],
+                         post_stack=env_config["post_stack"],
+                         frame_skip=env_config["frame_skip"],
+                         resolution=(env_config["resolution_size"],
+                                     env_config["resolution_size"]),
+                         max_distance=env_config["distance"])
 
         self._velocity_steps = velocity_steps
         self._velocity_normalization = velocity_normalization
-        self._velocity_history = np.zeros(
-            self._velocity_steps, dtype=np.float32)
+        self._velocity_history = np.zeros(self._velocity_steps,
+                                          dtype=np.float32)
 
     @property
     def observation_spec(self):
@@ -242,17 +241,15 @@ class BirdEyeObservation(TopDownMultiChannel):
 
         return {
             'bev':
-                BoundedTensorSpec(
-                    shape=(c, h, w),
-                    dtype=torch.float32,
-                    minimum=0.0,
-                    maximum=1.0),
+                BoundedTensorSpec(shape=(c, h, w),
+                                  dtype=torch.float32,
+                                  minimum=0.0,
+                                  maximum=1.0),
             'vel':
-                BoundedTensorSpec(
-                    shape=(self._velocity_steps, ),
-                    dtype=torch.float32,
-                    minimum=0.0,
-                    maximum=30.0)
+                BoundedTensorSpec(shape=(self._velocity_steps, ),
+                                  dtype=torch.float32,
+                                  minimum=0.0,
+                                  maximum=30.0)
         }
 
     def observe(self, vehicle: BaseVehicle):

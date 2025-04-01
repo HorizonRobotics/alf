@@ -19,36 +19,32 @@ from alf.algorithms.muzero_representation_learner import LinearTdStepFunc, Muzer
 alf.config('TrainerConfig', use_rollout_state=True)
 alf.config('ReplayBuffer', keep_episodic_info=True)
 
-alf.config(
-    "MCTSModel",
-    predict_reward_sum=True,
-    policy_loss_weight=1.0,
-    value_loss_weight=0.05,
-    repr_prediction_loss_weight=40.0,
-    reward_loss_weight=2.0)
+alf.config("MCTSModel",
+           predict_reward_sum=True,
+           policy_loss_weight=1.0,
+           value_loss_weight=0.05,
+           repr_prediction_loss_weight=40.0,
+           reward_loss_weight=2.0)
 
-alf.config(
-    "SimpleMCTSModel",
-    train_repr_prediction=True,
-    train_game_over_function=True,
-    train_policy=False,
-    initial_alpha=0.)
+alf.config("SimpleMCTSModel",
+           train_repr_prediction=True,
+           train_game_over_function=True,
+           train_policy=False,
+           initial_alpha=0.)
 
-alf.config(
-    "MuzeroRepresentationImpl",
-    model_ctor=SimpleMCTSModel,
-    reanalyze_td_steps_func=LinearTdStepFunc(
-        max_bootstrap_age=1.2, min_td_steps=1),
-    train_repr_prediction=True,
-    train_game_over_function=True,
-    train_policy=False,
-    reanalyze_ratio=0.0,
-    target_update_period=400,
-    target_update_tau=1.0)
+alf.config("MuzeroRepresentationImpl",
+           model_ctor=SimpleMCTSModel,
+           reanalyze_td_steps_func=LinearTdStepFunc(max_bootstrap_age=1.2,
+                                                    min_td_steps=1),
+           train_repr_prediction=True,
+           train_game_over_function=True,
+           train_policy=False,
+           reanalyze_ratio=0.0,
+           target_update_period=400,
+           target_update_tau=1.0)
 
 alf.config("MuzeroRepresentationLearner", impl_cls=MuzeroRepresentationImpl)
 
-alf.config(
-    'Agent',
-    representation_learner_cls=MuzeroRepresentationLearner,
-    representation_use_rl_state=True)
+alf.config('Agent',
+           representation_learner_cls=MuzeroRepresentationLearner,
+           representation_use_rl_state=True)

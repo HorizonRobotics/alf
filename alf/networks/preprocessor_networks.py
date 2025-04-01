@@ -129,8 +129,9 @@ class PreprocessorNetwork(Network):
         """
         if self._input_preprocessors:
             inputs = alf.nest.map_structure_up_to(
-                self._input_preprocessors, lambda preproc, tensor: preproc(
-                    tensor)[0], self._input_preprocessors, inputs)
+                self._input_preprocessors,
+                lambda preproc, tensor: preproc(tensor)[0],
+                self._input_preprocessors, inputs)
 
         proc_inputs = self._preprocessing_combiner(inputs)
         outer_rank = get_outer_rank(proc_inputs,

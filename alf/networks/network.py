@@ -124,10 +124,10 @@ class Network(nn.Module):
         """Generate a dummy input according to `nested_input_tensor_spec` and
         forward. Can be used to calculate output spec or testing the network.
         """
-        inputs = common.zero_tensor_from_nested_spec(
-            self._input_tensor_spec, batch_size=2)
-        states = common.zero_tensor_from_nested_spec(
-            self.state_spec, batch_size=2)
+        inputs = common.zero_tensor_from_nested_spec(self._input_tensor_spec,
+                                                     batch_size=2)
+        states = common.zero_tensor_from_nested_spec(self.state_spec,
+                                                     batch_size=2)
         return self.forward(inputs, states)
 
     def singleton(self, singleton_instance=True):
@@ -217,8 +217,8 @@ class Network(nn.Module):
         if self._output_spec is None:
             training = self.training
             self.eval()
-            self._output_spec = extract_spec(
-                self._test_forward()[0], from_dim=1)
+            self._output_spec = extract_spec(self._test_forward()[0],
+                                             from_dim=1)
             self.train(training)
         return self._output_spec
 
@@ -287,8 +287,9 @@ class NaiveParallelNetwork(Network):
             lambda spec: alf.TensorSpec((n, ) + spec.shape, spec.dtype),
             network.state_spec)
         name = name if name else 'naive_parallel_%s' % network.name
-        super().__init__(
-            network.input_tensor_spec, state_spec=state_spec, name=name)
+        super().__init__(network.input_tensor_spec,
+                         state_spec=state_spec,
+                         name=name)
         self._networks = nn.ModuleList(
             [network.copy(name=self.name + '_%d' % i) for i in range(n)])
         self._n = n
@@ -330,8 +331,8 @@ class NaiveParallelNetwork(Network):
 
         output_states = distributions_to_params(output_states)
         if self._n > 1:
-            output, new_state = alf.nest.utils.stack_nests(
-                output_states, dim=1)
+            output, new_state = alf.nest.utils.stack_nests(output_states,
+                                                           dim=1)
         else:
             output, new_state = alf.nest.map_structure(
                 lambda x: x.unsqueeze(1), output_states[0])
@@ -359,9 +360,9 @@ class NetworkWrapper(Network):
             name: name of the wrapped network
         """
         super().__init__(input_tensor_spec, state_spec, name)
-        assert isinstance(
-            module,
-            typing.Callable), ("module is not Callable: %s" % type(module))
+        assert isinstance(module,
+                          typing.Callable), ("module is not Callable: %s" %
+                                             type(module))
         self._module = module
 
     def forward(self, x, state=()):

@@ -56,14 +56,13 @@ class LSTMCell(Network):
             input_size (int): The number of expected features in the input `x`
             hidden_size (int): The number of features in the hidden state `h`
         """
-        state_spec = (alf.TensorSpec((hidden_size, )),
-                      alf.TensorSpec((hidden_size, )))
-        super().__init__(
-            input_tensor_spec=alf.TensorSpec((input_size, )),
-            state_spec=state_spec,
-            name=name)
-        self._cell = nn.LSTMCell(
-            input_size=input_size, hidden_size=hidden_size)
+        state_spec = (alf.TensorSpec(
+            (hidden_size, )), alf.TensorSpec((hidden_size, )))
+        super().__init__(input_tensor_spec=alf.TensorSpec((input_size, )),
+                         state_spec=state_spec,
+                         name=name)
+        self._cell = nn.LSTMCell(input_size=input_size,
+                                 hidden_size=hidden_size)
 
     def forward(self, input, state):
         h_state, c_state = self._cell(input, state)
@@ -91,10 +90,9 @@ class GRUCell(Network):
             input_size (int): The number of expected features in the input `x`
             hidden_size (int): The number of features in the hidden state `h`
         """
-        super().__init__(
-            input_tensor_spec=alf.TensorSpec((input_size, )),
-            state_spec=alf.TensorSpec((hidden_size, )),
-            name=name)
+        super().__init__(input_tensor_spec=alf.TensorSpec((input_size, )),
+                         state_spec=alf.TensorSpec((hidden_size, )),
+                         name=name)
         self._cell = nn.GRUCell(input_size, hidden_size)
 
     def forward(self, input, state):
@@ -121,10 +119,9 @@ class Residue(Network):
             activation (Callable): activation function
         """
         block = wrap_as_network(block, input_tensor_spec)
-        super().__init__(
-            input_tensor_spec=block.input_tensor_spec,
-            state_spec=block.state_spec,
-            name='Residue')
+        super().__init__(input_tensor_spec=block.input_tensor_spec,
+                         state_spec=block.state_spec,
+                         name='Residue')
         self._block = block
         self._activation = activation
 
@@ -257,13 +254,13 @@ class TemporalPool(Network):
 
     def _avg_pool(self, x, state, step):
         w = expand_dims_as(1. / step.to(torch.float32), x)
-        state = torch.where(
-            expand_dims_as(step == 1, x), x, torch.lerp(state, x, w))
+        state = torch.where(expand_dims_as(step == 1, x), x,
+                            torch.lerp(state, x, w))
         return state, state
 
     def _max_pool(self, x, state, step):
-        state = torch.where(
-            expand_dims_as(step == 1, x), x, torch.max(x, state))
+        state = torch.where(expand_dims_as(step == 1, x), x,
+                            torch.max(x, state))
         return state, state
 
 
@@ -286,10 +283,9 @@ class Delay(Network):
             state_spec = (input_tensor_spec, ) * delay
             self._forward = lambda i, s: (s[0], s[1:] + (i, ))
 
-        super().__init__(
-            input_tensor_spec=input_tensor_spec,
-            state_spec=state_spec,
-            name=name)
+        super().__init__(input_tensor_spec=input_tensor_spec,
+                         state_spec=state_spec,
+                         name=name)
 
     def forward(self, input, state):
         return self._forward(input, state)
@@ -304,8 +300,9 @@ class AMPWrapper(Network):
     """
 
     def __init__(self, enabled: bool, net: Network):
-        super().__init__(
-            net.input_tensor_spec, state_spec=net.state_spec, name=net.name)
+        super().__init__(net.input_tensor_spec,
+                         state_spec=net.state_spec,
+                         name=net.name)
         self._net = net
         self._enabled = enabled
         self._amp_dtype = alf.get_config_value('TrainerConfig.amp_dtype')
@@ -384,10 +381,10 @@ class NoisyFC(Network):
                  bias_initializer: Optional[Callable] = None,
                  weight_opt_args: Optional[Dict] = None,
                  bias_opt_args: Optional[Dict] = None):
-        super().__init__(
-            input_tensor_spec=alf.TensorSpec((input_size, )),
-            state_spec=(alf.TensorSpec((input_size, )),
-                        alf.TensorSpec((output_size, )))),
+        super().__init__(input_tensor_spec=alf.TensorSpec((input_size, )),
+                         state_spec=(alf.TensorSpec(
+                             (input_size, )), alf.TensorSpec(
+                                 (output_size, )))),
         self._input_size = input_size
         self._output_size = output_size
         self._activation = activation
@@ -443,20 +440,19 @@ class NoisyFC(Network):
     def reset_parameters(self):
         """Initialize the parameters."""
         if self._kernel_initializer is None:
-            variance_scaling_init(
-                self._weight.data,
-                gain=self._kernel_init_gain,
-                nonlinearity=self._activation)
+            variance_scaling_init(self._weight.data,
+                                  gain=self._kernel_init_gain,
+                                  nonlinearity=self._activation)
         else:
             self._kernel_initializer(self._weight.data)
-        self._weight_sigma.data.fill_(
-            self._std_init / math.sqrt(self._input_size))
+        self._weight_sigma.data.fill_(self._std_init /
+                                      math.sqrt(self._input_size))
         if self._bias_initializer is not None:
             self._bias_initializer(self._bias.data)
         else:
             nn.init.constant_(self._bias.data, self._bias_init_value)
-        self._bias_sigma.data.fill_(
-            self._std_init / math.sqrt(self._output_size))
+        self._bias_sigma.data.fill_(self._std_init /
+                                    math.sqrt(self._output_size))
         if self._use_ln:
             self._ln.reset_parameters()
         if self._use_bn:
@@ -481,8 +477,8 @@ class NoisyFC(Network):
         if not is_eval():
             batch_size = input.shape[0]
             new_epsilon_in = self._scale_noise((batch_size, self._input_size))
-            new_epsilon_out = self._scale_noise((batch_size,
-                                                 self._output_size))
+            new_epsilon_out = self._scale_noise(
+                (batch_size, self._output_size))
             new_noise = torch.rand(batch_size) < self._new_noise_prob
             # The initial state is always 0. So we need to generate new noise
             # for initial state.

@@ -28,15 +28,15 @@ from alf.algorithms.ppg_algorithm import PPGAuxOptions, PPGAlgorithm
 from alf.environments import suite_metadrive
 from alf.networks import StableNormalProjectionNetwork, TruncatedProjectionNetwork, BetaProjectionNetwork, EncodingNetwork
 
-alf.config(
-    'create_environment', env_name='Vectorized', num_parallel_environments=36)
+alf.config('create_environment',
+           env_name='Vectorized',
+           num_parallel_environments=36)
 
-alf.config(
-    'metadrive.sensors.VectorizedObservation',
-    segment_resolution=2.0,
-    polyline_size=4,
-    polyline_limit=128,
-    history_window_size=24)
+alf.config('metadrive.sensors.VectorizedObservation',
+           segment_resolution=2.0,
+           polyline_size=4,
+           polyline_limit=128,
+           history_window_size=24)
 
 
 class EmbeddingConfig(NamedTuple):
@@ -104,6 +104,7 @@ class ObservationCombiner(torch.nn.Module):
 
 
 class MaskedTransformer(torch.nn.Module):
+
     def __init__(self, d_model, num_heads, num_layers, map_limit, agent_limit):
         super().__init__()
         self._memory_size = 1 + map_limit + agent_limit
@@ -111,18 +112,17 @@ class MaskedTransformer(torch.nn.Module):
         tf_layers = []
         for i in range(num_layers):
             tf_layers.append(
-                alf.layers.TransformerBlock(
-                    d_model=d_model,
-                    num_heads=num_heads,
-                    memory_size=self._memory_size,
-                    positional_encoding='none'))
+                alf.layers.TransformerBlock(d_model=d_model,
+                                            num_heads=num_heads,
+                                            memory_size=self._memory_size,
+                                            positional_encoding='none'))
         self._tf_layers = torch.nn.ModuleList(tf_layers)
 
     def forward(self, inputs):
         x, map_mask, agent_mask = inputs
         B = x.shape[0]
-        mask = torch.hstack((torch.zeros(B, 1, dtype=bool), map_mask,
-                             agent_mask))
+        mask = torch.hstack((torch.zeros(B, 1,
+                                         dtype=bool), map_mask, agent_mask))
         for layer in self._tf_layers:
             x = layer(memory=x, mask=mask)
 
@@ -179,19 +179,17 @@ def encoding_network_ctor(input_tensor_spec):
 alf.config('ReplayBuffer.gather_all', convert_to_default_device=False)
 alf.config('data_transformer.create_data_transformer', device="cpu")
 
-stable_normal_proj_net = partial(
-    StableNormalProjectionNetwork,
-    state_dependent_std=True,
-    squash_mean=False,
-    scale_distribution=True,
-    min_std=1e-3,
-    max_std=10.0)
+stable_normal_proj_net = partial(StableNormalProjectionNetwork,
+                                 state_dependent_std=True,
+                                 squash_mean=False,
+                                 scale_distribution=True,
+                                 min_std=1e-3,
+                                 max_std=10.0)
 
 # NOTE: replace stable_normal_proj_net with the other projection
-alf.config(
-    'DisjointPolicyValueNetwork',
-    continuous_projection_net_ctor=stable_normal_proj_net,
-    is_sharing_encoder=True)
+alf.config('DisjointPolicyValueNetwork',
+           continuous_projection_net_ctor=stable_normal_proj_net,
+           is_sharing_encoder=True)
 
 alf.config(
     'PPGAlgorithm',
@@ -207,20 +205,18 @@ alf.config(
         num_updates_per_train_iter=6,
     ))
 
-alf.config(
-    'PPOLoss',
-    compute_advantages_internally=True,
-    entropy_regularization=0.005,
-    gamma=0.999,
-    td_lambda=0.95,
-    td_loss_weight=0.5)
+alf.config('PPOLoss',
+           compute_advantages_internally=True,
+           entropy_regularization=0.005,
+           gamma=0.999,
+           td_lambda=0.95,
+           td_loss_weight=0.5)
 
-alf.config(
-    'PPGAuxPhaseLoss',
-    td_error_loss_fn=element_wise_squared_loss,
-    policy_kl_loss_weight=1.0,
-    gamma=0.999,
-    td_lambda=0.95)
+alf.config('PPGAuxPhaseLoss',
+           td_error_loss_fn=element_wise_squared_loss,
+           policy_kl_loss_weight=1.0,
+           gamma=0.999,
+           td_lambda=0.95)
 
 # training config
 alf.config(

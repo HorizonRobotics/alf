@@ -21,17 +21,15 @@ from alf.examples import ppo_bipedal_walker_conf
 from alf.networks import LatentActorDistributionNetwork
 from alf.algorithms.entropy_target_algorithm import SGDEntropyTargetAlgorithm
 
-alf.config(
-    "ActorCriticAlgorithm",
-    actor_network_ctor=partial(
-        LatentActorDistributionNetwork, scale_distribution=True))
+alf.config("ActorCriticAlgorithm",
+           actor_network_ctor=partial(LatentActorDistributionNetwork,
+                                      scale_distribution=True))
 
-alf.config(
-    "RealNVPNetwork",
-    fc_layer_params=(128, ),
-    num_layers=5,
-    activation=torch.relu_)
+alf.config("RealNVPNetwork",
+           fc_layer_params=(128, ),
+           num_layers=5,
+           activation=torch.relu_)
 
-alf.config(
-    'Agent',
-    entropy_target_cls=partial(SGDEntropyTargetAlgorithm, initial_alpha=1.))
+alf.config('Agent',
+           entropy_target_cls=partial(SGDEntropyTargetAlgorithm,
+                                      initial_alpha=1.))

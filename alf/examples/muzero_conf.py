@@ -19,15 +19,14 @@ from alf.experience_replayers.replay_buffer import ReplayBuffer
 
 alf.config('Agent', rl_algorithm_cls=MuzeroAlgorithm)
 
-alf.config(
-    'TrainerConfig',
-    algorithm_ctor=Agent,
-    mini_batch_length=1,
-    whole_replay_buffer_training=False,
-    clear_replay_buffer=False,
-    use_rollout_state=True,
-    debug_summaries=True,
-    summarize_grads_and_vars=True)
+alf.config('TrainerConfig',
+           algorithm_ctor=Agent,
+           mini_batch_length=1,
+           whole_replay_buffer_training=False,
+           clear_replay_buffer=False,
+           use_rollout_state=True,
+           debug_summaries=True,
+           summarize_grads_and_vars=True)
 
 alf.config('ReplayBuffer', keep_episodic_info=True)
 

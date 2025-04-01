@@ -27,6 +27,7 @@ import alf.summary.render as render
 
 
 class MoNetVisualizer(Algorithm):
+
     def _tensor_to_image(self, tensor, height=None, width=None):
         # Convert a [0,1] tensor to uint8 image
         img = (torch.clamp(tensor, 0., 1.) * 255).to(torch.uint8)
@@ -45,19 +46,18 @@ class MoNetVisualizer(Algorithm):
             imgs['rec'] = render.Image.stack_images([
                 render.render_text(
                     name='', data='reconstructed image', font_size=6),
-                self._tensor_to_image(
-                    monet_info.full_rec.squeeze(0), height=256)
+                self._tensor_to_image(monet_info.full_rec.squeeze(0),
+                                      height=256)
             ],
                                                     horizontal=False)
 
             def _overlay_slot_selection(slot_sel, height):
-                slot_sel = self._tensor_to_image(
-                    torch.cat(
-                        (slot_sel, torch.zeros((2, ) + slot_sel.shape[1:3])),
-                        dim=0),
-                    height=height)
-                img = self._tensor_to_image(
-                    im.squeeze(0).squeeze(0), height=height)
+                slot_sel = self._tensor_to_image(torch.cat(
+                    (slot_sel, torch.zeros((2, ) + slot_sel.shape[1:3])),
+                    dim=0),
+                                                 height=height)
+                img = self._tensor_to_image(im.squeeze(0).squeeze(0),
+                                            height=height)
                 return render.Image(img.data / 5 + slot_sel.data / 5 * 4)
 
             # [B,G,H,W]
@@ -97,16 +97,15 @@ class MoNetAgent(RLAlgorithm):
                  debug_summaries=False,
                  name="MoNetAgent"):
 
-        super().__init__(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            train_state_spec=(),
-            optimizer=optimizer,
-            is_on_policy=False,
-            env=env,
-            config=config,
-            debug_summaries=debug_summaries,
-            name=name)
+        super().__init__(observation_spec=observation_spec,
+                         action_spec=action_spec,
+                         train_state_spec=(),
+                         optimizer=optimizer,
+                         is_on_policy=False,
+                         env=env,
+                         config=config,
+                         debug_summaries=debug_summaries,
+                         name=name)
 
         self._monet = MoNetAlgorithm(input_tensor_spec=observation_spec)
         self._vis = MoNetVisualizer()
@@ -116,8 +115,8 @@ class MoNetAgent(RLAlgorithm):
 
     def predict_step(self, time_step, state):
         alg_step = self.rollout_step(time_step, state)
-        vi_step = self._vis.predict_step((alg_step.info,
-                                          time_step.observation))
+        vi_step = self._vis.predict_step(
+            (alg_step.info, time_step.observation))
         return alg_step._replace(info=vi_step.info)
 
     def rollout_step(self, time_step, state):
@@ -129,55 +128,51 @@ class MoNetAgent(RLAlgorithm):
         return self._monet.calc_loss(info)
 
 
-alf.config(
-    "create_environment",
-    env_load_fn=suite_simple.load,
-    env_name="BouncingSquares",
-    num_parallel_environments=20)
+alf.config("create_environment",
+           env_load_fn=suite_simple.load,
+           env_name="BouncingSquares",
+           num_parallel_environments=20)
 
-alf.config(
-    "suite_simple.load",
-    env_args=dict(N=64, noise_level=0., color=True),
-    max_episode_steps=10)
+alf.config("suite_simple.load",
+           env_args=dict(N=64, noise_level=0., color=True),
+           max_episode_steps=10)
 
 obs_spec = alf.get_raw_observation_spec()
-alf.config(
-    "MoNetAlgorithm",
-    n_slots=3,
-    slot_size=8,
-    attention_unet_cls=partial(
-        MoNetUNet, filters=(64, ) * 5, nonskip_fc_layers=(128, ) * 2),
-    encoder_cls=partial(
-        alf.networks.EncodingNetwork,
-        conv_layer_params=((32, 4, 2, 1), (32, 4, 2, 1), (64, 4, 2, 1),
-                           (64, 4, 2, 1), (64, 4, 2, 1)),
-        fc_layer_params=(256, )),
-    decoder_cls=partial(
-        alf.networks.SpatialBroadcastDecodingNetwork,
-        conv_layer_params=((32, 3, 1), ) * 4 + (
-            (obs_spec.shape[0] + 1, 3, 1), ),
-        fc_layer_params=(32, )),
-    recurrent_attention=True,
-    beta=0.,
-    gamma=0.)
+alf.config("MoNetAlgorithm",
+           n_slots=3,
+           slot_size=8,
+           attention_unet_cls=partial(MoNetUNet,
+                                      filters=(64, ) * 5,
+                                      nonskip_fc_layers=(128, ) * 2),
+           encoder_cls=partial(alf.networks.EncodingNetwork,
+                               conv_layer_params=((32, 4, 2, 1), (32, 4, 2, 1),
+                                                  (64, 4, 2, 1), (64, 4, 2, 1),
+                                                  (64, 4, 2, 1)),
+                               fc_layer_params=(256, )),
+           decoder_cls=partial(alf.networks.SpatialBroadcastDecodingNetwork,
+                               conv_layer_params=((32, 3, 1), ) * 4 +
+                               ((obs_spec.shape[0] + 1, 3, 1), ),
+                               fc_layer_params=(32, )),
+           recurrent_attention=True,
+           beta=0.,
+           gamma=0.)
 
-alf.config(
-    'TrainerConfig',
-    algorithm_ctor=partial(
-        MoNetAgent, optimizer=alf.optimizers.AdamTF(lr=1e-4)),
-    data_transformer_ctor=[partial(ImageScaleTransformer, min=0.)],
-    whole_replay_buffer_training=False,
-    clear_replay_buffer=False,
-    temporally_independent_train_step=True,
-    summarize_first_interval=False,
-    num_iterations=100000,
-    mini_batch_size=256,
-    mini_batch_length=1,
-    num_updates_per_train_iter=1,
-    unroll_length=2,
-    evaluate=False,
-    summary_interval=50,
-    debug_summaries=True,
-    summarize_grads_and_vars=True,
-    initial_collect_steps=10000,
-    replay_buffer_length=10000)
+alf.config('TrainerConfig',
+           algorithm_ctor=partial(MoNetAgent,
+                                  optimizer=alf.optimizers.AdamTF(lr=1e-4)),
+           data_transformer_ctor=[partial(ImageScaleTransformer, min=0.)],
+           whole_replay_buffer_training=False,
+           clear_replay_buffer=False,
+           temporally_independent_train_step=True,
+           summarize_first_interval=False,
+           num_iterations=100000,
+           mini_batch_size=256,
+           mini_batch_length=1,
+           num_updates_per_train_iter=1,
+           unroll_length=2,
+           evaluate=False,
+           summary_interval=50,
+           debug_summaries=True,
+           summarize_grads_and_vars=True,
+           initial_collect_steps=10000,
+           replay_buffer_length=10000)

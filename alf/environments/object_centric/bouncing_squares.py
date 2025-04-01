@@ -44,11 +44,11 @@ class BouncingSquares(gym.Env):
         super().__init__()
 
         size = N * pixels_per_node
-        self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=(size, size, 3 if color else 1),
-            dtype=np.uint8)
+        self.observation_space = spaces.Box(low=0,
+                                            high=255,
+                                            shape=(size, size,
+                                                   3 if color else 1),
+                                            dtype=np.uint8)
         self.action_space = spaces.Discrete(2)
         self._N = N
         self._colors = ([(0, 255, 0), (0, 0, 255), (120, 120, 120),
@@ -65,13 +65,14 @@ class BouncingSquares(gym.Env):
         return (loc[0], loc[0] + size[0] - 1), (loc[1], loc[1] + size[1] - 1)
 
     def reset(self):
+
         def _initialize_loc(size):
             return np.array((np.random.randint(self._N - size[0]),
                              np.random.randint(self._N - size[1])))
 
         def _initialize_speed():
-            return np.array((np.random.randint(-3, 4), np.random.randint(
-                -3, 4)))
+            return np.array((np.random.randint(-3,
+                                               4), np.random.randint(-3, 4)))
 
         def _initialize_size():
             sizes = [4, 5]
@@ -115,10 +116,9 @@ class BouncingSquares(gym.Env):
         _paint_square(self._square1, img, self._size1, self._color1 or 255)
         _paint_square(self._square2, img, self._size2, self._color2 or 255)
 
-        img = cv2.resize(
-            img,
-            dsize=(self._N * self._pixels_per_node, ) * 2,
-            interpolation=cv2.INTER_NEAREST)
+        img = cv2.resize(img,
+                         dsize=(self._N * self._pixels_per_node, ) * 2,
+                         interpolation=cv2.INTER_NEAREST)
         return img
 
     def _collision(self):
@@ -131,6 +131,7 @@ class BouncingSquares(gym.Env):
         return True
 
     def step(self, action):
+
         def _boundary_collision(sq, sp, s, osq):
             if sq[0] < 0 or sq[0] + s[0] - 1 >= self._N:
                 return osq, sp * np.array([-1, 1])
@@ -155,10 +156,9 @@ class BouncingSquares(gym.Env):
 
     def render(self, mode="human"):
         obs = self._obs()
-        obs = cv2.resize(
-            obs,
-            dsize=(self._render_size, self._render_size),
-            interpolation=cv2.INTER_NEAREST)
+        obs = cv2.resize(obs,
+                         dsize=(self._render_size, self._render_size),
+                         interpolation=cv2.INTER_NEAREST)
         if mode == "rgb_array":
             return obs
         else:

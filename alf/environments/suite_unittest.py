@@ -59,11 +59,15 @@ class UnittestEnv(AlfEnvironment):
 
         def _create_action_spec(act_type):
             if act_type == ActionType.Discrete:
-                return BoundedTensorSpec(
-                    shape=(), dtype=torch.int64, minimum=0, maximum=1)
+                return BoundedTensorSpec(shape=(),
+                                         dtype=torch.int64,
+                                         minimum=0,
+                                         maximum=1)
             else:
-                return BoundedTensorSpec(
-                    shape=(1, ), dtype=torch.float32, minimum=[0], maximum=[1])
+                return BoundedTensorSpec(shape=(1, ),
+                                         dtype=torch.float32,
+                                         minimum=[0],
+                                         maximum=[1])
 
         self._action_spec = alf.nest.map_structure(_create_action_spec,
                                                    action_type)
@@ -120,9 +124,10 @@ class UnittestEnv(AlfEnvironment):
         self._steps += 1
         time_step = self._gen_time_step(self._steps % self._episode_length,
                                         action)
-        self._current_time_step = time_step._replace(
-            prev_action=action,
-            env_id=torch.arange(self.batch_size, dtype=torch.int32))
+        self._current_time_step = time_step._replace(prev_action=action,
+                                                     env_id=torch.arange(
+                                                         self.batch_size,
+                                                         dtype=torch.int32))
         return self._current_time_step
 
     @abstractmethod
@@ -158,15 +163,14 @@ class ValueUnittestEnv(UnittestEnv):
             step_type = StepType.LAST
             discount = 0.0
 
-        return TimeStep(
-            step_type=torch.full([self.batch_size],
-                                 step_type,
-                                 dtype=torch.int32),
-            reward=torch.ones(self.batch_size),
-            discount=torch.full([
-                self.batch_size,
-            ], discount),
-            observation=torch.ones(self.batch_size))
+        return TimeStep(step_type=torch.full([self.batch_size],
+                                             step_type,
+                                             dtype=torch.int32),
+                        reward=torch.ones(self.batch_size),
+                        discount=torch.full([
+                            self.batch_size,
+                        ], discount),
+                        observation=torch.ones(self.batch_size))
 
 
 class PolicyUnittestEnv(UnittestEnv):
@@ -198,18 +202,19 @@ class PolicyUnittestEnv(UnittestEnv):
         if self._reward_dim != 1:
             reward = reward.unsqueeze(-1).expand((-1, self._reward_dim))
 
-        observation = torch.randint(
-            0, 2, size=(self.batch_size, 1), dtype=torch.float32)
+        observation = torch.randint(0,
+                                    2,
+                                    size=(self.batch_size, 1),
+                                    dtype=torch.float32)
         if self._nested_observation:
             observation = (observation, torch.randn_like(observation))
 
-        return TimeStep(
-            step_type=torch.full([self.batch_size],
-                                 step_type,
-                                 dtype=torch.int32),
-            reward=reward,
-            discount=torch.full([self.batch_size], discount),
-            observation=observation)
+        return TimeStep(step_type=torch.full([self.batch_size],
+                                             step_type,
+                                             dtype=torch.int32),
+                        reward=reward,
+                        discount=torch.full([self.batch_size], discount),
+                        observation=observation)
 
 
 class MixedPolicyUnittestEnv(UnittestEnv):
@@ -246,19 +251,18 @@ class MixedPolicyUnittestEnv(UnittestEnv):
             discount = 0.0
 
         if s > 0:
-            reward = (action[0] == (action[1].squeeze(-1) > 0.5).to(
-                torch.int64)).to(torch.float32)
+            reward = (action[0] == (action[1].squeeze(-1)
+                                    > 0.5).to(torch.int64)).to(torch.float32)
 
         observation = self._observation_spec.randn(
             outer_dims=(self.batch_size, ))
 
-        return TimeStep(
-            step_type=torch.full([self.batch_size],
-                                 step_type,
-                                 dtype=torch.int32),
-            reward=reward,
-            discount=torch.full([self.batch_size], discount),
-            observation=observation)
+        return TimeStep(step_type=torch.full([self.batch_size],
+                                             step_type,
+                                             dtype=torch.int32),
+                        reward=reward,
+                        discount=torch.full([self.batch_size], discount),
+                        observation=observation)
 
 
 class RNNPolicyUnittestEnv(UnittestEnv):
@@ -276,11 +280,10 @@ class RNNPolicyUnittestEnv(UnittestEnv):
                  obs_dim=1):
         self._gap = gap
         self._obs_dim = obs_dim
-        super(RNNPolicyUnittestEnv, self).__init__(
-            batch_size,
-            episode_length,
-            action_type=action_type,
-            obs_dim=obs_dim)
+        super(RNNPolicyUnittestEnv, self).__init__(batch_size,
+                                                   episode_length,
+                                                   action_type=action_type,
+                                                   obs_dim=obs_dim)
 
     def _gen_time_step(self, s, action):
         step_type = StepType.MID
@@ -314,10 +317,9 @@ class RNNPolicyUnittestEnv(UnittestEnv):
         else:
             observation = torch.zeros(self.batch_size, obs_dim)
 
-        return TimeStep(
-            step_type=torch.full([self.batch_size],
-                                 step_type,
-                                 dtype=torch.int32),
-            reward=reward,
-            discount=torch.full([self.batch_size], discount),
-            observation=observation)
+        return TimeStep(step_type=torch.full([self.batch_size],
+                                             step_type,
+                                             dtype=torch.int32),
+                        reward=reward,
+                        discount=torch.full([self.batch_size], discount),
+                        observation=observation)

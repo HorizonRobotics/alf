@@ -256,6 +256,7 @@ class FastParallelEnvironment(alf_environment.AlfEnvironment):
         return stacked
 
     def _step(self, action):
+
         def _to_numpy(x):
             # When AMP is enabled, the action.dtype can be torch.float16. We
             # need to convert it to torch.float32 to match the dtype from

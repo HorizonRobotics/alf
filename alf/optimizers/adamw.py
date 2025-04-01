@@ -75,12 +75,11 @@ class AdamW(Optimizer):
         if not 0.0 <= weight_decay:
             raise ValueError(
                 "Invalid weight_decay value: {}".format(weight_decay))
-        defaults = dict(
-            lr=lr,
-            betas=betas,
-            eps=eps,
-            weight_decay=weight_decay,
-            amsgrad=amsgrad)
+        defaults = dict(lr=lr,
+                        betas=betas,
+                        eps=eps,
+                        weight_decay=weight_decay,
+                        amsgrad=amsgrad)
         super(AdamW, self).__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -148,19 +147,18 @@ class AdamW(Optimizer):
                 # record the step after step update
                 state_steps.append(state['step'])
 
-            _adamw(
-                params_with_grad,
-                grads,
-                exp_avgs,
-                exp_avg_sqs,
-                max_exp_avg_sqs,
-                state_steps,
-                amsgrad=amsgrad,
-                beta1=beta1,
-                beta2=beta2,
-                lr=group['lr'],
-                weight_decay=group['weight_decay'],
-                eps=group['eps'])
+            _adamw(params_with_grad,
+                   grads,
+                   exp_avgs,
+                   exp_avg_sqs,
+                   max_exp_avg_sqs,
+                   state_steps,
+                   amsgrad=amsgrad,
+                   beta1=beta1,
+                   beta2=beta2,
+                   lr=group['lr'],
+                   weight_decay=group['weight_decay'],
+                   eps=group['eps'])
 
         return loss
 

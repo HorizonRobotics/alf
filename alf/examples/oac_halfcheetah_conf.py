@@ -26,57 +26,53 @@ from alf.utils.losses import element_wise_squared_loss
 from alf.examples import sac_conf
 
 # environment config
-alf.config(
-    'create_environment',
-    env_name="HalfCheetah-v2",
-    num_parallel_environments=1)
+alf.config('create_environment',
+           env_name="HalfCheetah-v2",
+           num_parallel_environments=1)
 
 # algorithm config
 fc_layer_params = (256, 256)
 
-actor_network_cls = partial(
-    ActorDistributionNetwork,
-    fc_layer_params=fc_layer_params,
-    continuous_projection_net_ctor=partial(
-        NormalProjectionNetwork,
-        state_dependent_std=True,
-        scale_distribution=True,
-        std_transform=clipped_exp))
+actor_network_cls = partial(ActorDistributionNetwork,
+                            fc_layer_params=fc_layer_params,
+                            continuous_projection_net_ctor=partial(
+                                NormalProjectionNetwork,
+                                state_dependent_std=True,
+                                scale_distribution=True,
+                                std_transform=clipped_exp))
 
-critic_network_cls = partial(
-    CriticNetwork, joint_fc_layer_params=fc_layer_params)
+critic_network_cls = partial(CriticNetwork,
+                             joint_fc_layer_params=fc_layer_params)
 
 alf.config('calc_default_target_entropy', min_prob=0.184)
 
-alf.config(
-    'OacAlgorithm',
-    actor_network_cls=actor_network_cls,
-    critic_network_cls=critic_network_cls,
-    explore_delta=6.,
-    target_update_tau=0.005,
-    actor_optimizer=AdamTF(lr=3e-4),
-    critic_optimizer=AdamTF(lr=3e-4),
-    alpha_optimizer=AdamTF(lr=3e-4))
+alf.config('OacAlgorithm',
+           actor_network_cls=actor_network_cls,
+           critic_network_cls=critic_network_cls,
+           explore_delta=6.,
+           target_update_tau=0.005,
+           actor_optimizer=AdamTF(lr=3e-4),
+           critic_optimizer=AdamTF(lr=3e-4),
+           alpha_optimizer=AdamTF(lr=3e-4))
 
 alf.config('OneStepTDLoss', td_error_loss_fn=element_wise_squared_loss)
 
 # training config
 alf.config('Agent', rl_algorithm_cls=OacAlgorithm)
 
-alf.config(
-    'TrainerConfig',
-    initial_collect_steps=10000,
-    mini_batch_length=2,
-    unroll_length=1,
-    mini_batch_size=256,
-    num_updates_per_train_iter=1,
-    num_iterations=2500000,
-    num_checkpoints=1,
-    evaluate=True,
-    eval_interval=1000,
-    num_eval_episodes=5,
-    debug_summaries=False,
-    random_seed=0,
-    summarize_grads_and_vars=False,
-    summary_interval=1000,
-    replay_buffer_length=1000000)
+alf.config('TrainerConfig',
+           initial_collect_steps=10000,
+           mini_batch_length=2,
+           unroll_length=1,
+           mini_batch_size=256,
+           num_updates_per_train_iter=1,
+           num_iterations=2500000,
+           num_checkpoints=1,
+           evaluate=True,
+           eval_interval=1000,
+           num_eval_episodes=5,
+           debug_summaries=False,
+           random_seed=0,
+           summarize_grads_and_vars=False,
+           summary_interval=1000,
+           replay_buffer_length=1000000)

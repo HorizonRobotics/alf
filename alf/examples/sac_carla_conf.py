@@ -17,8 +17,9 @@ import torch
 
 import alf
 from alf.algorithms.td_loss import TDLoss
-from alf.algorithms.data_transformer import (
-    ImageScaleTransformer, ObservationNormalizer, RewardNormalizer)
+from alf.algorithms.data_transformer import (ImageScaleTransformer,
+                                             ObservationNormalizer,
+                                             RewardNormalizer)
 from alf.environments import suite_carla
 from alf.environments.alf_wrappers import (ActionObservationWrapper,
                                            ScalarRewardWrapper)
@@ -108,29 +109,26 @@ activation = torch.relu_
 use_batch_normalization = False
 learning_rate = 1e-4
 
-proj_net = partial(
-    alf.networks.StableNormalProjectionNetwork,
-    state_dependent_std=True,
-    squash_mean=False,
-    scale_distribution=True,
-    min_std=1e-3,
-    max_std=10)
+proj_net = partial(alf.networks.StableNormalProjectionNetwork,
+                   state_dependent_std=True,
+                   squash_mean=False,
+                   scale_distribution=True,
+                   min_std=1e-3,
+                   max_std=10)
 
-actor_network_cls = partial(
-    alf.networks.ActorDistributionNetwork,
-    input_preprocessors=alf.layers.Detach(),
-    fc_layer_params=fc_layers_params,
-    activation=activation,
-    use_fc_bn=use_batch_normalization,
-    continuous_projection_net_ctor=proj_net)
+actor_network_cls = partial(alf.networks.ActorDistributionNetwork,
+                            input_preprocessors=alf.layers.Detach(),
+                            fc_layer_params=fc_layers_params,
+                            activation=activation,
+                            use_fc_bn=use_batch_normalization,
+                            continuous_projection_net_ctor=proj_net)
 
 env = alf.get_env()
 
-critic_network_cls = partial(
-    alf.networks.CriticNetwork,
-    joint_fc_layer_params=fc_layers_params,
-    activation=activation,
-    use_fc_bn=use_batch_normalization)
+critic_network_cls = partial(alf.networks.CriticNetwork,
+                             joint_fc_layer_params=fc_layers_params,
+                             activation=activation,
+                             use_fc_bn=use_batch_normalization)
 
 from alf.utils.dist_utils import calc_default_target_entropy
 
@@ -139,39 +137,36 @@ encoder_cls = partial(
     alf.networks.EncodingNetwork,
     input_preprocessors=carla_conf.create_input_preprocessors(
         encoding_dim, use_batch_normalization),
-    preprocessing_combiner=alf.layers.NestSum(
-        activation=activation, average=True),
+    preprocessing_combiner=alf.layers.NestSum(activation=activation,
+                                              average=True),
     activation=activation,
     fc_layer_params=fc_layers_params,
 )
 from alf.algorithms.encoding_algorithm import EncodingAlgorithm
+
 alf.config('EncodingAlgorithm', encoder_cls=encoder_cls)
 
 # config PredictiveRepresentationLearner
 from alf.algorithms.predictive_representation_learner import PredictiveRepresentationLearner, SimpleDecoder
 
-decoder_net_ctor = partial(
-    alf.networks.EncodingNetwork,
-    fc_layer_params=fc_layers_params,
-    last_layer_size=suite_carla.Player.REWARD_DIMENSION,
-    last_activation=alf.math.identity,
-    last_kernel_initializer=torch.nn.init.zeros_)
-decoder_ctor = partial(
-    SimpleDecoder,
-    decoder_net_ctor=decoder_net_ctor,
-    target_field='reward',
-    summarize_each_dimension=True)
-dynamics_net_ctor = partial(
-    alf.networks.LSTMEncodingNetwork,
-    preprocessing_combiner=alf.layers.NestSum(
-        activation=activation, average=True),
-    hidden_size=(encoding_dim, encoding_dim))
-alf.config(
-    'PredictiveRepresentationLearner',
-    num_unroll_steps=10,
-    decoder_ctor=decoder_ctor,
-    encoding_net_ctor=encoder_cls,
-    dynamics_net_ctor=dynamics_net_ctor)
+decoder_net_ctor = partial(alf.networks.EncodingNetwork,
+                           fc_layer_params=fc_layers_params,
+                           last_layer_size=suite_carla.Player.REWARD_DIMENSION,
+                           last_activation=alf.math.identity,
+                           last_kernel_initializer=torch.nn.init.zeros_)
+decoder_ctor = partial(SimpleDecoder,
+                       decoder_net_ctor=decoder_net_ctor,
+                       target_field='reward',
+                       summarize_each_dimension=True)
+dynamics_net_ctor = partial(alf.networks.LSTMEncodingNetwork,
+                            preprocessing_combiner=alf.layers.NestSum(
+                                activation=activation, average=True),
+                            hidden_size=(encoding_dim, encoding_dim))
+alf.config('PredictiveRepresentationLearner',
+           num_unroll_steps=10,
+           decoder_ctor=decoder_ctor,
+           encoding_net_ctor=encoder_cls,
+           dynamics_net_ctor=dynamics_net_ctor)
 
 alf.config('ReplayBuffer', keep_episodic_info=True)
 
@@ -190,29 +185,29 @@ if not taac:
     from alf.algorithms.sac_algorithm import SacAlgorithm
     alf.config('Agent', rl_algorithm_cls=SacAlgorithm)
 
-    alf.config(
-        'SacAlgorithm',
-        actor_network_cls=actor_network_cls,
-        critic_network_cls=critic_network_cls,
-        target_entropy=partial(calc_default_target_entropy, min_prob=0.1),
-        target_update_tau=0.005,
-        critic_loss_ctor=TDLoss,
-        use_entropy_reward=False)
+    alf.config('SacAlgorithm',
+               actor_network_cls=actor_network_cls,
+               critic_network_cls=critic_network_cls,
+               target_entropy=partial(calc_default_target_entropy,
+                                      min_prob=0.1),
+               target_update_tau=0.005,
+               critic_loss_ctor=TDLoss,
+               use_entropy_reward=False)
 else:
     from alf.algorithms.taac_algorithm import TaacLAlgorithm
 
     alf.config('Agent', rl_algorithm_cls=TaacLAlgorithm)
-    alf.config(
-        'TrainerConfig',
-        use_rollout_state=True,
-        temporally_independent_train_step=True)
+    alf.config('TrainerConfig',
+               use_rollout_state=True,
+               temporally_independent_train_step=True)
 
-    alf.config(
-        'TaacAlgorithmBase',
-        actor_network_cls=actor_network_cls,
-        critic_network_cls=critic_network_cls,
-        target_update_tau=0.005,
-        target_entropy=(partial(calc_default_target_entropy, min_prob=0.1),
-                        partial(calc_default_target_entropy, min_prob=0.1)))
+    alf.config('TaacAlgorithmBase',
+               actor_network_cls=actor_network_cls,
+               critic_network_cls=critic_network_cls,
+               target_update_tau=0.005,
+               target_entropy=(partial(calc_default_target_entropy,
+                                       min_prob=0.1),
+                               partial(calc_default_target_entropy,
+                                       min_prob=0.1)))
     # In this particular task, ``inverse_mode=False`` will be much better
     alf.config('TaacLAlgorithm', inverse_mode=False)

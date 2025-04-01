@@ -24,6 +24,7 @@ def func(x, w, b, scale=1.0):
 
 
 class TestLeanFunction(alf.test.TestCase):
+
     def test_lean_function(self):
         x = torch.randn((3, 4), requires_grad=True)
         w = torch.randn((4, 5), requires_grad=True)

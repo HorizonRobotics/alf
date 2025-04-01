@@ -41,10 +41,9 @@ alf.config('DMAtariPreprocessing', noop_max=0)
 #   while v4 has 0 (always follow your issued action)
 # Because we already implements frame_skip in AtariPreprocessing, we should always
 # use 'NoFrameSkip' Atari environments from OpenAI gym
-alf.config(
-    'create_environment',
-    env_name='MontezumaRevengeNoFrameskip-v0',
-    num_parallel_environments=128)
+alf.config('create_environment',
+           env_name='MontezumaRevengeNoFrameskip-v0',
+           num_parallel_environments=128)
 
 # RND config
 
@@ -57,23 +56,21 @@ alf.config(
         activation=torch.tanh,
         input_tensor_spec=TensorSpec(shape=(KEEP_STACKED_FRAMES, 84, 84)),
         conv_layer_params=((64, 5, 5), (64, 2, 2), (64, 2, 2))),
-    target_net=EncodingNetwork(
-        activation=torch.tanh,
-        input_tensor_spec=TensorSpec(shape=(1024, )),
-        fc_layer_params=(300, 400, 500, EMBEDDING_DIM)),
-    predictor_net=EncodingNetwork(
-        activation=torch.tanh,
-        input_tensor_spec=TensorSpec(shape=(1024, )),
-        fc_layer_params=(300, 400, 500, EMBEDDING_DIM)),
+    target_net=EncodingNetwork(activation=torch.tanh,
+                               input_tensor_spec=TensorSpec(shape=(1024, )),
+                               fc_layer_params=(300, 400, 500, EMBEDDING_DIM)),
+    predictor_net=EncodingNetwork(activation=torch.tanh,
+                                  input_tensor_spec=TensorSpec(shape=(1024, )),
+                                  fc_layer_params=(300, 400, 500,
+                                                   EMBEDDING_DIM)),
     optimizer=alf.optimizers.AdamTF(lr=4e-5),
     keep_stacked_frames=KEEP_STACKED_FRAMES)
 
-alf.config(
-    'Agent',
-    extrinsic_reward_coef=1.0,
-    intrinsic_reward_module=RNDAlgorithm(),
-    intrinsic_reward_coef=1e-3,
-    optimizer=alf.optimizers.AdamTF(lr=1e-4))
+alf.config('Agent',
+           extrinsic_reward_coef=1.0,
+           intrinsic_reward_module=RNDAlgorithm(),
+           intrinsic_reward_coef=1e-3,
+           optimizer=alf.optimizers.AdamTF(lr=1e-4))
 
 alf.config('PPOLoss', entropy_regularization=0.01)
 
@@ -89,15 +86,13 @@ actor_network_cls = functools.partial(
 
 alf.config('CategoricalProjectionNetwork', logits_init_output_factor=1e-10)
 
-value_network_cls = functools.partial(
-    ValueNetwork,
-    fc_layer_params=FC_LAYER_PARAMS,
-    conv_layer_params=CONV_LAYER_PARAMS)
+value_network_cls = functools.partial(ValueNetwork,
+                                      fc_layer_params=FC_LAYER_PARAMS,
+                                      conv_layer_params=CONV_LAYER_PARAMS)
 
-alf.config(
-    'ActorCriticAlgorithm',
-    actor_network_ctor=actor_network_cls,
-    value_network_ctor=value_network_cls)
+alf.config('ActorCriticAlgorithm',
+           actor_network_ctor=actor_network_cls,
+           value_network_ctor=value_network_cls)
 
 alf.config(
     'TrainerConfig',

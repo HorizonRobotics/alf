@@ -25,11 +25,16 @@ from alf.environments.gym_wrappers import (FrameStack, FrameResize, FrameCrop,
 
 # FakeEnvironments adapted from gym/gym/wrappers/test_pixel_observation.py
 class FakeEnvironment(gym.Env):
+
     def __init__(self):
-        self.action_space = spaces.Box(
-            shape=(1, ), low=-2, high=3, dtype=np.float32)
-        self.observation_space = spaces.Box(
-            shape=(10, ), low=-1, high=1, dtype=np.float32)
+        self.action_space = spaces.Box(shape=(1, ),
+                                       low=-2,
+                                       high=3,
+                                       dtype=np.float32)
+        self.observation_space = spaces.Box(shape=(10, ),
+                                            low=-1,
+                                            high=1,
+                                            dtype=np.float32)
         self.action = None
 
     def render(self, width=32, height=32, *args, **kwargs):
@@ -48,6 +53,7 @@ class FakeEnvironment(gym.Env):
 
 
 class FakeDictObservationEnvironment(FakeEnvironment):
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.observation_space = spaces.Dict({
@@ -60,16 +66,19 @@ class FakeDictObservationEnvironment(FakeEnvironment):
             'dict':
                 spaces.Dict({
                     'inner_states':
-                        spaces.Box(
-                            shape=(7, ), low=-1, high=1, dtype=np.float32),
+                        spaces.Box(shape=(7, ),
+                                   low=-1,
+                                   high=1,
+                                   dtype=np.float32),
                 })
         })
 
 
 class FrameStackTest(alf.test.TestCase):
+
     def _create_env(self, stack_fields):
-        return FrameStack(
-            env=FakeDictObservationEnvironment(), fields=stack_fields)
+        return FrameStack(env=FakeDictObservationEnvironment(),
+                          fields=stack_fields)
 
     def test_framestack_all_fields(self):
         env = self._create_env(
@@ -110,12 +119,12 @@ class FrameStackTest(alf.test.TestCase):
 
 
 class FrameResizeTest(parameterized.TestCase, alf.test.TestCase):
+
     def _create_env(self, width, height):
-        return FrameResize(
-            env=FakeDictObservationEnvironment(),
-            width=width,
-            height=height,
-            fields=["image"])
+        return FrameResize(env=FakeDictObservationEnvironment(),
+                           width=width,
+                           height=height,
+                           fields=["image"])
 
     @parameterized.parameters((10, 11), (12, 11))
     def test_frame_resize(self, width, height):
@@ -150,15 +159,15 @@ class FrameResizeTest(parameterized.TestCase, alf.test.TestCase):
 
 
 class FrameCropTest(parameterized.TestCase, alf.test.TestCase):
+
     def _create_env(self, sx, sy, width, height, channel_order):
-        return FrameCrop(
-            env=FakeDictObservationEnvironment(),
-            sx=sx,
-            sy=sy,
-            width=width,
-            height=height,
-            channel_order=channel_order,
-            fields=["image"])
+        return FrameCrop(env=FakeDictObservationEnvironment(),
+                         sx=sx,
+                         sy=sy,
+                         width=width,
+                         height=height,
+                         channel_order=channel_order,
+                         fields=["image"])
 
     @parameterized.parameters(
         (0, 0, 1, 1, 'channels_last'), (0, 0, 1, 2, 'channels_last'),
@@ -168,12 +177,11 @@ class FrameCropTest(parameterized.TestCase, alf.test.TestCase):
         (0, 0, 2, 1, 'channels_first'), (1, 0, 1, 1, 'channels_first'),
         (0, 1, 1, 1, 'channels_first'), (0, 0, 2, 2, 'channels_first'))
     def test_frame_crop(self, sx, sy, width, height, channel_order):
-        env = self._create_env(
-            sx=sx,
-            sy=sy,
-            width=width,
-            height=height,
-            channel_order=channel_order)
+        env = self._create_env(sx=sx,
+                               sy=sy,
+                               width=width,
+                               height=height,
+                               channel_order=channel_order)
         obs = env.reset()
         all_shapes = (
             obs['image'].shape,
@@ -204,6 +212,7 @@ class FrameCropTest(parameterized.TestCase, alf.test.TestCase):
 
 
 class ActionWrappersTest(alf.test.TestCase):
+
     def test_continuous_action_clipping(self):
         env = ContinuousActionClip(FakeEnvironment())
         action = env.action_space.high + 0.1

@@ -148,8 +148,8 @@ def softclip_tf(x, low, high, hinge_softness=1.):
     assert torch.all(high > low), "Invalid clipping range"
 
     softupper_high_at_low = softupper(low, high, hinge_softness)
-    clipped = softupper(
-        softlower(x, low, hinge_softness), high, hinge_softness)
+    clipped = softupper(softlower(x, low, hinge_softness), high,
+                        hinge_softness)
     return ((clipped - high) / (high - softupper_high_at_low) * (high - low) +
             high)
 

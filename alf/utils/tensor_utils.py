@@ -140,13 +140,15 @@ def explained_variance(ypred, y, valid_mask=None, dim=None):
     if dim is None:
         if valid_mask is not None:
             valid_mask = valid_mask.reshape(-1)
-        return explained_variance(
-            ypred.reshape(-1), y.reshape(-1), valid_mask, dim=0)
+        return explained_variance(ypred.reshape(-1),
+                                  y.reshape(-1),
+                                  valid_mask,
+                                  dim=0)
 
     if valid_mask is not None:
         n = torch.max(
-            valid_mask.sum(dim=dim).to(y.dtype), torch.tensor(
-                1, dtype=y.dtype))
+            valid_mask.sum(dim=dim).to(y.dtype), torch.tensor(1,
+                                                              dtype=y.dtype))
     else:
         n = y.shape[dim]
 

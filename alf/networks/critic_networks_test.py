@@ -29,6 +29,7 @@ from alf.nest.utils import NestConcat
 
 
 class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
+
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
             post_rnn_fc_layer_params = (6, 4)
@@ -127,8 +128,8 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
                 optimizer.zero_grad()
                 cost.backward()
                 optimizer.step()
-            logging.info(
-                "%s time=%s cost=%s" % (name, time.time() - t0, float(cost)))
+            logging.info("%s time=%s cost=%s" %
+                         (name, time.time() - t0, float(cost)))
 
         pnet = critic_net.make_parallel(replicas)
         _train(pnet, "ParallelCriticNetwork")
@@ -145,19 +146,20 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         self.assertRaises(AssertionError, net_ctor, (obs_spec, action_spec))
 
         # ... unless an preprocessor is specified
-        net_ctor((obs_spec, action_spec),
-                 action_input_processors=EmbeddingPreprocessor(
-                     action_spec, embedding_dim=10))
+        net_ctor(
+            (obs_spec, action_spec),
+            action_input_processors=EmbeddingPreprocessor(action_spec,
+                                                          embedding_dim=10))
 
     @parameterized.parameters((CriticNetwork, ), (CriticRNNNetwork, ))
     def test_mixed_actions(self, net_ctor):
         obs_spec = TensorSpec((20, ))
-        action_spec = dict(
-            x=BoundedTensorSpec((), dtype='int64'), y=BoundedTensorSpec((3, )))
+        action_spec = dict(x=BoundedTensorSpec((), dtype='int64'),
+                           y=BoundedTensorSpec((3, )))
 
-        input_preprocessors = dict(
-            x=EmbeddingPreprocessor(action_spec['x'], embedding_dim=10),
-            y=None)
+        input_preprocessors = dict(x=EmbeddingPreprocessor(action_spec['x'],
+                                                           embedding_dim=10),
+                                   y=None)
 
         net_ctor = functools.partial(
             net_ctor, action_input_processors=input_preprocessors)

@@ -24,6 +24,7 @@ from alf.tensor_specs import BoundedTensorSpec
 
 
 class SuiteHighwayTest(parameterized.TestCase, alf.test.TestCase):
+
     def setUp(self):
         super().setUp()
         if not suite_highway.is_available():
@@ -62,8 +63,8 @@ class SuiteHighwayTest(parameterized.TestCase, alf.test.TestCase):
 
         constructor = functools.partial(ctor)
 
-        self._env = parallel_environment.ParallelAlfEnvironment(
-            [constructor] * env_num)
+        self._env = parallel_environment.ParallelAlfEnvironment([constructor] *
+                                                                env_num)
 
         self.assertTrue(self._env.batched)
         self.assertEqual(self._env.batch_size, env_num)
@@ -106,8 +107,8 @@ class SuiteHighwayTest(parameterized.TestCase, alf.test.TestCase):
             }
         }
 
-        env = suite_highway.load(
-            environment_name="highway-v0", env_config=env_config)
+        env = suite_highway.load(environment_name="highway-v0",
+                                 env_config=env_config)
         self.assertEqual(env.observation_spec().shape, (21, ))
         self.assertTrue(env.action_spec().is_discrete)
         self.assertEqual(env.action_spec().numel, 1)
@@ -136,8 +137,8 @@ class SuiteHighwayTest(parameterized.TestCase, alf.test.TestCase):
             "duration": max_episode_steps
         }
 
-        self._env = suite_highway.load(
-            environment_name="highway-v0", env_config=env_config)
+        self._env = suite_highway.load(environment_name="highway-v0",
+                                       env_config=env_config)
 
         for i in range(max_episode_steps):
             actions = self._env.action_spec().sample().cpu().numpy()

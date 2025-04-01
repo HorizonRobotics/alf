@@ -20,15 +20,13 @@ import alf
 from alf.examples import sac_bipedal_walker_conf
 from alf.networks import LatentActorDistributionNetwork
 
-alf.config(
-    "RealNVPNetwork",
-    fc_layer_params=(64, 64),
-    num_layers=5,
-    mask_mode="random",
-    activation=torch.relu_,
-    transform_scale_nonlinear=torch.nn.functional.softplus)
+alf.config("RealNVPNetwork",
+           fc_layer_params=(64, 64),
+           num_layers=5,
+           mask_mode="random",
+           activation=torch.relu_,
+           transform_scale_nonlinear=torch.nn.functional.softplus)
 
-alf.config(
-    'SacAlgorithm',
-    actor_network_cls=partial(
-        LatentActorDistributionNetwork, scale_distribution=True))
+alf.config('SacAlgorithm',
+           actor_network_cls=partial(LatentActorDistributionNetwork,
+                                     scale_distribution=True))
