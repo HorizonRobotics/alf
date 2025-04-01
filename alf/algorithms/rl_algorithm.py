@@ -32,6 +32,7 @@ from alf.data_structures import (AlgStep, Experience, make_experience,
 from alf.utils import common, dist_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.distributed import data_distributed_when
+from alf.utils.per_process_context import PerProcessContext
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
@@ -834,6 +835,8 @@ class RLAlgorithm(Algorithm):
 
     def _train_iter_off_policy(self):
         """User may override this for their own training procedure."""
+        if PerProcessContext().ddp_rank >= 0:
+            torch.distributed.barrier()
         unrolled, root_inputs, rollout_info = self._unroll_iter_off_policy()
 
         # replay buffer may not have been created for two different reasons:
@@ -846,7 +849,11 @@ class RLAlgorithm(Algorithm):
             return 0
 
         self.train()
+        if PerProcessContext().ddp_rank >= 0:
+            torch.distributed.barrier()
         steps = self.train_from_replay_buffer(update_global_counter=True)
+        if PerProcessContext().ddp_rank >= 0:
+            torch.distributed.barrier()
 
         if unrolled:
             with record_time("time/after_train_iter"):

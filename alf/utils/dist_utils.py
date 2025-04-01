@@ -29,6 +29,41 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from .distributions import TruncatedDistribution, TruncatedNormal, TruncatedCauchy, TruncatedT2
 
 
+# patch Categorical for debugging invalid logits
+def __categorical_init__(self, probs=None, logits=None, validate_args=None):
+    if (probs is None) == (logits is None):
+        raise ValueError(
+            "Either `probs` or `logits` must be specified, but not both.")
+    if probs is not None:
+        if probs.dim() < 1:
+            raise ValueError(
+                "`probs` parameter must be at least one-dimensional.")
+        self.probs = probs / probs.sum(-1, keepdim=True)
+    else:
+        if logits.dim() < 1:
+            raise ValueError(
+                "`logits` parameter must be at least one-dimensional.")
+        # Normalize
+        self.logits = logits - logits.logsumexp(dim=-1, keepdim=True)
+        valid = self.arg_constraints['logits'].check(self.logits)
+        if not valid.all():
+            invalid = (~valid).nonzero(as_tuple=True)[0]
+            raise ValueError(
+                f"Invalid logits: self.logits[{invalid}]={self.logits[invalid]}, logits[{invalid}]={logits[invalid]}."
+            )
+
+    self._param = self.probs if probs is not None else self.logits
+    self._num_events = self._param.size()[-1]
+    batch_shape = (self._param.size()[:-1]
+                   if self._param.ndimension() > 1 else torch.Size())
+
+    super(td.Categorical, self).__init__(
+        batch_shape, validate_args=validate_args)
+
+
+td.Categorical.__init__ = __categorical_init__
+
+
 def get_invertible(cls):
     """A helper function to turn on the cache mechanism for transformation.
     This is useful as some transformations (say :math:`g`) may not be able to
@@ -840,6 +875,12 @@ class DistributionSpec(object):
             Distribution:
         """
         nest.assert_same_structure(input_params, self.input_params_spec)
+        for k, v in input_params.items():
+            if not v.isfinite().all():
+                print("Invalid value for %s, dtype=%s, spec=%s" %
+                      (k, v.dtype, self.input_params_spec[k]))
+                raise ValueError("Invalid value for %s, dtype=%s, spec=%s" %
+                                 (k, v.dtype, self.input_params_spec[k]))
         return self.builder(**input_params)
 
     @classmethod
