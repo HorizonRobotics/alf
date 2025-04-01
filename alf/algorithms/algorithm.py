@@ -168,7 +168,7 @@ class Algorithm(AlgorithmInterface):
             self._temporally_independent_train_step = config.temporally_independent_train_step
             self.use_rollout_state = config.use_rollout_state
             if (config.enable_amp and torch.cuda.is_available()
-                    and config.amd_dtype == torch.float16):
+                    and config.amp_dtype == torch.float16):
                 self._grad_scaler = torch.cuda.amp.GradScaler()
         if self._temporally_independent_train_step is None:
             self._temporally_independent_train_step = (len(
