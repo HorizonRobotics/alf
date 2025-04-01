@@ -257,7 +257,7 @@ class Checkpointer(object):
         # model checkpoint.
         map_location = torch.device('cpu')
 
-        checkpoint = torch.load(f_path, map_location=map_location)
+        checkpoint = torch.load(f_path, map_location=map_location, weights_only=False)
         if including_optimizer:
             opt_checkpoint = torch.load(
                 f_path + '-optimizer', map_location=map_location)

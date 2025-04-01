@@ -302,7 +302,7 @@ class NormalProjectionNetwork(Network):
         if self._disable_amp and amp_enabled:
             inputs = alf.layers.to_float32(inputs)
             amp_enabled = False
-        with torch.cuda.amp.autocast(amp_enabled):
+        with torch.amp.autocast("cuda", enabled=amp_enabled):
             means = self._mean_transform(self._means_projection_layer(inputs))
             stds = self._std_transform(self._std_projection_layer(inputs))
             return self._normal_dist(means, stds), state
