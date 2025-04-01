@@ -790,7 +790,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             torch.cuda.empty_cache()
 
         if self._unroller_only:
-            self._unroller_iter_off_policy()
+            self._unroll_iter_off_policy()
             return 0
 
         if not self._registered:
