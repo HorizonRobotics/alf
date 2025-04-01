@@ -14,7 +14,7 @@
 """Schedulers."""
 from functools import partial
 from numbers import Number
-from typing import Callable
+from typing import Callable, Union
 
 import alf
 
@@ -338,8 +338,12 @@ class CyclicalScheduler(Scheduler):
             "This scheduler is cyclical and does not have a final value.")
 
 
-def as_scheduler(value_or_scheduler):
-    if isinstance(value_or_scheduler, Callable):
+ValueOrScheduler = Union[Number, Scheduler]
+
+
+def as_scheduler(value_or_scheduler: ValueOrScheduler) -> Scheduler:
+    """Convert a value to a scheduler, or return the original scheduler."""
+    if isinstance(value_or_scheduler, Scheduler):
         return value_or_scheduler
     else:
         return ConstantScheduler(value_or_scheduler)
