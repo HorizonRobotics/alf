@@ -15,7 +15,7 @@ Workflow
     pip install cpplint==1.4.4
     pip install pydocstyle==4.0.0
     pip install pylint==2.3.1
-    pip install yapf==0.28.0
+    pip install yapf==0.43.0
     sudo apt install clang-format
 
 
