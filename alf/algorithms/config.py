@@ -54,6 +54,7 @@ class TrainerConfig(object):
                  num_eval_episodes=10,
                  num_eval_environments: int = 1,
                  async_eval: bool = True,
+                 shared_train_eval_env: bool = False,
                  save_checkpoint_for_best_eval: Optional[Callable] = None,
                  ddp_paras_check_interval: int = 0,
                  num_summaries=None,
@@ -229,6 +230,10 @@ class TrainerConfig(object):
             num_eval_environments: the number of environments for evaluation.
             async_eval: whether to do evaluation asynchronously in a different
                 process. Note that this may use more memory.
+            shared_train_eval_env: whether the training and evaluation environments are
+                shared. If True, the environment instance used in training will also be
+                used in evaluation. This is useful for cases such as rl-in-real with a
+                single physical environment.
             save_checkpoint_for_best_eval: If provided, will be called with a list of
                 evaluation metrics. If it returns True, a checkpoint will be saved.
                 A possible value of this option is `alf.trainers.evaluator.BestEvalChecker()`,
@@ -387,6 +392,7 @@ class TrainerConfig(object):
         self.num_eval_episodes = num_eval_episodes
         self.num_eval_environments = num_eval_environments
         self.async_eval = async_eval
+        self.shared_train_eval_env = shared_train_eval_env
         self.save_checkpoint_for_best_eval = save_checkpoint_for_best_eval
         self.ddp_paras_check_interval = ddp_paras_check_interval
         self.num_summaries = num_summaries
