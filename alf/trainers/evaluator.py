@@ -194,7 +194,8 @@ class SyncEvaluator(object):
         num_eval_episodes = config.num_eval_episodes
         num_eval_steps = config.num_eval_steps
 
-        assert num_eval_episodes == 0 or num_eval_steps == 0, "should use at most one eval mode"
+        assert num_eval_episodes == 0 or num_eval_steps(
+        ) == 0, "should use at most one eval mode"
 
         self._env = env
         self._config = config
