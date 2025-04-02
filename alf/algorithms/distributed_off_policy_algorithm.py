@@ -798,6 +798,6 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             with record_time("time/unroller_train_iter/1_unroll_iter_off_policy"):
                 self._unroll_iter_off_policy()
 
-        with record_time("time/unroller_train_iter/2_check_params_update"):
-            self._check_params_update()
-        return 0
+            with record_time("time/unroller_train_iter/2_check_params_update"):
+                self._check_params_update()
+            return 0
