@@ -26,8 +26,21 @@ import alf
 
 
 def torch_dtype_to_str(dtype):
+    """Convert a torch.dtype to a string."""
     assert isinstance(dtype, torch.dtype)
     return dtype.__str__()[6:]
+
+
+def dtype_to_str(dtype) -> str:
+    """Convert a torch.dtype or numpy dtype to a string."""
+    if isinstance(dtype, torch.dtype):
+        return torch_dtype_to_str(dtype)
+    elif np.issubdtype(dtype, np.number):
+        return np.dtype(dtype).name
+    else:
+        raise TypeError(
+            "dtype must be a torch.dtype or numpy dtype, but got: {}".format(
+                type(dtype)))
 
 
 @alf.configurable

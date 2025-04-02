@@ -20,7 +20,7 @@ from typing import Iterable
 
 import alf.nest as nest
 from alf.nest.utils import get_outer_rank
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec, dtype_to_str
 from . import dist_utils
 from alf.utils.tensor_utils import BatchSquash
 
@@ -146,7 +146,7 @@ def consistent_with_spec(nested, spec, from_dim=0):
     def _check_spec(path, x, s):
         if not (len(x.shape) - from_dim == len(s.shape)
                 and x.shape[from_dim:] == s.shape
-                and x.dtype == np.dtype(s.dtype_str)):
+                and dtype_to_str(x.dtype) == s.dtype_str):
             print(
                 f"Spec mismatch at path: {path}, "
                 f"tensor shape={x.shape} tensor dtype={x.dtype} "
