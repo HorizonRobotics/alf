@@ -81,6 +81,10 @@ class Scheduler(object):
         assert progress_type in _progress
         self._progress_type = progress_type
 
+    def __call__(self):
+        raise NotImplementedError(
+            "Child classes should implement this method.")
+
     def progress(self):
         assert _is_scheduler_allowed, (
             "Scheduler is not allowed in Environment "

@@ -438,7 +438,10 @@ def evaluate(env: AlfEnvironment,
         total_num = num_episodes
     else:
         episode_mode = False
-        num_eval_steps = num_steps()
+        if isinstance(num_steps, Scheduler):
+            num_eval_steps = num_steps()
+        else:
+            num_eval_steps = num_steps
         assert num_eval_steps > 0
         # adjust the ``num_eval_steps`` so that all the envs will have the same number of steps
         num_eval_steps = math.ceil(num_eval_steps / batch_size) * batch_size
