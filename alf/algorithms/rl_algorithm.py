@@ -662,6 +662,7 @@ class RLAlgorithm(Algorithm):
         original_reward_list = []
         initial_state = self.get_initial_rollout_state(self._env.batch_size)
 
+        policy_step_time = 0.
         env_step_time = 0.
         store_exp_time = 0.
         for _ in range(unroll_length):
@@ -669,13 +670,17 @@ class RLAlgorithm(Algorithm):
                 policy_state, initial_state, time_step.is_first())
             transformed_time_step, trans_state = self.transform_timestep(
                 time_step, trans_state)
+
+            t0 = time.time()
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
+            policy_step_time += time.time() - t0
 
             action = common.detach(policy_step.output)
 
             t0 = time.time()
-            next_time_step = self._env.step(action)
+            with record_time("time/_sync_unroll/2_env_step"):
+                next_time_step = self._env.step(action)
             env_step_time += time.time() - t0
 
             # For typical cases, there is no impact since the action at the
@@ -694,6 +699,9 @@ class RLAlgorithm(Algorithm):
             time_step = next_time_step
             policy_state = policy_step.state
 
+        alf.summary.scalar("time/unroll_policy_step_time",
+                           policy_step_time,
+                           average_over_summary_interval=True)
         alf.summary.scalar("time/unroll_env_step",
                            env_step_time,
                            average_over_summary_interval=True)
