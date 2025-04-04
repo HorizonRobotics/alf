@@ -56,18 +56,18 @@ Read the ALF documentation [here](https://alf.readthedocs.io/).
 ## Installation
 
 #### OS software
-The following installation was tested on Ubuntu22.04 with CUDA 11.8.
+The following installation has been tested on Ubuntu22.04 and Ubuntu24.04 with CUDA 11.8.
 
-Python3.11 is currently supported by ALF. Note that some pip packages (e.g., pybullet) need python dev files, so make sure python3.11-dev is installed:
+Python3.10-3.12 is currently supported by ALF. Note that some pip packages (e.g., pybullet) need python dev files, so make sure the corresponding python3-dev package is installed:
 
 ```
 sudo apt install -y python3.11 python3.11-dev
 ```
 
-Boost is also required by ALF for fast parallel environments.
-
+We also require the following packages: 
 ```
-sudo apt install libboost-all-dev
+sudo apt install libboost-all-dev   # required by ALF for fast parallel environments.
+sudo apt install swig               # required to build box2d-py
 ```
 
 #### Python environment
@@ -76,8 +76,7 @@ sudo apt install libboost-all-dev
 ```
 git clone https://github.com/HorizonRobotics/alf
 cd alf
-pip install pybind11
-pip install -e . --extra-index-url https://download.pytorch.org/whl/cu118
+pip install -e .
 ```
 
 #### For Nix Users
