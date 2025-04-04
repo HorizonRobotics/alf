@@ -43,5 +43,3 @@ TrainerConfig.num_iterations=100000
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=100
-
-

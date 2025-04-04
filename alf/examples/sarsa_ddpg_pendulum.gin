@@ -20,4 +20,3 @@ TrainerConfig.initial_collect_steps=1000
 TrainerConfig.mini_batch_size=128
 TrainerConfig.num_iterations=20000
 TrainerConfig.summary_interval=100
-

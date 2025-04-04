@@ -122,6 +122,3 @@ RUN pip3 install -r /tmp/requirements.txt
 
 # clean
 RUN  rm -rf /var/lib/apt/lists/*
-
-
-

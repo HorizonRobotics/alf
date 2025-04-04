@@ -79,4 +79,3 @@ TrainerConfig.use_tf_functions = True
 TrainerConfig.replay_buffer_length=32
 
 TrainerConfig.data_transformer_ctor=@ImageScaleTransformer
-

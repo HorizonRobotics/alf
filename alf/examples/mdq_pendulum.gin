@@ -64,5 +64,3 @@ TrainerConfig.summarize_grads_and_vars=False
 TrainerConfig.summary_interval=100
 TrainerConfig.replay_buffer_length=10000
 TrainerConfig.algorithm_ctor=@MdqAlgorithm
-
-
