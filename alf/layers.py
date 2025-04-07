@@ -38,6 +38,7 @@ from alf.utils.tensor_utils import BatchSquash, tensor_extend_new_dim
 from alf.utils import dist_utils
 from .norm_layers import BatchNorm1d, BatchNorm2d, prepare_rnn_batch_norm
 from .norm_layers import ParamLayerNorm1d, ParamLayerNorm2d
+from alf.ext import fused_linear_act
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -408,6 +409,14 @@ class FC(nn.Module):
         if bias_opt_args and self._bias is not None:
             self._bias.opt_args = bias_opt_args
 
+        self._act_name = "NONE"
+        if not use_bn and not use_ln:
+            if activation in (F.relu_, F.relu, torch.relu,
+                              torch.relu_) or isinstance(activation, nn.ReLU):
+                self._act_name = "RELU"
+            elif activation == F.gelu or isinstance(activation, nn.GELU):
+                self._act_name = "GELU"
+
     @property
     def input_size(self):
         return self._input_size
@@ -452,8 +461,14 @@ class FC(nn.Module):
         Returns:
             Tensor: with shape as ``inputs.shape[:-1] + (output_size,)``
         """
-        if inputs.dim() == 2 and self._use_bias:
-            y = torch.addmm(self._bias, inputs, self._weight.t())
+        # self._act_name = "NONE"
+        # if inputs.dim() == 2 and self._use_bias:
+        #     y = torch.addmm(self._bias, inputs, self._weight.t())
+        if 2 <= inputs.ndim <= 3:
+            y = fused_linear_act(inputs, self._weight, self._bias,
+                                 self._act_name)
+            # y = F.linear(inputs, self._weight, self._bias)
+            # self._act_name = "NONE"
         else:
             y = inputs.matmul(self._weight.t())
             if self._use_bias:
@@ -464,7 +479,9 @@ class FC(nn.Module):
             y = self._ln(y)
         if self._use_bn:
             y = self._bn(y)
-        return self._activation(y)
+        if self._act_name == "NONE":
+            y = self._activation(y)
+        return y
 
     @property
     def weight(self):

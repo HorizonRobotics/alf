@@ -126,6 +126,9 @@ class Network(nn.Module):
         """
         inputs = common.zero_tensor_from_nested_spec(self._input_tensor_spec,
                                                      batch_size=2)
+        inputs = alf.nest.map_structure(
+            lambda x: x.to(torch.float32)
+            if x.dtype.is_floating_point else x, inputs)
         states = common.zero_tensor_from_nested_spec(self.state_spec,
                                                      batch_size=2)
         return self.forward(inputs, states)
