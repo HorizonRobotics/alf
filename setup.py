@@ -22,10 +22,10 @@ setup(
     install_requires=[
         'absl-py',
         'atari_py==0.2.9',
-        # used by Box2D-based environments (e.g. BipedalWalker, LunarLander)
-        'box2d-py',
-        'cpplint',
+        'box2d-py',  # used by Box2D-based environments (e.g. BipedalWalker, LunarLander)
         'clang-format==17.0.6',
+        'cnest@git+https://github.com/HorizonRobotics/cnest.git',
+        'cpplint',
         'fasteners',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym==0.15.4',
@@ -39,17 +39,17 @@ setup(
         'pre-commit',
         'protobuf',
         'psutil',
-        'pybullet==2.5.0',
         'pybind11',
-        'pyglet==1.3.2',  # higher version breaks classic control rendering
+        'pybullet==2.5.0',
         'pylint',
+        'pyglet==1.3.2',  # higher version breaks classic control rendering
         'rectangle-packer',
         'tensorboard',
         'threadpoolctl',
         'torch',
-        'torchvision',
         'torchtext',
-        'cnest@git+https://github.com/HorizonRobotics/cnest.git',
+        'torchvision',
+        'wheel'
     ],  # And any other dependencies alf needs
     ext_modules=[
         Pybind11Extension(
