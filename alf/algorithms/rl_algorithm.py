@@ -147,6 +147,7 @@ class RLAlgorithm(Algorithm):
                  optimizer=None,
                  checkpoint=None,
                  is_eval: bool = False,
+                 episodic_annotaton: bool = False,
                  overwrite_policy_output=False,
                  debug_summaries=False,
                  name="RLAlgorithm"):
@@ -186,6 +187,8 @@ class RLAlgorithm(Algorithm):
                 during deployment.  In this case, the algorithm do not need to
                 create certain components such as value_network for ActorCriticAlgorithm,
                 critic_networks for SacAlgorithm.
+            episodic_annotaton: if True, annotate the episode before being observed by the
+                replay buffer.
             overwrite_policy_output (bool): if True, overwrite the policy output
                 with next_step.prev_action. This option can be used in some
                 cases such as data collection.
@@ -203,6 +206,7 @@ class RLAlgorithm(Algorithm):
             debug_summaries=debug_summaries,
             name=name)
         self._is_eval = is_eval
+        self._episodic_annotaton = episodic_annotaton
 
         self._env = env
         self._observation_spec = observation_spec
@@ -235,10 +239,14 @@ class RLAlgorithm(Algorithm):
         self._current_time_step = None
         self._current_policy_state = None
         self._current_transform_state = None
-
+        self._cached_exp = [] # for lazy observation
         if self._env is not None and not self.on_policy:
             replay_buffer_length = adjust_replay_buffer_length(
                 config, self._num_earliest_frames_ignored)
+            
+            if self._episodic_annotaton:
+                assert self._env.batch_size == 1, "only support non-batched environment"
+            
 
             if config.whole_replay_buffer_training and config.clear_replay_buffer:
                 # For whole replay buffer training, we would like to be sure
@@ -609,11 +617,28 @@ class RLAlgorithm(Algorithm):
                               alf.layers.to_float32(policy_step),
                               alf.layers.to_float32(policy_state))
 
-        store_exp_time = 0
-        if not self.on_policy:
-            t0 = time.time()
-            self.observe_for_replay(exp)
-            store_exp_time = time.time() - t0
+        if self._episodic_annotaton:
+            store_exp_time = 0
+            # if last step, annotate
+            if time_step.step_type[0] == StepType.LAST:
+                # 1) annotate
+                # 2) stask
+                experience = alf.nest.utils.stack_nests(self._cached_exp)
+                # 3) observe
+                if not self.on_policy:
+                    t0 = time.time()
+                    self.observe_for_replay(experience)
+                    store_exp_time = time.time() - t0
+
+            else:
+                self._cached_exp.append(exp)
+
+        else:
+            store_exp_time = 0
+            if not self.on_policy:
+                t0 = time.time()
+                self.observe_for_replay(exp)
+                store_exp_time = time.time() - t0
 
         exp_for_training = Experience(
             time_step=transformed_time_step,
