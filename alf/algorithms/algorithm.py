@@ -1426,7 +1426,9 @@ class Algorithm(AlgorithmInterface):
         return shape[0] * shape[1]
 
     @common.mark_replay
-    def train_from_replay_buffer(self, update_global_counter=False):
+    def train_from_replay_buffer(self,
+                                 effective_unroll_steps,
+                                 update_global_counter=False):
         """This function can be called by any algorithm that has its own
         replay buffer configured. There are several parameters specified in
         ``self._config`` that will affect how the training is performed:
@@ -1469,6 +1471,7 @@ class Algorithm(AlgorithmInterface):
                 ``True``, it will affect the counter only if
                 ``config.update_counter_every_mini_batch=True``.
         """
+
         config: TrainerConfig = self._config
 
         # returns 0 if haven't started training yet, when ``_replay_buffer`` is
@@ -1479,7 +1482,8 @@ class Algorithm(AlgorithmInterface):
         # training is not started yet, ``_replay_buffer`` will be None since it
         # is only lazily created later when online RL training started.
         if (self._replay_buffer and self._replay_buffer.total_size
-                < config.initial_collect_steps):
+                < config.initial_collect_steps) or (effective_unroll_steps
+                                                    == 0):
             assert (
                 self._replay_buffer.num_environments *
                 self._replay_buffer.max_length >= config.initial_collect_steps
@@ -1493,6 +1497,7 @@ class Algorithm(AlgorithmInterface):
             # ``_replay_buffer`` for training.
             # TODO: If this function can be called asynchronously, and using
             # prioritized replay, then make sure replay and train below is atomic.
+            effective_num_updates_per_train_iter = config.num_updates_per_train_iter
             with record_time("time/replay"):
                 mini_batch_size = config.mini_batch_size
                 if mini_batch_size is None:
@@ -1500,14 +1505,14 @@ class Algorithm(AlgorithmInterface):
                 if config.whole_replay_buffer_training:
                     experience, batch_info = self._replay_buffer.gather_all(
                         ignore_earliest_frames=True)
-                    num_updates = config.num_updates_per_train_iter
+                    num_updates = effective_num_updates_per_train_iter
                 else:
                     assert config.mini_batch_length is not None, (
                         "No mini_batch_length is specified for off-policy training"
                     )
                     experience, batch_info = self._replay_buffer.get_batch(
                         batch_size=(mini_batch_size *
-                                    config.num_updates_per_train_iter),
+                                    effective_num_updates_per_train_iter),
                         batch_length=config.mini_batch_length)
                     num_updates = 1
             return experience, batch_info, num_updates, mini_batch_size

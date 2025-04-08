@@ -19,7 +19,7 @@ from collections import namedtuple
 import os
 import time
 import torch
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 from absl import logging
 
 import alf
@@ -147,6 +147,7 @@ class RLAlgorithm(Algorithm):
                  optimizer=None,
                  checkpoint=None,
                  is_eval: bool = False,
+                 episodic_annotation: bool = False,
                  overwrite_policy_output=False,
                  debug_summaries=False,
                  name="RLAlgorithm"):
@@ -186,6 +187,8 @@ class RLAlgorithm(Algorithm):
                 during deployment.  In this case, the algorithm do not need to
                 create certain components such as value_network for ActorCriticAlgorithm,
                 critic_networks for SacAlgorithm.
+            episodic_annotation: if True, annotate the episode before being observed by the
+                replay buffer.
             overwrite_policy_output (bool): if True, overwrite the policy output
                 with next_step.prev_action. This option can be used in some
                 cases such as data collection.
@@ -203,6 +206,7 @@ class RLAlgorithm(Algorithm):
                              debug_summaries=debug_summaries,
                              name=name)
         self._is_eval = is_eval
+        self._episodic_annotation = episodic_annotation
 
         self._env = env
         self._observation_spec = observation_spec
@@ -235,10 +239,13 @@ class RLAlgorithm(Algorithm):
         self._current_time_step = None
         self._current_policy_state = None
         self._current_transform_state = None
-
+        self._cached_exp = []  # for lazy observation
         if self._env is not None and not self.on_policy:
             replay_buffer_length = adjust_replay_buffer_length(
                 config, self._num_earliest_frames_ignored)
+
+            if self._episodic_annotation:
+                assert self._env.batch_size == 1, "only support non-batched environment"
 
             if config.whole_replay_buffer_training and config.clear_replay_buffer:
                 # For whole replay buffer training, we would like to be sure
@@ -598,6 +605,25 @@ class RLAlgorithm(Algorithm):
 
         return experience
 
+    def should_post_process_episode(self, rollout_info, step_type: StepType):
+        """A function that determines whether the ``post_process_episode`` function should
+        be applied to the current list of experiences.
+        """
+        return False
+
+    def post_process_episode(self, experiences: List[Experience]):
+        """A function for postprocessing a list of experience. It is called when 
+        ``should_post_process_episode`` is True.
+        It can be used to create a number of useful features such as 'hindsight relabeling'
+        of a trajectory etc.
+
+        Args:
+            experiences: a list of experience, containing the experience starting from the
+            initial time when ``should_post_process_episode`` is False to the step where
+            ``should_post_process_episode`` is True.
+        """
+        return None
+
     def _process_unroll_step(self, policy_step, action, time_step,
                              transformed_time_step, policy_state,
                              experience_list, original_reward_list):
@@ -605,12 +631,36 @@ class RLAlgorithm(Algorithm):
         exp = make_experience(time_step.cpu(),
                               alf.layers.to_float32(policy_step),
                               alf.layers.to_float32(policy_state))
+        effective_number_of_unroll_steps = 1
+        if self._episodic_annotation:
+            store_exp_time = 0
+            # if last step, annotate
+            rollout_info = policy_step.info
+            self._cached_exp.append(exp)
+            if self.should_post_process_episode(rollout_info,
+                                                time_step.step_type):
 
-        store_exp_time = 0
-        if not self.on_policy:
-            t0 = time.time()
-            self.observe_for_replay(exp)
-            store_exp_time = time.time() - t0
+                # 1) process
+                annotated_exp_list = self.post_process_episode(
+                    self._cached_exp)
+                effective_number_of_unroll_steps = len(annotated_exp_list)
+                # 2) observe
+                if not self.on_policy:
+                    t0 = time.time()
+                    for exp in annotated_exp_list:
+                        self.observe_for_replay(exp)
+                    store_exp_time = time.time() - t0
+                # clean up the exp cache
+                self._cached_exp = []
+            else:
+                # effective unroll steps as 0 if not post_process_episode timepoint yet
+                effective_number_of_unroll_steps = 0
+        else:
+            store_exp_time = 0
+            if not self.on_policy:
+                t0 = time.time()
+                self.observe_for_replay(exp)
+                store_exp_time = time.time() - t0
 
         exp_for_training = Experience(
             time_step=transformed_time_step,
@@ -620,7 +670,7 @@ class RLAlgorithm(Algorithm):
 
         experience_list.append(exp_for_training)
         original_reward_list.append(time_step.reward)
-        return store_exp_time
+        return store_exp_time, effective_number_of_unroll_steps
 
     def reset_state(self):
         """Reset the state of the algorithm.
@@ -665,6 +715,7 @@ class RLAlgorithm(Algorithm):
         policy_step_time = 0.
         env_step_time = 0.
         store_exp_time = 0.
+        effective_unroll_steps = 0
         for _ in range(unroll_length):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_state, time_step.is_first())
@@ -693,9 +744,10 @@ class RLAlgorithm(Algorithm):
             if self._overwrite_policy_output:
                 policy_step = policy_step._replace(
                     output=next_time_step.prev_action)
-            store_exp_time += self._process_unroll_step(
+            store_exp_time_i, effective_unroll_steps = self._process_unroll_step(
                 policy_step, action, time_step, transformed_time_step,
                 policy_state, experience_list, original_reward_list)
+            store_exp_time += store_exp_time_i
 
             time_step = next_time_step
             policy_state = policy_step.state
@@ -723,7 +775,7 @@ class RLAlgorithm(Algorithm):
         self._current_policy_state = common.detach(policy_state)
         self._current_transform_state = common.detach(trans_state)
 
-        return experience
+        return experience, effective_unroll_steps
 
     def train_iter(self):
         """Perform one iteration of training.
@@ -804,6 +856,7 @@ class RLAlgorithm(Algorithm):
         unrolled = False
         root_inputs = None
         rollout_info = None
+        effective_unroll_steps = 0
         if (alf.summary.get_global_counter()
                 >= self._rl_train_after_update_steps
                 and (unroll_length > 0 or config.unroll_length == 0) and
@@ -822,7 +875,8 @@ class RLAlgorithm(Algorithm):
                     # need to remember whether summary has been written between
                     # two unrolls.
                     with self._ensure_rollout_summary:
-                        experience = self.unroll(unroll_length)
+                        experience, effective_unroll_steps = self.unroll(
+                            unroll_length)
                         if experience:
                             self.summarize_rollout(experience)
                             self.summarize_metrics()
@@ -830,11 +884,12 @@ class RLAlgorithm(Algorithm):
                             if config.use_root_inputs_for_after_train_iter:
                                 root_inputs = experience.time_step
                             del experience
-        return unrolled, root_inputs, rollout_info
+        return unrolled, root_inputs, rollout_info, effective_unroll_steps
 
     def _train_iter_off_policy(self):
         """User may override this for their own training procedure."""
-        unrolled, root_inputs, rollout_info = self._unroll_iter_off_policy()
+        unrolled, root_inputs, rollout_info, effective_unroll_steps = self._unroll_iter_off_policy(
+        )
 
         # replay buffer may not have been created for two different reasons:
         # 1. in online RL training (``has_offline`` is False), unroll is not
@@ -846,11 +901,13 @@ class RLAlgorithm(Algorithm):
             return 0
 
         self.train()
-        steps = self.train_from_replay_buffer(update_global_counter=True)
-
-        if unrolled:
-            with record_time("time/after_train_iter"):
-                self.after_train_iter(root_inputs, rollout_info)
+        steps = 0
+        for i in range(effective_unroll_steps):
+            steps += self.train_from_replay_buffer(effective_unroll_steps=1,
+                                                   update_global_counter=True)
+            if unrolled:
+                with record_time("time/after_train_iter"):
+                    self.after_train_iter(root_inputs, rollout_info)
 
         # For now, we only return the steps of the primary algorithm's training
         return steps
