@@ -227,21 +227,21 @@ class CqlAlgorithm(SacAlgorithm):
                 self.add_optimizer(alpha_prime_optimizer,
                                    [self._log_alpha_prime])
 
-    def _critic_train_step(self, inputs: TimeStep, state: SacCriticState,
+    def _critic_train_step(self, observation, target_observation, state: SacCriticState,
                            rollout_info: SacInfo, action, action_distribution):
 
         critic_state, critic_info = super()._critic_train_step(
-            inputs, state, rollout_info, action, action_distribution)
+            observation, target_observation, state, rollout_info, action, action_distribution)
         critics = critic_info.critics
         target_critic = critic_info.target_critic
 
         # ---- CQL specific regularizations ------
         # repeat observation and action
         # [B, d] -> [B, replica, d] -> [B * replica, d]
-        B = inputs.observation.shape[0]
-        rep_obs = inputs.observation.unsqueeze(1).repeat(
+        B = observation.shape[0]
+        rep_obs = observation.unsqueeze(1).repeat(
             1, self._cql_action_replica, 1).view(B * self._cql_action_replica,
-                                                 inputs.observation.shape[1])
+                                                 observation.shape[1])
 
         # get random actions
         random_actions = self._action_spec.sample(
