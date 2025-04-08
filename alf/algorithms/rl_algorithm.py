@@ -19,7 +19,7 @@ from collections import namedtuple
 import os
 import time
 import torch
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 from absl import logging
 
 import alf
@@ -147,7 +147,7 @@ class RLAlgorithm(Algorithm):
                  optimizer=None,
                  checkpoint=None,
                  is_eval: bool = False,
-                 episodic_annotaton: bool = False,
+                 episodic_annotation: bool = False,
                  overwrite_policy_output=False,
                  debug_summaries=False,
                  name="RLAlgorithm"):
@@ -187,7 +187,7 @@ class RLAlgorithm(Algorithm):
                 during deployment.  In this case, the algorithm do not need to
                 create certain components such as value_network for ActorCriticAlgorithm,
                 critic_networks for SacAlgorithm.
-            episodic_annotaton: if True, annotate the episode before being observed by the
+            episodic_annotation: if True, annotate the episode before being observed by the
                 replay buffer.
             overwrite_policy_output (bool): if True, overwrite the policy output
                 with next_step.prev_action. This option can be used in some
@@ -206,7 +206,7 @@ class RLAlgorithm(Algorithm):
             debug_summaries=debug_summaries,
             name=name)
         self._is_eval = is_eval
-        self._episodic_annotaton = episodic_annotaton
+        self._episodic_annotation = episodic_annotation
 
         self._env = env
         self._observation_spec = observation_spec
@@ -244,7 +244,7 @@ class RLAlgorithm(Algorithm):
             replay_buffer_length = adjust_replay_buffer_length(
                 config, self._num_earliest_frames_ignored)
             
-            if self._episodic_annotaton:
+            if self._episodic_annotation:
                 assert self._env.batch_size == 1, "only support non-batched environment"
             
 
@@ -609,6 +609,14 @@ class RLAlgorithm(Algorithm):
 
         return experience
 
+    def should_post_process_episode(self, rollout_info):
+        return False
+
+    
+    def post_process_episode(self, experience: List[Experience]):
+        return None
+        
+
     def _process_unroll_step(self, policy_step, action, time_step,
                              transformed_time_step, policy_state,
                              experience_list, original_reward_list):
@@ -616,23 +624,25 @@ class RLAlgorithm(Algorithm):
         exp = make_experience(time_step.cpu(),
                               alf.layers.to_float32(policy_step),
                               alf.layers.to_float32(policy_state))
-
-        if self._episodic_annotaton:
+        if self._episodic_annotation:
             store_exp_time = 0
             # if last step, annotate
-            if time_step.step_type[0] == StepType.LAST:
+            rollout_info = policy_step.info
+            self._cached_exp.append(exp)
+            if self.should_post_process_episode(rollout_info):
                 # 1) annotate
                 # 2) stask
-                experience = alf.nest.utils.stack_nests(self._cached_exp)
+                annotated_exp_list = self.post_process_episode(self._cached_exp)
                 # 3) observe
                 if not self.on_policy:
                     t0 = time.time()
-                    self.observe_for_replay(experience)
+                    for exp in annotated_exp_list:
+                        self.observe_for_replay(exp)
                     store_exp_time = time.time() - t0
-
-            else:
-                self._cached_exp.append(exp)
-
+                # clean up the exp cache
+                self._cached_exp = []
+            # else:
+            #     print("=========pass")
         else:
             store_exp_time = 0
             if not self.on_policy:
