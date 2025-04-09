@@ -13,10 +13,11 @@
 # limitations under the License.
 
 from absl.testing import parameterized
+import numpy as np
 import torch
 import torch.nn.functional as F
 import alf
-
+from time import perf_counter
 from alf.ext import fused_linear_act, relu_backward
 
 
@@ -112,55 +113,91 @@ class FusedLinearActTest(alf.test.TestCase, parameterized.TestCase):
         # Check gradient input values
         self.assertTrue((grad_input == grad_input_torch).all())
 
-    def benchmark_fused_linear_act(self):
-        B, m, n, k = 64000, 8192, 8192, 8192
-        act = "RELU"
-        dtype = torch.float16
+    def benchmark_all(self):
+        for dtype in [torch.float16, torch.float32]:
+            for act in ["RELU", "NONE"]:
+                for feature_shape, out_dim in [((256, 256), 256),
+                                               ((1024, 1024), 1024),
+                                               ((2048, 2048), 2048),
+                                               ((4096, 4096), 4096),
+                                               ((8192, 8192), 8192),
+                                               ((64000, 40, 64), 64),
+                                               ((64000, 40, 128), 128),
+                                               ((64000, 1024), 1024),
+                                               ((360000, 40, 64), 64),
+                                               ((360000, 40, 128), 128),
+                                               ((360000, 1024), 1024)]:
+                    for backward in [False, True]:
+                        if feature_shape[0] == 360000 and backward:
+                            # Too large for backward
+                            continue
+                        self.benchmark_one(feature_shape, out_dim, act, dtype,
+                                           backward)
 
-        A = torch.randn(m, k, device='cuda', dtype=dtype)
-        B = torch.randn(n,
-                        k,
+    def benchmark_one(self, feature_shape, out_dim, act, dtype, backward):
+        A = torch.randn(feature_shape,
                         device='cuda',
-                        dtype=torch.float32,
-                        requires_grad=True)
-        bias = torch.randn(n,
+                        dtype=dtype,
+                        requires_grad=backward)
+        B = torch.randn(out_dim,
+                        feature_shape[-1],
+                        device='cuda',
+                        dtype=dtype,
+                        requires_grad=backward)
+        bias = torch.randn(out_dim,
                            device='cuda',
-                           dtype=torch.float32,
-                           requires_grad=True)
+                           dtype=dtype,
+                           requires_grad=backward)
 
         def fused_linear_act_func():
-            with torch.autocast('cuda', dtype=torch.float16):
-                C = fused_linear_act(A, B, bias, act)
+            C = fused_linear_act(A, B, bias, act)
+            if backward:
                 C.sum().backward()
             return C
 
         def linear_act_func():
-            with torch.autocast('cuda', dtype=torch.float16):
-                C = F.linear(A, B, bias)
-                if act == "RELU":
-                    C = F.relu_(C)
+            C = F.linear(A, B, bias)
+            if act == "RELU":
+                C = F.relu_(C)
+            if backward:
                 C.sum().backward()
             return C
 
-        self.benchmark("fused_linear_act", fused_linear_act_func)
-        self.benchmark("linear_act", linear_act_func)
+        def matmul_func():
+            if A.ndim == 2:
+                C = torch.addmm(bias, A, B.T)
+            else:
+                C = torch.matmul(A, B.T) + bias
+            if act == "RELU":
+                C = F.relu_(C)
+            if backward:
+                C.sum().backward()
+            return C
 
-    def benchmark(self, name, f):
+        size = feature_shape + (out_dim, )
+        flops = np.prod(size)
+        if backward:
+            flops *= 3
+        job = f"{dtype} {str(size):21s} act={act} backward={int(backward)}"
+        flops1 = self.benchmark_f(fused_linear_act_func, flops)
+        flops2 = self.benchmark_f(linear_act_func, flops)
+        flops3 = self.benchmark_f(matmul_func, flops)
+        print(f"{job} {flops1:6.3g} {flops2:6.3g} {flops3:6.3g}")
+
+    def benchmark_f(self, f, flops):
         # Warm up
         for _ in range(10):
             f()
         torch.cuda.synchronize()
         # Benchmark
         num_iterations = 100
-        start_time = torch.cuda.Event(enable_timing=True)
-        end_time = torch.cuda.Event(enable_timing=True)
-        start_time.record()
+
+        t0 = perf_counter()
         for _ in range(num_iterations):
             f()
-        end_time.record()
         torch.cuda.synchronize()
-        elapsed_time = start_time.elapsed_time(end_time)
-        print(f"{name} Elapsed time: {elapsed_time / num_iterations:.2f} ms")
+        t1 = perf_counter()
+        return num_iterations * flops / (t1 - t0) / 1e12
 
 
 if __name__ == '__main__':

@@ -126,6 +126,9 @@ class Network(nn.Module):
         """
         inputs = common.zero_tensor_from_nested_spec(self._input_tensor_spec,
                                                      batch_size=2)
+        # Sometime the input is fp16. But to run it, the code need to be under
+        # autocast context. So here we just to change all the floating value to
+        # float32
         inputs = alf.nest.map_structure(
             lambda x: x.to(torch.float32)
             if x.dtype.is_floating_point else x, inputs)

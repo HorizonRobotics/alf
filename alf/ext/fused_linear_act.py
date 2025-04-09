@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import torch
-from typing import Any
+from typing import Literal, Optional
 from torch.utils.cpp_extension import load
 import torch.nn.functional as F
 import pathlib
@@ -70,9 +70,24 @@ def fused_matmul_act(a, b, bias, activation):
 
 
 class FusedLinearAct(torch.autograd.Function):
+    """Fused linear layer with activation function.
+
+    It performs the following operation:
+
+    .. math::
+        output = act(input @ weight^T + bias)
+
+    where :math:`@` is the matrix multiplication operator.
+    The activation function can be one of the following:
+    - "RELU": ReLU activation
+    - "GELU": GELU activation
+    - "NONE": No activation (linear layer)
+    """
 
     @staticmethod
-    def forward(ctx, input, weight, bias, act):
+    def forward(ctx, input: torch.Tensor, weight: torch.Tensor,
+                bias: Optional[torch.Tensor], act: Literal["RELU", "GELU",
+                                                           "NONE"]):
         assert 2 <= input.ndim <= 3
         assert weight.ndim == 2 and weight.shape[1] == input.shape[
             -1], f"Invalid shape: {input.shape} {weight.shape}"

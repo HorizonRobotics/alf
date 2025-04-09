@@ -23,28 +23,23 @@
 #include <cuda_runtime_api.h>
 
 template <typename T>
+__device__ __forceinline__ T relu_grad(T x, T go) {
+  return (x > T(0)) ? go : T(0);
+}
+
+template <>
+__device__ __forceinline__ __half relu_grad(__half x, __half go) {
+  return __hgt(x, __float2half(0.f)) ? go : __float2half(0.f);
+}
+
+template <typename T>
 __global__ void relu_backward_kernel(const T* grad_output,
                                      const T* input,
                                      T* grad_input,
                                      int n) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < n) {
-    T zero = static_cast<T>(0.0f);
-    grad_input[idx] = grad_output[idx] * (input[idx] > zero);
-  }
-}
-
-template <>
-__global__ void relu_backward_kernel<__half>(const __half* grad_output,
-                                             const __half* input,
-                                             __half* grad_input,
-                                             int n) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (idx < n) {
-    __half zero = __float2half(0.0f);
-    grad_input[idx] = __hmul(
-        grad_output[idx],
-        __hgt(input[idx], zero) ? __float2half(1.0f) : __float2half(0.0f));
+    grad_input[idx] = relu_grad(input[idx], grad_output[idx]);
   }
 }
 

@@ -23,7 +23,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as td
 from torch import Tensor
-from typing import Callable, Dict, Iterable, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, Literal, Optional, Tuple, Union
 
 import alf
 from alf.initializers import variance_scaling_init
@@ -335,6 +335,8 @@ class FC(nn.Module):
                  bias_init_value=0.0,
                  bias_initializer=None,
                  use_torch_init=False,
+                 method: Literal['linear', 'fused_linear_act',
+                                 'default'] = 'default',
                  weight_opt_args: Optional[Dict] = None,
                  bias_opt_args: Optional[Dict] = None):
         """A fully connected layer that's also responsible for activation and
@@ -368,6 +370,20 @@ class FC(nn.Module):
                 bias will be initialized in the same way as ``torch.nn.Linear``.
             weight_opt_args: optimizer arguments for weight
             bias_opt_args: optimizer arguments for bias
+            method: actual operator used for the computation. Currently supports
+                - 'linear': use ``torch.nn.functional.linear``
+                - 'fused_linear_act': use ``alf.ext.fused_linear_act``. Currently,
+                    only relu and gelu are supported and the input should be
+                    2D or 3D. If the activation is not relu or gelu or use_ln or use_bn,
+                    it will still use ``fused_linear_act`` with linear activation
+                    and apply the activation separately.
+                - 'default': use ``torch.addmm`` or ``torch.matmul`` depending
+                    on the input shape.
+
+                The speed for the 3 choices can be very different depending on
+                the shape/bias/activation combinations. You can use
+                ``alf.ext.fused_linear_act_test.FusedLinearActTest.banchmark_all``
+                to benchmark the speed of the 3 choices.
         """
         # get the argument list with vals
         self._kwargs = copy.deepcopy(locals())
@@ -409,8 +425,13 @@ class FC(nn.Module):
         if bias_opt_args and self._bias is not None:
             self._bias.opt_args = bias_opt_args
 
+        self._method = method
+        assert method in (
+            'linear', 'fused_linear_act', 'default'
+        ), "method should be one of ['linear', 'fused_linear_act', 'default']"
+
         self._act_name = "NONE"
-        if not use_bn and not use_ln:
+        if method == 'fused_linear_act' and not use_bn and not use_ln:
             if activation in (F.relu_, F.relu, torch.relu,
                               torch.relu_) or isinstance(activation, nn.ReLU):
                 self._act_name = "RELU"
@@ -461,14 +482,13 @@ class FC(nn.Module):
         Returns:
             Tensor: with shape as ``inputs.shape[:-1] + (output_size,)``
         """
-        # self._act_name = "NONE"
-        # if inputs.dim() == 2 and self._use_bias:
-        #     y = torch.addmm(self._bias, inputs, self._weight.t())
-        if 2 <= inputs.ndim <= 3:
+        if self._method == 'fused_linear_act' and 2 <= inputs.ndim <= 3:
             y = fused_linear_act(inputs, self._weight, self._bias,
                                  self._act_name)
-            # y = F.linear(inputs, self._weight, self._bias)
-            # self._act_name = "NONE"
+        elif self._method == 'linear':
+            y = F.linear(inputs, self._weight, self._bias)
+        elif inputs.dim() == 2 and self._use_bias:
+            y = torch.addmm(self._bias, inputs, self._weight.t())
         else:
             y = inputs.matmul(self._weight.t())
             if self._use_bias:
