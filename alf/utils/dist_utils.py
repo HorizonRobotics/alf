@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import functools
-import numbers
 import numpy as np
 import math
 import torch
@@ -21,6 +20,7 @@ import torch.distributions as td
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Union
 
 import alf
@@ -44,7 +44,8 @@ def __categorical_init__(self, probs=None, logits=None, validate_args=None):
             raise ValueError(
                 "`logits` parameter must be at least one-dimensional.")
         # Normalize
-        self.logits = logits - logits.logsumexp(dim=-1, keepdim=True)
+        self.logits = F.log_softmax(logits, dim=-1).to(
+            logits.dtype)  # logits - logits.logsumexp(dim=-1, keepdim=True)
         valid = self.arg_constraints['logits'].check(self.logits)
         if not valid.all():
             invalid = (~valid).nonzero(as_tuple=True)[0]
@@ -57,8 +58,8 @@ def __categorical_init__(self, probs=None, logits=None, validate_args=None):
     batch_shape = (self._param.size()[:-1]
                    if self._param.ndimension() > 1 else torch.Size())
 
-    super(td.Categorical, self).__init__(
-        batch_shape, validate_args=validate_args)
+    super(td.Categorical, self).__init__(batch_shape,
+                                         validate_args=validate_args)
 
 
 td.Categorical.__init__ = __categorical_init__
