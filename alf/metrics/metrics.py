@@ -101,8 +101,8 @@ class EnvironmentSteps(metric.StepMetric):
                  prefix='Metrics',
                  dtype=torch.int64):
         super().__init__(name=name, dtype=dtype, prefix=prefix)
-        self.register_buffer('_environment_steps', torch.zeros((),
-                                                               dtype=dtype))
+        self.register_buffer('_environment_steps',
+                             torch.zeros((), dtype=dtype, device='cpu'))
 
     def call(self, time_step):
         """Increase the number of environment_steps according to ``time_step``.
@@ -115,7 +115,7 @@ class EnvironmentSteps(metric.StepMetric):
             The arguments, for easy chaining.
         """
         steps = (torch.logical_not(time_step.is_first())).type(self._dtype)
-        num_steps = torch.sum(steps)
+        num_steps = torch.sum(steps).item()
         self._environment_steps.add_(num_steps)
         return time_step
 
@@ -136,7 +136,8 @@ class NumberOfEpisodes(metric.StepMetric):
         super(NumberOfEpisodes, self).__init__(name=name,
                                                dtype=dtype,
                                                prefix=prefix)
-        self.register_buffer('_number_episodes', torch.zeros((), dtype=dtype))
+        self.register_buffer('_number_episodes',
+                             torch.zeros((), dtype=dtype, device='cpu'))
 
     def call(self, time_step):
         """Increase the number of number_episodes according to ``time_step``.
@@ -148,7 +149,7 @@ class NumberOfEpisodes(metric.StepMetric):
             The arguments, for easy chaining.
         """
         episodes = time_step.is_last().type(self._dtype)
-        num_episodes = torch.sum(episodes)
+        num_episodes = torch.sum(episodes).item()
         self._number_episodes.add_(num_episodes)
         return time_step
 
@@ -208,7 +209,8 @@ class AverageEpisodicAggregationMetric(metric.StepMetric):
             example_metric_value = torch.zeros((), device=device)
         else:
             example_metric_value = self._extract_metric_values(
-                example_time_step.cpu())
+                alf.nest.map_structure(lambda x: x.to(device),
+                                       example_time_step))
         self._batch_size = alf.nest.get_nest_batch_size(example_time_step)
         self._buffer_size = buffer_size
         self._initialize(example_metric_value, device)
@@ -367,13 +369,15 @@ class AverageReturnMetric(AverageEpisodicAggregationMetric):
                  name='AverageReturn',
                  prefix='Metrics',
                  dtype=torch.float32,
-                 buffer_size=10):
+                 buffer_size=10,
+                 device='cpu'):
         super(AverageReturnMetric,
               self).__init__(name=name,
                              dtype=dtype,
                              prefix=prefix,
                              buffer_size=buffer_size,
-                             example_time_step=example_time_step)
+                             example_time_step=example_time_step,
+                             device=device)
 
     def _extract_metric_values(self, time_step):
         """Accumulate immediate rewards to get episodic return."""
