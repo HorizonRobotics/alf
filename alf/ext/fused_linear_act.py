@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import torch
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 from torch.utils.cpp_extension import load
 import torch.nn.functional as F
 import pathlib
