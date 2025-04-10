@@ -364,7 +364,7 @@ class Checkpointer(object):
             optimizer_state[k] = opts
             replay_buffer_state[k] = rs
 
-        model_state['global_step'] = global_step
+        model_state['global_step'] = torch.tensor(global_step)
 
         torch.save(model_state, f_path)
         torch.save(optimizer_state, f_path + '-optimizer')
