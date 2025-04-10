@@ -178,11 +178,13 @@ class FusedLinearActTest(alf.test.TestCase, parameterized.TestCase):
         flops = np.prod(size)
         if backward:
             flops *= 3
-        job = f"{dtype} {str(size):21s} act={act} backward={int(backward)}"
-        flops1 = self.benchmark_f(fused_linear_act_func, flops)
-        flops2 = self.benchmark_f(linear_act_func, flops)
-        flops3 = self.benchmark_f(matmul_func, flops)
-        print(f"{job} {flops1:6.3g} {flops2:6.3g} {flops3:6.3g}")
+        job = f"{dtype} {str(size):22s} act={act} backward={int(backward)}"
+        flops1, t1 = self.benchmark_f(fused_linear_act_func, flops)
+        flops2, t2 = self.benchmark_f(linear_act_func, flops)
+        flops3, t3 = self.benchmark_f(matmul_func, flops)
+        print(
+            f"{job} {flops1:6.3g} {flops2:6.3g} {flops3:6.3g} {t1:6.3g} {t2:6.3g} {t3:6.3g}"
+        )
 
     def benchmark_f(self, f, flops):
         # Warm up
@@ -197,7 +199,8 @@ class FusedLinearActTest(alf.test.TestCase, parameterized.TestCase):
             f()
         torch.cuda.synchronize()
         t1 = perf_counter()
-        return num_iterations * flops / (t1 - t0) / 1e12
+        return num_iterations * flops / (t1 - t0) / 1e12, 1000 * (
+            t1 - t0) / num_iterations
 
 
 if __name__ == '__main__':
