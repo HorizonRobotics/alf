@@ -66,6 +66,15 @@ flags.DEFINE_integer("initial_collect_steps",
                      10,
                      help="The number of steps to collect before training",
                      required=False)
+flags.DEFINE_string("repo_root",
+                    None,
+                    help="The root of the repo. "
+                    "If not specified, ALF root will be used",
+                    required=False)
+flags.DEFINE_integer("batch_size_per_env",
+                     2,
+                     help="batch_size_per_env passed to create_environment",
+                     required=False)
 flags.DEFINE_integer(
     "unroll_length",
     10,
@@ -97,7 +106,8 @@ def run_train(conf, root_dir, rev1):
         FLAGS.initial_collect_steps,
         '--conf_param=create_environment.num_parallel_environments=%s' %
         FLAGS.num_envs,
-        '--conf_param=create_environment.batch_size_per_env=2',
+        '--conf_param=create_environment.batch_size_per_env=%s' %
+        FLAGS.batch_size_per_env,
         '--conf_param=TrainerConfig.num_env_steps=0',
     ]
     run_cmd(cmd=cmd, cwd='.')
@@ -119,7 +129,8 @@ def main(_):
         )
         exit(1)
 
-    repo_root = Path(alf_root())
+    repo_root = FLAGS.repo_root or alf_root()
+    repo_root = Path(repo_root)
     if get_diff(repo_root):
         logging.error(
             "You need to commit all changes before running this script")
