@@ -14,47 +14,31 @@
 
 import torch
 
-_devece_ddtype_tensor_map = {
-    'cpu': {
-        torch.float32: torch.FloatTensor,
-        torch.float64: torch.DoubleTensor,
-        torch.float16: torch.HalfTensor,
-        torch.uint8: torch.ByteTensor,
-        torch.int8: torch.CharTensor,
-        torch.int16: torch.ShortTensor,
-        torch.int32: torch.IntTensor,
-        torch.int64: torch.LongTensor,
-        torch.bool: torch.BoolTensor,
-    },
-    'cuda': {
-        torch.float32: torch.cuda.FloatTensor,
-        torch.float64: torch.cuda.DoubleTensor,
-        torch.float16: torch.cuda.HalfTensor,
-        torch.uint8: torch.cuda.ByteTensor,
-        torch.int8: torch.cuda.CharTensor,
-        torch.int16: torch.cuda.ShortTensor,
-        torch.int32: torch.cuda.IntTensor,
-        torch.int64: torch.cuda.LongTensor,
-        torch.bool: torch.cuda.BoolTensor,
-    }
-}
-
 
 def set_default_device(device_name):
     """Set the default device.
 
-    Cannot find a native torch function for setting default device. We have to
-    hack our own.
-
     Args:
         device_name (str): one of ("cpu", "cuda")
     """
-    torch.set_default_tensor_type(
-        _devece_ddtype_tensor_map[device_name][torch.get_default_dtype()])
+    torch.set_default_device(device_name)
 
 
-def get_default_device():
-    return torch._C._get_default_device()
+def get_default_device() -> str:
+    """Get the default device as a string.
+
+    torch.get_default_device() is only supported for torch versions >= 2.3.0
+    For now, we will use torch._C._get_default_device() for lower torch versions,
+    but this is deprecated.
+
+    Returns:
+        The default device 'cpu' or 'cuda'
+    """
+    try:
+        return torch.get_default_device().type
+    except AttributeError:
+        # TODO: Remove this when removing support for torch versions < 2.3.0
+        return torch._C._get_default_device()
 
 
 class device(object):
