@@ -672,14 +672,15 @@ class RLAlgorithm(Algorithm):
                 time_step, trans_state)
 
             t0 = time.time()
-            policy_step = self.rollout_step(transformed_time_step,
-                                            policy_state)
+            with record_time("time/_sync_unroll/1_per_rollout_step"):
+                policy_step = self.rollout_step(transformed_time_step,
+                                                policy_state)
             policy_step_time += time.time() - t0
 
             action = common.detach(policy_step.output)
 
             t0 = time.time()
-            with record_time("time/_sync_unroll/2_env_step"):
+            with record_time("time/_sync_unroll/2_per_env_step"):
                 next_time_step = self._env.step(action)
             env_step_time += time.time() - t0
 
