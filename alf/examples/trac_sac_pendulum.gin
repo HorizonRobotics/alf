@@ -53,4 +53,3 @@ TrainerConfig.debug_summaries=False
 TrainerConfig.summarize_grads_and_vars=0
 TrainerConfig.summary_interval=100
 TrainerConfig.replay_buffer_length=100000
-

@@ -118,4 +118,3 @@ Please comment all the public functions with the following style:
 
 For a comprehensive guide on how to write docstrings for public functions, see
 :doc:`notes/howto_docstring`.
-

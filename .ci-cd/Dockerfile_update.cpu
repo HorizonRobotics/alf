@@ -24,7 +24,3 @@ RUN pip3 install torch==1.8.1+cpu torchvision==0.9.1+cpu torchtext==0.9.1 \
 # uncomment the following two lines if requirements.txt has been changed
 #COPY requirements.txt  /tmp/requirements.txt
 #RUN pip3 install -r /tmp/requirements.txt
-
-
-
-

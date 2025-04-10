@@ -204,4 +204,3 @@ More examples
 
 For more examples, refer to
 `<https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`_.
-

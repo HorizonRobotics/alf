@@ -72,4 +72,3 @@ TrainerConfig.mini_batch_size=None
 TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.debug_summaries = 1
 TrainerConfig.evaluate = False
-

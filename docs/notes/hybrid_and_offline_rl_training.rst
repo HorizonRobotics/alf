@@ -121,5 +121,3 @@ training and loss calculation based on the offline data provided as input to
 the functions, and inherit all other functions from an existing method such as
 SAC. Of course, these functions such as ``train_step()`` and ``calc_loss()``
 can also be customized when necessary.
-
-

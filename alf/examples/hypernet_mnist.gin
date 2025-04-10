@@ -39,9 +39,3 @@ TrainerConfig.eval_interval=1
 TrainerConfig.summary_interval=1
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=True
-
-
-
-
-
-
