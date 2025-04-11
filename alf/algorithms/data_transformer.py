@@ -356,7 +356,9 @@ class FrameStacker(DataTransformer):
             elif self._missing_position_handling in ["zero", "repeat"]:
                 # prev_positions[invalid_prev] = earlist_position.unsqueeze(-1)[invalid_prev]
                 # prev_positions = torch.where(invalid_prev, earlist_position.unsqueeze(-1), prev_positions)
-                prev_positions[invalid_prev] = earlist_position
+                if invalid_prev.any():
+                    # prev_positions [B, s], invalid_prev: [B], earlist_position: [B]
+                    prev_positions[invalid_prev] = earlist_position
             # [B, 1]
             env_ids = env_ids.unsqueeze(-1)
 
