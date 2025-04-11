@@ -139,7 +139,7 @@ class TransformerNetwork(PreprocessorNetwork):
         self._core_size = core_size
         if use_core_embedding:
             self._core_embedding = nn.Parameter(
-                torch.Tensor(1, core_size, d_model))
+                torch.empty(1, core_size, d_model))
             nn.init.uniform_(self._core_embedding, -0.1, 0.1)
         else:
             self._core_embedding = None

@@ -191,19 +191,19 @@ class TestMultiAlgSingleOpt(alf.test.TestCase):
 
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # construct algorithms
-            param_1 = nn.Parameter(torch.Tensor([1.0]))
+            param_1 = nn.Parameter(torch.tensor([1.0]))
             alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
-            param_2_1 = nn.Parameter(torch.Tensor([2.1]))
+            param_2_1 = nn.Parameter(torch.tensor([2.1]))
             alg_2_1 = SimpleAlg(params=[param_2_1], name="alg_2_1")
 
-            param_2 = nn.Parameter(torch.Tensor([2]))
+            param_2 = nn.Parameter(torch.tensor([2.0]))
             alg_2 = SimpleAlg(params=[param_2],
                               sub_algs=[alg_2_1],
                               name="alg_2")
 
             optimizer_root = alf.optimizers.Adam(lr=0.1)
-            param_root = nn.Parameter(torch.Tensor([0]))
+            param_root = nn.Parameter(torch.tensor([0.0]))
             alg_root = SimpleAlg(params=[param_root],
                                  optimizer=optimizer_root,
                                  sub_algs=[alg_1, alg_2],
@@ -231,7 +231,7 @@ class TestMultiAlgSingleOpt(alf.test.TestCase):
             # check the recovered parameter values for all modules
             sd = alg_root.state_dict()
             self.assertTrue((list(sd.values())[0:4] == [
-                torch.tensor([1]),
+                torch.tensor([1.0]),
                 torch.tensor([2.1]),
                 torch.tensor([2.0]),
                 torch.tensor([0.0])
@@ -243,17 +243,17 @@ class TestMultiAlgMultiOpt(alf.test.TestCase):
     def test_multi_alg_multi_opt(self):
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # construct algorithms
-            param_1 = nn.Parameter(torch.Tensor([1]))
+            param_1 = nn.Parameter(torch.tensor([1.0]))
             alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
-            param_2 = nn.Parameter(torch.Tensor([2]))
+            param_2 = nn.Parameter(torch.tensor([2.0]))
             optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(params=[param_2],
                               optimizer=optimizer_2,
                               name="alg_2")
 
             optimizer_root = alf.optimizers.Adam(lr=0.1)
-            param_root = nn.Parameter(torch.Tensor([0]))
+            param_root = nn.Parameter(torch.tensor([0.0]))
             alg_root = ComposedAlg(params=[param_root],
                                    optimizer=optimizer_root,
                                    sub_alg1=alg_1,
@@ -286,10 +286,10 @@ class TestWithParamSharing(alf.test.TestCase):
     def test_with_param_sharing(self):
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # construct algorithms
-            param_1 = nn.Parameter(torch.Tensor([1]))
+            param_1 = nn.Parameter(torch.tensor([1.0]))
             alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
-            param_2 = nn.Parameter(torch.Tensor([2]))
+            param_2 = nn.Parameter(torch.tensor([2.0]))
             optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(params=[param_2],
                               optimizer=optimizer_2,
@@ -297,7 +297,7 @@ class TestWithParamSharing(alf.test.TestCase):
             alg_2.ignored_param = param_1
 
             optimizer_root = alf.optimizers.Adam(lr=0.1)
-            param_root = nn.Parameter(torch.Tensor([0]))
+            param_root = nn.Parameter(torch.tensor([0.0]))
             alg_root = ComposedAlg(params=[param_root],
                                    optimizer=optimizer_root,
                                    sub_alg1=alg_1,
@@ -317,19 +317,19 @@ class TestWithParamSharing(alf.test.TestCase):
             # modify the shared param after saving
             with torch.no_grad():
                 alg_root._sub_alg2.state_dict()['ignored_param'].copy_(
-                    torch.Tensor([-1]))
+                    torch.tensor([-1.0]))
 
             self.assertTrue((alg_root._sub_alg2.state_dict()['ignored_param']
-                             == torch.Tensor([-1])))
+                             == torch.tensor([-1.0])))
             self.assertTrue((alg_root.state_dict()['_sub_alg1._param_list.0']
-                             == torch.Tensor([-1])))
+                             == torch.tensor([-1.0])))
 
             # the value of the shared parameter is recovered back to saved value
             ckpt_mngr.load(0)
             self.assertTrue((alg_root._sub_alg2.state_dict()['ignored_param']
-                             == torch.Tensor([1])))
+                             == torch.tensor([1.0])))
             self.assertTrue((alg_root.state_dict()['_sub_alg1._param_list.0']
-                             == torch.Tensor([1])))
+                             == torch.tensor([1.0])))
 
 
 class TestWithCycle(alf.test.TestCase):
@@ -338,17 +338,17 @@ class TestWithCycle(alf.test.TestCase):
         # checkpointer should work regardless of cycles
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # construct algorithms
-            param_1 = nn.Parameter(torch.Tensor([1]))
+            param_1 = nn.Parameter(torch.tensor([1.0]))
             alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
-            param_2 = nn.Parameter(torch.Tensor([2]))
+            param_2 = nn.Parameter(torch.tensor([2.0]))
             optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(params=[param_2],
                               optimizer=optimizer_2,
                               name="alg_2")
 
             optimizer_root = alf.optimizers.Adam(lr=0.1)
-            param_root = nn.Parameter(torch.Tensor([0]))
+            param_root = nn.Parameter(torch.tensor([0.0]))
 
             # case 1: cycle without ignore
             alg_root = ComposedAlg(params=[param_root],
@@ -449,7 +449,7 @@ class TestWithCycle(alf.test.TestCase):
 
             # modify some parameter values after saving
             with torch.no_grad():
-                alg_root._sub_alg1._param_list[0].copy_(torch.Tensor([-1]))
+                alg_root._sub_alg1._param_list[0].copy_(torch.tensor([-1.0]))
 
             self.assertTrue((alg_root2.state_dict() != expected_state_dict))
 
@@ -464,17 +464,17 @@ class TestModelMismatch(alf.test.TestCase):
         # test model mismatch
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # construct algorithms
-            param_1 = nn.Parameter(torch.Tensor([1]))
+            param_1 = nn.Parameter(torch.tensor([1.0]))
             alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
-            param_2 = nn.Parameter(torch.Tensor([2]))
+            param_2 = nn.Parameter(torch.tensor([2.0]))
             optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(params=[param_2],
                               optimizer=optimizer_2,
                               name="alg_2")
 
             optimizer_root = alf.optimizers.Adam(lr=0.1)
-            param_root = nn.Parameter(torch.Tensor([0]))
+            param_root = nn.Parameter(torch.tensor([0.0]))
             alg_root12 = ComposedAlg(params=[param_root],
                                      optimizer=optimizer_root,
                                      sub_alg1=alg_1,
@@ -507,21 +507,21 @@ class TestOptMismatch(alf.test.TestCase):
     def test_opt_mismatch(self):
         # test optimizer mismatch
         with tempfile.TemporaryDirectory() as ckpt_dir:
-            param_1 = nn.Parameter(torch.Tensor([1]))
+            param_1 = nn.Parameter(torch.tensor([1.0]))
             optimizer_1 = alf.optimizers.Adam(lr=0.2)
             alg_1_no_op = SimpleAlg(params=[param_1], name="alg_1_no_op")
             alg_1 = SimpleAlg(params=[param_1],
                               optimizer=optimizer_1,
                               name="alg_1")
 
-            param_2 = nn.Parameter(torch.Tensor([2]))
+            param_2 = nn.Parameter(torch.tensor([2.0]))
             optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(params=[param_2],
                               optimizer=optimizer_2,
                               name="alg_2")
 
             optimizer_root = alf.optimizers.Adam(lr=0.1)
-            param_root = nn.Parameter(torch.Tensor([0]))
+            param_root = nn.Parameter(torch.tensor([0.0]))
             alg_root_1_no_op = ComposedAlg(params=[param_root],
                                            optimizer=optimizer_root,
                                            sub_alg1=alg_1_no_op,

@@ -24,9 +24,9 @@ from alf.utils.dist_utils import compute_entropy, compute_log_probability
 class TestEntropyExpand(unittest.TestCase):
 
     def test_entropy(self):
-        m = td.categorical.Categorical(torch.Tensor([0.25, 0.75]))
+        m = td.categorical.Categorical(torch.tensor([0.25, 0.75]))
         M = m.expand([2, 3])
-        expected = torch.Tensor([[0.562335, 0.562335, 0.562335],
+        expected = torch.tensor([[0.562335, 0.562335, 0.562335],
                                  [0.562335, 0.562335, 0.562335]])
         obtained = compute_entropy(M)
         np.testing.assert_array_almost_equal(expected, obtained)
@@ -36,8 +36,8 @@ class TestEntropy(unittest.TestCase):
 
     def test_entropy(self):
         M = td.categorical.Categorical(
-            torch.Tensor([[0.25, 0.75], [0.5, 0.5], [0.75, 0.25]]))
-        expected = torch.Tensor([0.562335, 0.6931471, 0.562335])
+            torch.tensor([[0.25, 0.75], [0.5, 0.5], [0.75, 0.25]]))
+        expected = torch.tensor([0.562335, 0.6931471, 0.562335])
         obtained = compute_entropy(M)
         np.testing.assert_array_almost_equal(expected, obtained)
 
@@ -45,10 +45,10 @@ class TestEntropy(unittest.TestCase):
 class TestLogProbabilityExpand(unittest.TestCase):
 
     def test_log_probability(self):
-        m = td.categorical.Categorical(torch.Tensor([0.25, 0.75]))
+        m = td.categorical.Categorical(torch.tensor([0.25, 0.75]))
         M = m.expand([2, 3])
-        actions = torch.Tensor([1]).repeat(2, 3)
-        expected = torch.Tensor([[-0.287682, -0.287682, -0.287682],
+        actions = torch.tensor([1]).repeat(2, 3)
+        expected = torch.tensor([[-0.287682, -0.287682, -0.287682],
                                  [-0.287682, -0.287682, -0.287682]])
         obtained = compute_log_probability(M, actions)
         np.testing.assert_array_almost_equal(expected, obtained)
@@ -58,9 +58,9 @@ class TestLogProbability(unittest.TestCase):
 
     def test_log_probability_(self):
         M = td.categorical.Categorical(
-            torch.Tensor([[0.25, 0.75], [0.5, 0.5], [0.75, 0.25]]))
-        actions = torch.Tensor([0]).repeat(3)
-        expected = torch.Tensor([-1.38629436, -0.6931471, -0.287682])
+            torch.tensor([[0.25, 0.75], [0.5, 0.5], [0.75, 0.25]]))
+        actions = torch.tensor([0]).repeat(3)
+        expected = torch.tensor([-1.38629436, -0.6931471, -0.287682])
         obtained = compute_log_probability(M, actions)
         np.testing.assert_array_almost_equal(expected, obtained)
 

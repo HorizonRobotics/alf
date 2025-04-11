@@ -46,11 +46,11 @@ def critic_network_visualizer(net,
 
         # assume a case where the dimensionality of action is 4
         # the action for the upper-left point of the probing region
-        action_upper_left = torch.Tensor([1, -1, 0, 0])
+        action_upper_left = torch.tensor([1, -1, 0, 0])
         # the action for the upper-right point of the probing region
-        action_upper_right = torch.Tensor([1, 1, 0, 0])
+        action_upper_right = torch.tensor([1, 1, 0, 0])
         # the action for the lower-left point of the probing region
-        action_lower_left = torch.Tensor([-1, -1, 0, 0])
+        action_lower_left = torch.tensor([-1, -1, 0, 0])
 
         # define a network function
         def net_func(net_input):

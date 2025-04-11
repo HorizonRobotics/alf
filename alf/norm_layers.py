@@ -41,7 +41,7 @@ class _NormBase(nn.Module):
         self._affine = affine
         self._track_running_stats = track_running_stats
         if affine:
-            self._weight = nn.Parameter(torch.Tensor(num_features))
+            self._weight = nn.Parameter(torch.empty(num_features))
             use_bias = True
             if fixed_weight_norm:
                 self._weight.opt_args = dict(max_norm=math.sqrt(num_features),
@@ -52,9 +52,9 @@ class _NormBase(nn.Module):
             if self._weight is None:
                 # pytorch has a bug which cannot handle the case that weight is
                 # None but bias is not. So we have to provide a fixed weight.
-                self._weight = nn.Parameter(torch.Tensor(num_features),
+                self._weight = nn.Parameter(torch.empty(num_features),
                                             requires_grad=False)
-            self._bias = nn.Parameter(torch.Tensor(num_features))
+            self._bias = nn.Parameter(torch.empty(num_features))
         else:
             self._bias = None
         self._use_bias = use_bias

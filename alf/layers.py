@@ -271,7 +271,7 @@ class FixedDecodingLayer(nn.Module):
                 if n > 2:
                     h = _get_haar_matrix(n // 2)
                 else:
-                    return torch.Tensor([[1, 1], [1, -1]])
+                    return torch.tensor([[1, 1], [1, -1]], dtype=torch.float32)
 
                 def _kron(A, B):
                     return torch.einsum("ab,cd->acbd", A, B).view(
@@ -279,15 +279,17 @@ class FixedDecodingLayer(nn.Module):
                         A.size(1) * B.size(1))
 
                 # calculate upper haar part
-                h_n = _kron(h, torch.Tensor([[1], [1]]))
+                h_n = _kron(h, torch.tensor([[1], [1]], dtype=torch.float32))
                 # calculate lower haar part
-                h_i = torch.sqrt(torch.Tensor([n / 2])) * _kron(
-                    torch.eye(len(h)), torch.Tensor([[1], [-1]]))
+                h_i = torch.sqrt(torch.tensor([n / 2.])) * _kron(
+                    torch.eye(len(h)),
+                    torch.tensor([[1], [-1]], dtype=torch.float32))
                 # combine both parts
                 h = torch.cat((h_n, h_i), dim=1)
                 return h
 
-            B = _get_haar_matrix(n) / torch.sqrt(torch.Tensor([n]))
+            B = _get_haar_matrix(n) / torch.sqrt(
+                torch.tensor([n], dtype=torch.float32))
             # weight for encoding the preference to low-frequency basis
             exp_factor = torch.ceil(torch.log2(torch.arange(n).float() + 1))
             basis_weight = tau**exp_factor
@@ -378,12 +380,12 @@ class FC(nn.Module):
         self._input_size = input_size
         self._output_size = output_size
         self._activation = activation
-        self._weight = nn.Parameter(torch.Tensor(output_size, input_size))
+        self._weight = nn.Parameter(torch.empty(output_size, input_size))
         # bias is useless if there is BN
         use_bias = use_bias and not use_bn
         self._use_torch_init = use_torch_init
         if use_bias:
-            self._bias = nn.Parameter(torch.Tensor(output_size))
+            self._bias = nn.Parameter(torch.empty(output_size))
         else:
             self._bias = None
 
@@ -557,10 +559,10 @@ class FCBatchEnsemble(FC):
                          kernel_initializer=kernel_initializer,
                          kernel_init_gain=kernel_init_gain)
 
-        self._r = nn.Parameter(torch.Tensor(ensemble_size, input_size))
-        self._s = nn.Parameter(torch.Tensor(ensemble_size, output_size))
+        self._r = nn.Parameter(torch.empty(ensemble_size, input_size))
+        self._s = nn.Parameter(torch.empty(ensemble_size, output_size))
         self._ensemble_bias = nn.Parameter(
-            torch.Tensor(ensemble_size, output_size))
+            torch.empty(ensemble_size, output_size))
         assert isinstance(ensemble_group,
                           int), ("ensemble_group has to be an integer!")
         self._r.ensemble_group = ensemble_group
@@ -709,9 +711,9 @@ class ParallelFC(nn.Module):
         self._input_size = input_size
         self._output_size = output_size
         self._activation = activation
-        self._weight = nn.Parameter(torch.Tensor(n, output_size, input_size))
+        self._weight = nn.Parameter(torch.empty(n, output_size, input_size))
         if use_bias:
-            self._bias = nn.Parameter(torch.Tensor(n, output_size))
+            self._bias = nn.Parameter(torch.empty(n, output_size))
         else:
             self._bias = None
         self._use_torch_init = use_torch_init
@@ -887,9 +889,9 @@ class CompositionalFC(nn.Module):
         """
         super().__init__()
         self._activation = activation
-        self._weight = nn.Parameter(torch.Tensor(n, output_size, input_size))
+        self._weight = nn.Parameter(torch.empty(n, output_size, input_size))
         if use_bias:
-            self._bias = nn.Parameter(torch.Tensor(n, output_size))
+            self._bias = nn.Parameter(torch.empty(n, output_size))
         else:
             self._bias = None
 
@@ -1370,10 +1372,10 @@ class Conv2DBatchEnsemble(Conv2D):
                          kernel_initializer=kernel_initializer,
                          kernel_init_gain=kernel_init_gain)
 
-        self._r = nn.Parameter(torch.Tensor(ensemble_size, in_channels))
-        self._s = nn.Parameter(torch.Tensor(ensemble_size, out_channels))
+        self._r = nn.Parameter(torch.empty(ensemble_size, in_channels))
+        self._s = nn.Parameter(torch.empty(ensemble_size, out_channels))
         self._ensemble_bias = nn.Parameter(
-            torch.Tensor(ensemble_size, out_channels))
+            torch.empty(ensemble_size, out_channels))
         assert isinstance(ensemble_group,
                           int), ("ensemble_group has to be an integer!")
         self._r.ensemble_group = ensemble_group
@@ -2773,15 +2775,15 @@ class TransformerBlock(nn.Module):
             d_v = d_model // num_heads
         if d_ff is None:
             d_ff = 4 * d_model
-        self._q_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_k))
-        self._k_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_k))
-        self._v_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_v))
+        self._q_proj = nn.Parameter(torch.empty(d_model, num_heads * d_k))
+        self._k_proj = nn.Parameter(torch.empty(d_model, num_heads * d_k))
+        self._v_proj = nn.Parameter(torch.empty(d_model, num_heads * d_v))
         d_a = d_v
         if positional_encoding == 'none':
             add_positional_encoding = False
         if add_positional_encoding:
             d_a = d_v + d_k
-        self._o_proj = nn.Parameter(torch.Tensor(num_heads * d_a, d_model))
+        self._o_proj = nn.Parameter(torch.empty(num_heads * d_a, d_model))
 
         self._d_model = d_model
         self._d_k = d_k
@@ -2810,12 +2812,12 @@ class TransformerBlock(nn.Module):
         self._positional_encoding = None
         self._qp_bias = None
         if positional_encoding != 'none':
-            self._positional_encoding = nn.Parameter(torch.Tensor(l, d_k))
+            self._positional_encoding = nn.Parameter(torch.empty(l, d_k))
             # bias over query vectors when calculating score with positional encodings.
             # Introduced in [3].
-            self._qp_bias = nn.Parameter(torch.Tensor(num_heads, d_k))
+            self._qp_bias = nn.Parameter(torch.empty(num_heads, d_k))
         # bias over query vectors when calculating score with keys. Introduced in [3].
-        self._qk_bias = nn.Parameter(torch.Tensor(num_heads, d_k))
+        self._qk_bias = nn.Parameter(torch.empty(num_heads, d_k))
         self.reset_parameters()
 
     def reset_parameters(self):

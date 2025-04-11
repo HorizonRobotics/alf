@@ -283,10 +283,10 @@ class TestActionSamplingCategorical(alf.test.TestCase):
 
     def test_action_sampling_categorical(self):
         m = torch.distributions.categorical.Categorical(
-            torch.Tensor([0.25, 0.75]))
+            torch.tensor([0.25, 0.75]))
         M = m.expand([10])
         epsilon = 0.0
-        action_expected = torch.Tensor([1]).repeat(10)
+        action_expected = torch.tensor([1.0]).repeat(10)
         action_obtained = dist_utils.epsilon_greedy_sample(M, epsilon)
         self.assertTrue((action_expected == action_obtained).all())
 
@@ -294,11 +294,11 @@ class TestActionSamplingCategorical(alf.test.TestCase):
 class TestActionSamplingNormal(alf.test.TestCase):
 
     def test_action_sampling_normal(self):
-        m = torch.distributions.normal.Normal(torch.Tensor([0.3, 0.7]),
-                                              torch.Tensor([1.0, 1.0]))
+        m = torch.distributions.normal.Normal(torch.tensor([0.3, 0.7]),
+                                              torch.tensor([1.0, 1.0]))
         M = m.expand([10, 2])
         epsilon = 0.0
-        action_expected = torch.Tensor([0.3, 0.7]).repeat(10, 1)
+        action_expected = torch.tensor([0.3, 0.7]).repeat(10, 1)
         action_obtained = dist_utils.epsilon_greedy_sample(M, epsilon)
         self.assertTrue((action_expected == action_obtained).all())
 
@@ -318,9 +318,9 @@ class TestActionSamplingTransformedNormal(alf.test.TestCase):
                 base_distribution=normal_dist, transforms=transforms)
             return squashed_dist, transforms
 
-        means = torch.Tensor([0.3, 0.7])
+        means = torch.tensor([0.3, 0.7])
         dist, transforms = _get_transformed_normal(means=means,
-                                                   stds=torch.Tensor(
+                                                   stds=torch.tensor(
                                                        [1.0, 1.0]))
 
         mode = dist_utils.get_mode(dist)
@@ -344,7 +344,7 @@ class TestActionSamplingTransformedCategorical(alf.test.TestCase):
             categorical_dist = td.Independent(td.Categorical(probs=probs), 1)
             return categorical_dist
 
-        probs = torch.Tensor([[0.3, 0.5, 0.2], [0.6, 0.4, 0.0]])
+        probs = torch.tensor([[0.3, 0.5, 0.2], [0.6, 0.4, 0.0]])
         dist = _get_transformed_categorical(probs=probs)
         mode = dist_utils.get_mode(dist)
         expected_mode = torch.argmax(probs, dim=1)
@@ -360,13 +360,13 @@ class TestRSampleActionDistribution(alf.test.TestCase):
 
     def test_rsample_action_distribution(self):
         c = torch.distributions.categorical.Categorical(
-            torch.Tensor([0.25, 0.75]))
+            torch.tensor([0.25, 0.75]))
         C = c.expand([10])
         self.assertRaises(AssertionError,
                           dist_utils.rsample_action_distribution, C)
 
-        n = torch.distributions.normal.Normal(torch.Tensor([0.3, 0.7]),
-                                              torch.Tensor([1.0, 1.0]))
+        n = torch.distributions.normal.Normal(torch.tensor([0.3, 0.7]),
+                                              torch.tensor([1.0, 1.0]))
         N = n.expand([10, 2])
 
         action_distribution = ActionDistribution(a=C, b=N)

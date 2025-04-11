@@ -239,7 +239,7 @@ class BipartiteMatchingLossTest(parameterized.TestCase, alf.test.TestCase):
                                     alf.layers.FC(d_model, N))
         input_fc = alf.layers.FC(D, d_model)
 
-        queries = torch.nn.Parameter(torch.Tensor(M, d_model))
+        queries = torch.nn.Parameter(torch.empty(M, d_model))
         torch.nn.init.normal_(queries)
 
         val_n = 200

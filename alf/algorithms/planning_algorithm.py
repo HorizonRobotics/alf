@@ -76,9 +76,9 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         self._feature_spec = feature_spec
         self._planning_horizon = planning_horizon
 
-        self._upper_bound = torch.Tensor(action_spec.maximum) \
+        self._upper_bound = torch.tensor(action_spec.maximum) \
                         if upper_bound is None else upper_bound
-        self._lower_bound = torch.Tensor(action_spec.minimum) \
+        self._lower_bound = torch.tensor(action_spec.minimum) \
                         if lower_bound is None else lower_bound
 
         self._action_seq_cost_func = None

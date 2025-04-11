@@ -91,7 +91,7 @@ class DistributionTest(alf.test.TestCase):
         self._test_truncated(ad.T2ITS())
 
     def test_truncated_normal_mode(self):
-        dist = ad.TruncatedNormal(loc=torch.Tensor([[1.5, -3.0, 4.5]]),
+        dist = ad.TruncatedNormal(loc=torch.tensor([[1.5, -3.0, 4.5]]),
                                   scale=torch.tensor([[0.8, 1.9, 1.2]]),
                                   lower_bound=torch.tensor([1.0, 1.0, 1.0]),
                                   upper_bound=torch.tensor([2.0, 2.0, 2.0]))
