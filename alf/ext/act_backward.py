@@ -18,11 +18,13 @@ import pathlib
 import os
 
 DIR = pathlib.Path(__file__).parent.absolute()
-_ext = load(name="act_backward",
-            sources=[os.path.join(DIR, "act_backward.cu")],
-            verbose=True)
 
-relu_backward_cuda = _ext.relu_backward
+if torch.cuda.is_available():
+    _ext = load(name="act_backward",
+                sources=[os.path.join(DIR, "act_backward.cu")],
+                verbose=True)
+
+    relu_backward_cuda = _ext.relu_backward
 
 
 def relu_backward(output, grad_output):
