@@ -389,6 +389,7 @@ class FC(nn.Module):
         self._kwargs = copy.deepcopy(locals())
         self._kwargs.pop('self')
         self._kwargs.pop('__class__')
+        self._kwargs.pop('method')  # ParallelFC does not have this argument
 
         super(FC, self).__init__()
 

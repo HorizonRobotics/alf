@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl.testing import parameterized
+import unittest
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -21,6 +22,7 @@ from time import perf_counter
 from alf.ext import fused_linear_act, relu_backward
 
 
+@unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
 class FusedLinearActTest(alf.test.TestCase, parameterized.TestCase):
 
     def _do_one_test_fused_linear_act(self, m, n, k, transa, transb, act,
