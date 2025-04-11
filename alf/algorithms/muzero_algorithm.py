@@ -150,7 +150,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         if self._reward_transformer is not None:
             time_step = time_step._replace(
                 reward=self._reward_transformer(time_step.reward))
-        with torch.cuda.amp.autocast(self._enable_amp, dtype=self._amp_dtype):
+        with torch.amp.autocast('cuda',
+                                enabled=self._enable_amp,
+                                dtype=self._amp_dtype):
             latent = self._repr_learner.predict_step(time_step, state).output
             return self._mcts.predict_step(
                 time_step._replace(observation=latent), state)

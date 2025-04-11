@@ -102,7 +102,7 @@ class TestLeanFunction(alf.test.TestCase):
             p2.data.copy_(p1)
         x = torch.randn((4, 3), requires_grad=True)
         func2 = lean_function(func2)
-        with torch.cuda.amp.autocast(enabled=True):
+        with torch.amp.autocast('cuda', enabled=True):
             y1 = func1(x)[0]
             y2 = func2(x)[0]
         self.assertTensorEqual(y1, y2)

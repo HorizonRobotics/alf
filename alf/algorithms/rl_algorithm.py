@@ -745,8 +745,9 @@ class RLAlgorithm(Algorithm):
     @data_distributed_when(lambda algorithm: algorithm.on_policy)
     def _compute_train_info_and_loss_info_on_policy(self, unroll_length):
         with record_time("time/unroll"):
-            with torch.cuda.amp.autocast(self._config.enable_amp,
-                                         dtype=self._config.amp_dtype):
+            with torch.amp.autocast('cuda',
+                                    enabled=self._config.enable_amp,
+                                    dtype=self._config.amp_dtype):
                 experience = self.unroll(self._config.unroll_length)
             self.summarize_metrics()
 
@@ -811,8 +812,10 @@ class RLAlgorithm(Algorithm):
              or self.get_step_metrics()[1].result() < config.num_env_steps)):
             unrolled = True
             with torch.set_grad_enabled(
-                    config.unroll_with_grad), torch.cuda.amp.autocast(
-                        config.enable_amp, dtype=self._config.amp_dtype):
+                    config.unroll_with_grad), torch.amp.autocast(
+                        'cuda',
+                        enabled=config.enable_amp,
+                        dtype=self._config.amp_dtype):
                 with record_time("time/unroll"):
                     self.eval()
                     # The period of performing unroll may not be an integer
