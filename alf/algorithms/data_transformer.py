@@ -381,8 +381,9 @@ class FrameStacker(DataTransformer):
                                                prev_positions)
 
             if self._missing_position_handling == 'zero':
-                mask = ~invalid_prev.to(prev_obs.device)
-                prev_obs = prev_obs * mask.unsqueeze(-1)
+                if invalid_prev.any():
+                    mask = ~invalid_prev.to(prev_obs.device)
+                    prev_obs = prev_obs * mask.unsqueeze(-1)
 
             stacked_shape = alf.nest.get_field(
                 self._transformed_observation_spec, self._fields[i]).shape
