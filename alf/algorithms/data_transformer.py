@@ -344,17 +344,19 @@ class FrameStacker(DataTransformer):
             valid_prev = prev_positions[:,
                                         0] >= earlist_position
             # [B, stack_size - 1]
-            invalid_prev = prev_positions < earlist_position.unsqueeze(-1)
+            # invalid_prev = prev_positions < earlist_position.unsqueeze(-1)
+            # [B]
+            invalid_prev = ~valid_prev
 
             if self._missing_position_handling == "assert":
                 assert torch.all(valid_prev), (
-                    "Some previous posisions are no longer in the replay buffer: "
+                    "Some previous positions are no longer in the replay buffer: "
                     f"{prev_positions[:, 0][~valid_prev]}, "
                     f"{replay_buffer.get_earliest_position(env_ids)[~valid_prev]}")
             elif self._missing_position_handling in ["zero", "repeat"]:
                 # prev_positions[invalid_prev] = earlist_position.unsqueeze(-1)[invalid_prev]
-                prev_positions = torch.where(invalid_prev, earlist_position.unsqueeze(-1), prev_positions)
-
+                # prev_positions = torch.where(invalid_prev, earlist_position.unsqueeze(-1), prev_positions)
+                prev_positions[invalid_prev] = earlist_position
             # [B, 1]
             env_ids = env_ids.unsqueeze(-1)
 
