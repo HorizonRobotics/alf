@@ -358,7 +358,7 @@ class FrameStacker(DataTransformer):
                 # prev_positions = torch.where(invalid_prev, earlist_position.unsqueeze(-1), prev_positions)
                 if invalid_prev.any():
                     # prev_positions [B, s], invalid_prev: [B], earlist_position: [B]
-                    prev_positions[invalid_prev] = earlist_position
+                    prev_positions[invalid_prev] = earlist_position[invalid_prev]
             # [B, 1]
             env_ids = env_ids.unsqueeze(-1)
 
