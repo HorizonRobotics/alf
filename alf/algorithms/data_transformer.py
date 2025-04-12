@@ -377,8 +377,12 @@ class FrameStacker(DataTransformer):
 
         def _stack_frame(obs, i):
             
-            prev_obs = replay_buffer.get_field(self._exp_fields[i], env_ids,
-                                               prev_positions)
+            try:
+                prev_obs = replay_buffer.get_field(self._exp_fields[i], env_ids,
+                                                prev_positions)
+            except:
+                print("---except")
+                prev_obs = torch.zeros((obs.shape[0], self._stack_size - 1, *obs.shape[2:]))
 
             if self._missing_position_handling == 'zero':
                 if invalid_prev.any():
@@ -388,6 +392,7 @@ class FrameStacker(DataTransformer):
             stacked_shape = alf.nest.get_field(
                 self._transformed_observation_spec, self._fields[i]).shape
             # [batch_size, mini_batch_length + stack_size - 1, ...]
+            
             stacked_obs = torch.cat((prev_obs, obs), dim=1)
 
             # [batch_size, mini_batch_length, stack_size, ...]

@@ -869,6 +869,13 @@ class ReplayBuffer(RingBuffer):
         """
         current_pos = self._current_pos[env_ids]
         assert torch.all(positions < current_pos), "Invalid positions"
+        if not torch.all(
+            positions >= current_pos - self._max_length):
+            print("-----positions")
+            print(positions)
+            print(current_pos)
+            print(self._max_length)
+            
         assert torch.all(
             positions >= current_pos - self._max_length), "Invalid positions"
         field = alf.nest.map_structure(
