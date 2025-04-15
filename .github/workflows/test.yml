@@ -4,7 +4,7 @@ on: [push, pull_request_target]
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     container:
       image: horizonrobotics/alf:py3.11-torch2.2-cpu-onnx
     # always run on push events, but only run on pull_request_target events
