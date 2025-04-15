@@ -92,7 +92,7 @@ class FusedLinearActTest(alf.test.TestCase, parameterized.TestCase):
         self.assertTrue(torch.allclose(bias1.grad, bias2.grad, atol=atol))
 
     def test_fused_linear_act(self):
-        for dtype in [torch.float16, torch.float32]:
+        for dtype in [torch.float16, torch.bfloat16, torch.float32]:
             for m, n, k in [(4, 8, 16), (8, 4, 16)]:
                 for transa in [False, True]:
                     for transb in [False, True]:
@@ -116,7 +116,7 @@ class FusedLinearActTest(alf.test.TestCase, parameterized.TestCase):
         self.assertTrue((grad_input == grad_input_torch).all())
 
     def benchmark_all(self):
-        for dtype in [torch.float16, torch.float32]:
+        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
             for act in ["RELU", "NONE"]:
                 for feature_shape, out_dim in [((256, 256), 256),
                                                ((1024, 1024), 1024),

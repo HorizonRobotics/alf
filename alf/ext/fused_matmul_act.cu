@@ -99,6 +99,8 @@ cudaDataType_t convertTensorDtypeToCudaDataType(torch::ScalarType dtype) {
       return CUDA_R_32F;
     case torch::kHalf:
       return CUDA_R_16F;
+    case torch::kBFloat16:
+      return CUDA_R_16BF;
     case torch::kDouble:
       return CUDA_R_64F;
     default:
@@ -108,18 +110,33 @@ cudaDataType_t convertTensorDtypeToCudaDataType(torch::ScalarType dtype) {
 
 union MixedScalar {
   at::Half f16;
+  at::BFloat16 bf16;
   float f32;
   double f64;
 };
 
-cublasComputeType_t getComputeType(cudaDataType_t data_type) {
+void getComputeTypeAndScaleType(cudaDataType_t data_type,
+                                cublasComputeType_t* compute_type,
+                                cudaDataType_t* scale_type) {
+  // See https://docs.nvidia.com/cuda/cublas/#cublasltmatmul
+  // for all valid combinations of compute type and data type
   switch (data_type) {
     case CUDA_R_16F:
-      return CUBLAS_COMPUTE_16F;
+      *compute_type = CUBLAS_COMPUTE_16F;
+      *scale_type = CUDA_R_16F;
+      break;
+    case CUDA_R_16BF:
+      *compute_type = CUBLAS_COMPUTE_32F;
+      *scale_type = CUDA_R_32F;
+      break;
     case CUDA_R_32F:
-      return CUBLAS_COMPUTE_32F;
+      *compute_type = CUBLAS_COMPUTE_32F;
+      *scale_type = CUDA_R_32F;
+      break;
     case CUDA_R_64F:
-      return CUBLAS_COMPUTE_64F;
+      *compute_type = CUBLAS_COMPUTE_64F;
+      *scale_type = CUDA_R_64F;
+      break;
     default:
       throw std::invalid_argument("Unsupported data type");
   }
@@ -136,6 +153,9 @@ MixedScalar convertToMixedScalar(double number, cudaDataType_t dtype) {
       break;
     case CUDA_R_16F:
       result.f16 = at::Half(number);
+      break;
+    case CUDA_R_16BF:
+      result.bf16 = at::BFloat16(number);
       break;
     default:
       throw std::invalid_argument("Unsupported tensor data type");
@@ -261,11 +281,13 @@ torch::Tensor fused_matmul_act(torch::Tensor a,
 
   // Handle transposition
   cudaDataType_t data_type = convertTensorDtypeToCudaDataType(a.scalar_type());
-  cudaDataType_t scaleType = data_type;
+  cudaDataType_t scale_type;
+  cublasComputeType_t compute_type;
+  getComputeTypeAndScaleType(data_type, &compute_type, &scale_type);
 
   // Create matmul operation descriptor
-  checkCublasStatus(cublasLtMatmulDescCreate(
-      &operationDesc, getComputeType(data_type), scaleType));
+  checkCublasStatus(
+      cublasLtMatmulDescCreate(&operationDesc, compute_type, scale_type));
 
   // Set transposition attributes
   checkCublasStatus(cublasLtMatmulDescSetAttribute(
@@ -336,8 +358,8 @@ torch::Tensor fused_matmul_act(torch::Tensor a,
       cudaStream_t                   stream);
   */
 
-  const MixedScalar alpha = convertToMixedScalar(1.0, scaleType);
-  const MixedScalar beta = convertToMixedScalar(0.0, scaleType);
+  const MixedScalar alpha = convertToMixedScalar(1.0, scale_type);
+  const MixedScalar beta = convertToMixedScalar(0.0, scale_type);
 
   checkCublasStatus(
       cublasLtMatmul(ltHandle,

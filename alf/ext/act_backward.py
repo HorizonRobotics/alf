@@ -46,7 +46,7 @@ def relu_backward(output, grad_output):
     assert output.shape == grad_output.shape
     assert output.dtype == grad_output.dtype
     assert output.is_cuda == grad_output.is_cuda
-    assert output.dtype in [torch.float16, torch.float32]
+    assert output.dtype.is_floating_point
     if output.is_cuda and output.is_contiguous() and grad_output.is_contiguous(
     ):
         return relu_backward_cuda(output, grad_output)

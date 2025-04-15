@@ -32,6 +32,12 @@ __device__ __forceinline__ __half relu_grad(__half x, __half go) {
   return __hgt(x, __float2half(0.f)) ? go : __float2half(0.f);
 }
 
+template <>
+__device__ __forceinline__ __nv_bfloat16 relu_grad(__nv_bfloat16 x,
+                                                   __nv_bfloat16 go) {
+  return __hgt(x, __float2bfloat16(0.f)) ? go : __float2bfloat16(0.f);
+}
+
 template <typename T>
 __global__ void relu_backward_kernel(const T* grad_output,
                                      const T* input,
@@ -62,6 +68,8 @@ void relu_backward_cuda_launcher(
         gridDim.x,
         gridDim.y,
         gridDim.z);
+    throw std::runtime_error("Error in relu_backward_kernel: " +
+                             std::string(cudaGetErrorString(err)));
   }
 }
 
@@ -79,23 +87,14 @@ torch::Tensor relu_backward(const torch::Tensor input,
   int cols = input.size(1);
 
   auto grad_input = at::empty({rows, cols}, input.options());
-
-  if (input.scalar_type() == at::kFloat) {
-    relu_backward_cuda_launcher<float>(grad_output.data_ptr<float>(),
-                                       input.data_ptr<float>(),
-                                       grad_input.data_ptr<float>(),
-                                       rows,
-                                       cols);
-  } else if (input.scalar_type() == at::kHalf) {
-    relu_backward_cuda_launcher<__half>(
-        reinterpret_cast<const __half*>(grad_output.data_ptr<at::Half>()),
-        reinterpret_cast<const __half*>(input.data_ptr<at::Half>()),
-        reinterpret_cast<__half*>(grad_input.data_ptr<at::Half>()),
-        rows,
-        cols);
-  } else {
-    TORCH_CHECK(false, "relu_backward only supports float32 and float16");
-  }
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::kHalf, at::kBFloat16, input.scalar_type(), "relu_backward", ([&] {
+        relu_backward_cuda_launcher<scalar_t>(grad_output.data_ptr<scalar_t>(),
+                                              input.data_ptr<scalar_t>(),
+                                              grad_input.data_ptr<scalar_t>(),
+                                              rows,
+                                              cols);
+      }));
 
   return grad_input;
 }
