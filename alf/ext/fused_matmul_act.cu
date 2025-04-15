@@ -26,6 +26,48 @@
 
 #define DEFAULT_WORKSPACE_SIZE (8 * 1024 * 1024)
 
+// From aten/src/ATen/cuda/EmptyTensor.cpp
+namespace at::detail {
+
+TensorBase empty_cuda(IntArrayRef size,
+                      ScalarType dtype,
+                      std::optional<Device> device_opt,
+                      std::optional<c10::MemoryFormat> memory_format_opt) {
+  at::globalContext().lazyInitDevice(c10::DeviceType::CUDA);
+  const auto device = device_or_default(device_opt);
+  TORCH_INTERNAL_ASSERT(device.is_cuda());
+  const DeviceGuard device_guard(device);
+  auto* allocator = at::cuda::getCUDADeviceAllocator();
+  constexpr c10::DispatchKeySet cuda_dks(c10::DispatchKey::CUDA);
+  return at::detail::empty_generic(
+      size, allocator, cuda_dks, dtype, memory_format_opt);
+}
+
+TensorBase empty_cuda(IntArrayRef size,
+                      std::optional<ScalarType> dtype_opt,
+                      std::optional<Layout> layout_opt,
+                      std::optional<Device> device_opt,
+                      std::optional<bool> pin_memory_opt,
+                      std::optional<c10::MemoryFormat> memory_format_opt) {
+  TORCH_CHECK(!pin_memory_opt.has_value() || !*pin_memory_opt,
+              "Only dense CPU tensors can be pinned");
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(layout_or_default(layout_opt) ==
+                                   Layout::Strided);
+
+  const auto dtype = dtype_or_default(dtype_opt);
+  return at::detail::empty_cuda(size, dtype, device_opt, memory_format_opt);
+}
+
+TensorBase empty_cuda(IntArrayRef size, const TensorOptions& options) {
+  return at::detail::empty_cuda(size,
+                                optTypeMetaToScalarType(options.dtype_opt()),
+                                options.layout_opt(),
+                                options.device_opt(),
+                                options.pinned_memory_opt(),
+                                options.memory_format_opt());
+}
+}  // namespace at::detail
+
 #define checkCudaStatus(call)                               \
   {                                                         \
     cudaError_t status = call;                              \
@@ -83,16 +125,16 @@ cublasComputeType_t getComputeType(cudaDataType_t data_type) {
   }
 }
 
-MixedScalar convertToMixedScalar(double number, torch::ScalarType dtype) {
+MixedScalar convertToMixedScalar(double number, cudaDataType_t dtype) {
   MixedScalar result;
   switch (dtype) {
-    case torch::kFloat:
+    case CUDA_R_32F:
       result.f32 = number;
       break;
-    case torch::kDouble:
+    case CUDA_R_64F:
       result.f64 = number;
       break;
-    case torch::kHalf:
+    case CUDA_R_16F:
       result.f16 = at::Half(number);
       break;
     default:
@@ -163,6 +205,8 @@ torch::Tensor fused_matmul_act(torch::Tensor a,
     workspace = torch::empty(
         workspaceSize,
         at::TensorOptions().dtype(torch::kUInt8).device(a.device()));
+  } else {
+    workspaceSize = workspace.numel();
   }
 
   if (a.dim() != 2 || b.dim() != 2) {
@@ -193,9 +237,12 @@ torch::Tensor fused_matmul_act(torch::Tensor a,
   cudaDataType_t cublasBiasDataType =
       convertTensorDtypeToCudaDataType(bias.scalar_type());
 
-  // Allocate output tensor
-  torch::Tensor out =
-      torch::empty({a.size(0), b.size(1)}, a.options().device(a.device()));
+  // Allocate output tensor. It's important to use empty_cuda().
+  // For some unknown reason, torch::empty() makes the matmul call significantly
+  // slow.
+  at::Tensor out =
+      at::detail::empty_cuda({a.sizes()[0], b.sizes()[1]}, a.options());
+  // torch::Tensor out = torch::empty({a.size(0), b.size(1)}, a.options());
 
   cublasLtMatmulDesc_t operationDesc = nullptr;
   cublasOperation_t transa;
@@ -214,10 +261,11 @@ torch::Tensor fused_matmul_act(torch::Tensor a,
 
   // Handle transposition
   cudaDataType_t data_type = convertTensorDtypeToCudaDataType(a.scalar_type());
+  cudaDataType_t scaleType = data_type;
 
   // Create matmul operation descriptor
   checkCublasStatus(cublasLtMatmulDescCreate(
-      &operationDesc, getComputeType(data_type), data_type));
+      &operationDesc, getComputeType(data_type), scaleType));
 
   // Set transposition attributes
   checkCublasStatus(cublasLtMatmulDescSetAttribute(
@@ -288,8 +336,8 @@ torch::Tensor fused_matmul_act(torch::Tensor a,
       cudaStream_t                   stream);
   */
 
-  const MixedScalar alpha = convertToMixedScalar(1.0, a.scalar_type());
-  const MixedScalar beta = convertToMixedScalar(0.0, a.scalar_type());
+  const MixedScalar alpha = convertToMixedScalar(1.0, scaleType);
+  const MixedScalar beta = convertToMixedScalar(0.0, scaleType);
 
   checkCublasStatus(
       cublasLtMatmul(ltHandle,
