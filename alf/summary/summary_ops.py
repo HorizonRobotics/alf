@@ -19,8 +19,8 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from typing import Callable, Union
 from alf.utils.schedulers import update_progress
-from contextlib import contextmanager
 
+# These will be used by orig_tf_gfile_context() in alf.utils.common
 TF_IO_GFILE = None
 TB_IO_GFILE = None
 
@@ -43,20 +43,6 @@ try:
 except ImportError:
     # Tensorflow is not installed
     pass
-
-
-# Changing tensorflow's gfile module can cause errors if running tensorflow-dependent
-# code. This context manager allows us to restore the original gfile module temporarily.
-@contextmanager
-def orig_tf_gfile_context():
-    assert TF_IO_GFILE is not None, \
-        'Tensorflow is not installed, this function should not be used.'
-    try:
-        tf.io.gfile = TF_IO_GFILE
-        yield
-    finally:
-        tf.io.gfile = TB_IO_GFILE
-
 
 _summary_enabled = False
 

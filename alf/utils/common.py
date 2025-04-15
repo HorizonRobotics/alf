@@ -38,15 +38,30 @@ import torch.nn as nn
 import traceback
 import types
 from typing import Callable, List, Dict, Optional, Union
+from contextlib import contextmanager
 
 import alf
 from alf.algorithms.config import TrainerConfig
 import alf.nest as nest
 from alf.utils.schedulers import Scheduler, as_scheduler
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
 from alf.utils.per_process_context import PerProcessContext
 from . import dist_utils, gin_utils
+
+
+# Changing tensorflow's gfile module can cause errors if running tensorflow-dependent
+# code. This context manager allows us to restore the original gfile module temporarily.
+@contextmanager
+def orig_tf_gfile_context():
+    from alf.summary.summary_ops import TF_IO_GFILE, TB_IO_GFILE
+    assert TF_IO_GFILE is not None, \
+        'Tensorflow is not installed, this function should not be used.'
+    import tensorflow as tf
+    try:
+        tf.io.gfile = TF_IO_GFILE
+        yield
+    finally:
+        tf.io.gfile = TB_IO_GFILE
 
 
 def add_method(cls):
