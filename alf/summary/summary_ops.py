@@ -19,6 +19,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from typing import Callable, Union
 from alf.utils.schedulers import update_progress
+from contextlib import contextmanager
 
 try:
     # If tensorflow has been installed, pytorch might use tensorflow's
@@ -27,6 +28,7 @@ try:
     # https://github.com/pytorch/pytorch/issues/30966#issuecomment-582747929
     import tensorflow as tf
     import tensorboard as tb
+    tf_orig_gfile = tf.io.gfile
     tf.io.gfile = tb.compat.tensorflow_stub.io.gfile
 except:
     pass
@@ -49,6 +51,15 @@ _summary_writer_stack = [None]
 
 # The default number of bins for histogram
 _default_bins = 30
+
+
+@contextmanager
+def orig_tf_gfile_context():
+    try:
+        tf.io.gfile = tf_orig_gfile
+        yield
+    finally:
+        tf.io.gfile = tb.compat.tensorflow_stub.io.gfile
 
 
 class scope(object):
