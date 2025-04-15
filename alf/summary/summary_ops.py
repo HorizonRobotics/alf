@@ -19,6 +19,10 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from typing import Callable, Union
 from alf.utils.schedulers import update_progress
+from contextlib import contextmanager
+
+TF_IO_GFILE = None
+TB_IO_GFILE = None
 
 try:
     # If tensorflow has been installed, pytorch might use tensorflow's
@@ -27,9 +31,32 @@ try:
     # https://github.com/pytorch/pytorch/issues/30966#issuecomment-582747929
     import tensorflow as tf
     import tensorboard as tb
-    tf.io.gfile = tb.compat.tensorflow_stub.io.gfile
-except:
+
+    # Store tensorflow's original gfile module
+    TF_IO_GFILE = tf.io.gfile
+
+    # Store tensorboard's gfile module
+    TB_IO_GFILE = tb.compat.tensorflow_stub.io.gfile
+
+    # Replace tensorflow's gfile with tensorboard's gfile
+    tf.io.gfile = TB_IO_GFILE
+except ImportError:
+    # Tensorflow is not installed
     pass
+
+
+# Changing tensorflow's gfile module can cause errors if running tensorflow-dependent
+# code. This context manager allows us to restore the original gfile module temporarily.
+@contextmanager
+def orig_tf_gfile_context():
+    assert TF_IO_GFILE is not None, \
+        'Tensorflow is not installed, this function should not be used.'
+    try:
+        tf.io.gfile = TF_IO_GFILE
+        yield
+    finally:
+        tf.io.gfile = TB_IO_GFILE
+
 
 _summary_enabled = False
 
