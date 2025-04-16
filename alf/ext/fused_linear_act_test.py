@@ -20,6 +20,7 @@ import torch.nn.functional as F
 import alf
 from time import perf_counter
 from alf.ext import fused_linear_act, relu_backward
+from alf.tensor_specs import torch_dtype_to_str
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "CUDA not available")
@@ -116,7 +117,13 @@ class FusedLinearActTest(alf.test.TestCase, parameterized.TestCase):
         self.assertTrue((grad_input == grad_input_torch).all())
 
     def benchmark_all(self):
-        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+        print(
+            f"                                               ------ TFLOPS/s -----   ------ ms/call ------ "
+        )
+        print(
+            f"dtype    size                   act  backward fused  F.linear default fused  F.linear default"
+        )
+        for dtype in [torch.float16, torch.bfloat16, torch.float32]:
             for act in ["RELU", "NONE"]:
                 for feature_shape, out_dim in [((256, 256), 256),
                                                ((1024, 1024), 1024),
@@ -180,12 +187,12 @@ class FusedLinearActTest(alf.test.TestCase, parameterized.TestCase):
         flops = np.prod(size)
         if backward:
             flops *= 3
-        job = f"{dtype} {str(size):22s} act={act} backward={int(backward)}"
+        job = f"{torch_dtype_to_str(dtype):8s} {str(size):<22s} {act} {backward:<8}"
         flops1, t1 = self.benchmark_f(fused_linear_act_func, flops)
         flops2, t2 = self.benchmark_f(linear_act_func, flops)
         flops3, t3 = self.benchmark_f(matmul_func, flops)
         print(
-            f"{job} {flops1:6.3g} {flops2:6.3g} {flops3:6.3g} {t1:6.3g} {t2:6.3g} {t3:6.3g}"
+            f"{job} {flops1:<7.3g} {flops2:<7.3g} {flops3:<7.3g} {t1:<7.3g} {t2:<7.3g} {t3:<7.3g}"
         )
 
     def benchmark_f(self, f, flops):

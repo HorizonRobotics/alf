@@ -89,7 +89,7 @@ class FusedLinearAct(torch.autograd.Function):
     def forward(ctx, input: torch.Tensor, weight: torch.Tensor,
                 bias: Optional[torch.Tensor], act: Literal["RELU", "GELU",
                                                            "NONE"]):
-        assert 2 <= input.ndim <= 3
+        assert input.ndim >= 2, f"Invalid input shape: {input.shape}"
         assert weight.ndim == 2 and weight.shape[1] == input.shape[
             -1], f"Invalid shape: {input.shape} {weight.shape}"
         assert bias is None or (bias.ndim == 1

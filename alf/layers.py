@@ -483,7 +483,7 @@ class FC(nn.Module):
         Returns:
             Tensor: with shape as ``inputs.shape[:-1] + (output_size,)``
         """
-        if self._method == 'fused_linear_act' and 2 <= inputs.ndim <= 3:
+        if self._method == 'fused_linear_act':
             y = fused_linear_act(inputs, self._weight, self._bias,
                                  self._act_name)
         elif self._method == 'linear':
