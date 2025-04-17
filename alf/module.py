@@ -23,11 +23,11 @@ of ``Module`` or ``Parameter`` attributes by more than 10x times.
 import torch
 from torch.nn import Module
 
-_old_Module__setattr__ = torch.nn.Module.__setattr__
+old___setattr__ = torch.nn.Module.__setattr__
 
 
 def _new_Module__setattr__(self, name, value):
-    _old_Module__setattr__(self, name, value)
+    old___setattr__(self, name, value)
     object.__setattr__(self, name, value)
 
 
@@ -46,8 +46,8 @@ Module.register_parameter = _new_register_parameter
 old_register_buffer = torch.nn.Module.register_buffer
 
 
-def _new_register_buffer(self, name, param):
-    old_register_buffer(self, name, param)
+def _new_register_buffer(self, name, param, persistent=True):
+    old_register_buffer(self, name, param, persistent)
     object.__setattr__(self, name, param)
 
 
@@ -62,3 +62,9 @@ def _new_add_module(self, name, module):
 
 
 Module.add_module = _new_add_module
+
+# ALF Algorithm will overwrite these functions, we save the original ones.
+old_state_dict = Module.state_dict
+old_load_state_dict = Module.load_state_dict
+old__save_to_state_dict = Module._save_to_state_dict
+old__load_from_state_dict = Module._load_from_state_dict
