@@ -154,16 +154,20 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
         self._ddp_rank = max(0, PerProcessContext().ddp_rank)
         self._num_ranks = PerProcessContext().num_processes
 
-    def _opt_free_state_dict(self) -> dict:
-        """Return `self._core_alg` state dict without optimizers.
+    def _distributed_state_dict(self) -> dict:
+        """Return `self._core_alg` state dict for distributed training.
 
         This dict will be used for param syncing between a trainer and an unroller.
         Sometimes optimizers have large state vectors which we want to exclude.
+        Also we should exclude other parameters such as those of pretrained models.
         """
+        # Note that self._core_alg won't create a relay buffer so we don't have
+        # to worry about including it in the state dict.
         return {
             k: v
             for k, v in self._core_alg.state_dict().items()
-            if '_optimizers.' not in k
+            if (('_optimizers.' not in k) and (
+                not isinstance(v, torch.nn.Parameter) or v.requires_grad))
         }
 
     ###############################
@@ -414,7 +418,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
 
         # Get all parameters/buffers in a state dict and send them out
         buffer = io.BytesIO()
-        torch.save(self._opt_free_state_dict(), buffer)
+        torch.save(self._distributed_state_dict(), buffer)
         self._params_socket.send_multipart([unroller_id1, buffer.getvalue()])
         # 3 sec timeout for receiving unroller's acknowledgement
         # In case some unrollers might die, we don't want to block forever
@@ -681,7 +685,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
     def _create_pull_params_subprocess(self):
         # Compute the total size of the params
         buffer = io.BytesIO()
-        torch.save(self._opt_free_state_dict(), buffer)
+        torch.save(self._distributed_state_dict(), buffer)
         size = len(buffer.getvalue())
         # Create a shared memory object to store the new params
         # The first char indicates whether the params have been updated
