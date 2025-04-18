@@ -43,7 +43,7 @@ __global__ void relu_backward_kernel(const T* grad_output,
                                      const T* input,
                                      T* grad_input,
                                      int n) {
-  int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < n) {
     grad_input[idx] = relu_grad(input[idx], grad_output[idx]);
   }

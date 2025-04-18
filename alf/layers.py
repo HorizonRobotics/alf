@@ -375,8 +375,8 @@ class FC(nn.Module):
             method: actual operator used for the computation. Currently supports
                 - 'linear': use ``torch.nn.functional.linear``
                 - 'fused_linear_act': use ``alf.ext.fused_linear_act``. Currently,
-                    only relu and gelu are supported and the input should be
-                    2D or 3D. If the activation is not relu or gelu or use_ln or use_bn,
+                    only relu are supported and the input should be at least 2D.
+                    If the activation is not relu or use_ln or use_bn,
                     it will still use ``fused_linear_act`` with linear activation
                     and apply the activation separately.
                 - 'default': use ``torch.addmm`` or ``torch.matmul`` depending
@@ -438,8 +438,10 @@ class FC(nn.Module):
             if activation in (F.relu_, F.relu, torch.relu,
                               torch.relu_) or isinstance(activation, nn.ReLU):
                 self._act_name = "RELU"
-            elif activation == F.gelu or isinstance(activation, nn.GELU):
-                self._act_name = "GELU"
+            # For some unknown reason, GELU is very slow for fused_linear_act.
+            # So we do not use it for now.
+            # elif activation == F.gelu or isinstance(activation, nn.GELU):
+            #     self._act_name = "GELU"
 
     @property
     def input_size(self):

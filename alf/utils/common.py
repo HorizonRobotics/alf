@@ -1559,8 +1559,21 @@ def generate_alf_snapshot(alf_root: str, conf_file: str, dest_path: str):
                               shell=True)
 
     includes = [
-        "*.py", "*.gin", "*.so", "*.json", "*.xml", "*.cpp", "*.c", "*.cc",
-        "*.hpp", "*.h", "*.stl", "*.png", "*.txt", "*.yaml"
+        "*.py",
+        "*.gin",
+        "*.so",
+        "*.json",
+        "*.xml",
+        "*.cpp",
+        "*.c",
+        "*.cc",
+        "*.hpp",
+        "*.h",
+        "*.stl",
+        "*.png",
+        "*.txt",
+        "*.yaml",
+        "*.cu",
     ]
     excludes = ['*/build/']
     repo_roots = {**snapshot_repo_roots(), **{'alf': alf_root}}
