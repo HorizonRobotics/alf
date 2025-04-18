@@ -82,8 +82,7 @@ def original_torch_module_functions():
     """
     keys = [
         'state_dict', 'load_state_dict', '_save_to_state_dict',
-        '_load_from_state_dict', '__setattr__', 'register_parameter',
-        'register_buffer', 'add_module'
+        '_load_from_state_dict'
     ]
     current_funcs = {k: getattr(nn.Module, k) for k in keys}
     old_funcs = {k: getattr(alf_module, 'old_' + k) for k in keys}
