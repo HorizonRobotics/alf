@@ -49,8 +49,11 @@ def __categorical_init__(self, probs=None, logits=None, validate_args=None):
         valid = self.arg_constraints['logits'].check(self.logits)
         if not valid.all():
             invalid = (~valid).nonzero(as_tuple=True)[0]
+            invalid_self_logits = self.logits[invalid]
+            invalid_logits = logits[invalid]
+            torch.cuda.synchronize()
             raise ValueError(
-                f"Invalid logits: self.logits[{invalid}]={self.logits[invalid]}, logits[{invalid}]={logits[invalid]}."
+                f"Invalid logits: self.logits[{invalid}]={invalid_self_logits}, logits[{invalid}]={invalid_logits}."
             )
 
     self._param = self.probs if probs is not None else self.logits
