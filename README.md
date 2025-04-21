@@ -67,6 +67,7 @@ sudo apt install -y python3.11 python3.11-dev
 We also require the following packages: 
 ```
 sudo apt install libboost-all-dev   # required by ALF for fast parallel environments.
+sudo apt install ninja-build        # required to build modules via torch.utils.cpp_extension
 sudo apt install swig               # required to build box2d-py
 ```
 

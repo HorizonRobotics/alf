@@ -22,11 +22,19 @@ from .act_backward import act_backward
 
 DIR = pathlib.Path(__file__).parent.absolute()
 if torch.cuda.is_available():
-    _ext = load(name="fused_matmul_act",
-                sources=[os.path.join(DIR, "fused_matmul_act.cu")],
-                verbose=True)
+    try:
+        _ext = load(name="fused_matmul_act",
+                    sources=[os.path.join(DIR, "fused_matmul_act.cu")],
+                    verbose=True)
 
-    fused_matmul_act_cuda = _ext.fused_matmul_act
+        fused_matmul_act_cuda = _ext.fused_matmul_act
+    except ImportError:
+        # There is a bug in pybind11 currently where pybind11 will
+        # incorrectly use the system python instead of the virtualenv python.
+        # This can result in a python version mismatch error.
+        # For now, we'll just catch this and ignore it.
+        # See https://github.com/pybind/pybind11/issues/5626
+        pass
 
 
 class StaticState:

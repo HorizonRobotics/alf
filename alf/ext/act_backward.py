@@ -20,11 +20,19 @@ import os
 DIR = pathlib.Path(__file__).parent.absolute()
 
 if torch.cuda.is_available():
-    _ext = load(name="act_backward",
-                sources=[os.path.join(DIR, "act_backward.cu")],
-                verbose=True)
+    try:
+        _ext = load(name="act_backward",
+                    sources=[os.path.join(DIR, "act_backward.cu")],
+                    verbose=True)
 
-    relu_backward_cuda = _ext.relu_backward
+        relu_backward_cuda = _ext.relu_backward
+    except ImportError:
+        # There is a bug in pybind11 currently where pybind11 will
+        # incorrectly use the system python instead of the virtualenv python.
+        # This can result in a python version mismatch error.
+        # For now, we'll just catch this and ignore it.
+        # See https://github.com/pybind/pybind11/issues/5626
+        pass
 
 
 def relu_backward(output, grad_output):
