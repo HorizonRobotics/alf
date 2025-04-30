@@ -460,18 +460,20 @@ class RlpdAlgorithm(SacAlgorithm):
                     reward=(info.reward + common.expand_dims_as(
                         entropy_reward * discount, info.reward)))
 
-        critic_info = info.critic
-        critic_losses = []
-        for i, l in enumerate(self._critic_losses):
-            critic_loss = l(
-                info=info,
-                value=critic_info.critics[:, :, i, ...],
-                target_value=critic_info.target_critic).loss
-            if self._use_bootstrap_critics:
-                bootstrap_mask = info.bootstrap_mask[:, :,
-                                                     i] / self._bootstrap_mask_prob
-                critic_loss = critic_loss * bootstrap_mask
-            critic_losses.append(critic_loss)
+        do_critic_summary = self._critic_update_counter % self._critic_utd == 0
+        with alf.summary.record_if(lambda: do_critic_summary):
+            critic_info = info.critic
+            critic_losses = []
+            for i, l in enumerate(self._critic_losses):
+                critic_loss = l(
+                    info=info,
+                    value=critic_info.critics[:, :, i, ...],
+                    target_value=critic_info.target_critic).loss
+                if self._use_bootstrap_critics:
+                    bootstrap_mask = info.bootstrap_mask[:, :,
+                                                         i] / self._bootstrap_mask_prob
+                    critic_loss = critic_loss * bootstrap_mask
+                critic_losses.append(critic_loss)
 
         critic_loss = math_ops.add_n(critic_losses)
 
