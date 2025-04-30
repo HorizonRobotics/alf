@@ -182,6 +182,7 @@ class FrameStacker(DataTransformer):
                  observation_spec,
                  stack_size=4,
                  stack_axis=0,
+                 missing_position_handling="assert",
                  fields=None):
         """Create a FrameStacker object.
 
@@ -189,6 +190,14 @@ class FrameStacker(DataTransformer):
             observation_spec (nested TensorSpec): describing the observation in timestep
             stack_size (int): stack so many frames
             stack_axis (int): the dimension to stack the observation.
+            missing_position_handling (str): the way to handle the missing positions (the
+                positions that are no-longer exist in the replay buffer), when trying to
+                retrieve eailer timesteps during transform_experience.
+                - assert: will assert that no missing position should appear; if it does,
+                    then throw an error and stop the program
+                - repeat: repeat the earliest frame
+                - zero: use zero-valued observation for all the previous frames as long as
+                    there is any positions missing from the replay buffer.
             fields (list[str]): fields to be stacked, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
         """
@@ -197,10 +206,12 @@ class FrameStacker(DataTransformer):
             "or equal to 1")
         self._stack_axis = stack_axis
         self._stack_size = stack_size
+
         self._frames = dict()
         self._fields = fields if (fields is not None) else [None]
         self._exp_fields = []
         prev_frames_spec = []
+        self._missing_position_handling = missing_position_handling
         stacked_observation_spec = observation_spec
         for field in self._fields:
             if field is not None:
@@ -326,14 +337,22 @@ class FrameStacker(DataTransformer):
             episode_begin_positions = episode_begin_positions.unsqueeze(-1)
             # [B, stack_size - 1]
             prev_positions = torch.max(prev_positions, episode_begin_positions)
+            earlist_position = replay_buffer.get_earliest_position(env_ids)
             # [B]
-            valid_prev = prev_positions[:,
-                                        0] >= replay_buffer.get_earliest_position(
-                                            env_ids)
-            assert torch.all(valid_prev), (
-                "Some previous posisions are no longer in the replay buffer: "
-                f"{prev_positions[:, 0][~valid_prev]}, "
-                f"{replay_buffer.get_earliest_position(env_ids)[~valid_prev]}")
+            valid_prev = prev_positions[:, 0] >= earlist_position
+            invalid_prev = ~valid_prev
+
+            if self._missing_position_handling == "assert":
+                assert torch.all(valid_prev), (
+                    "Some previous positions are no longer in the replay buffer: "
+                    f"{prev_positions[:, 0][~valid_prev]}, "
+                    f"{replay_buffer.get_earliest_position(env_ids)[~valid_prev]}"
+                )
+            elif self._missing_position_handling in ["zero", "repeat"]:
+                if invalid_prev.any():
+                    # prev_positions [B, s], invalid_prev: [B], earlist_position: [B]
+                    prev_positions[invalid_prev] = earlist_position[
+                        invalid_prev]
             # [B, 1]
             env_ids = env_ids.unsqueeze(-1)
 
@@ -351,8 +370,17 @@ class FrameStacker(DataTransformer):
         obs_index = (B.unsqueeze(-1).unsqueeze(-1), obs_index.unsqueeze(0))
 
         def _stack_frame(obs, i):
-            prev_obs = replay_buffer.get_field(self._exp_fields[i], env_ids,
-                                               prev_positions)
+            try:
+                prev_obs = replay_buffer.get_field(self._exp_fields[i],
+                                                   env_ids, prev_positions)
+            except:
+                prev_obs = torch.zeros(
+                    (obs.shape[0], self._stack_size - 1, *obs.shape[2:]))
+
+            if self._missing_position_handling == 'zero':
+                if invalid_prev.any():
+                    prev_obs[invalid_prev] = 0
+
             stacked_shape = alf.nest.get_field(
                 self._transformed_observation_spec, self._fields[i]).shape
             # [batch_size, mini_batch_length + stack_size - 1, ...]
