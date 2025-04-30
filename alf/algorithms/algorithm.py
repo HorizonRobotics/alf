@@ -1641,26 +1641,27 @@ class Algorithm(AlgorithmInterface):
                 do_summary = (is_last_mini_batch
                               or update_counter_every_mini_batch)
 
-                mini_batch_list, mini_batch_info_list = \
-                    self._extract_mini_batch_and_info_from_experience(
-                                            indices,
-                                            [experience],
-                                            [batch_info],
-                                            batch_size,
-                                            b,
-                                            mini_batch_size,
-                                            update_counter_every_mini_batch,
-                                            do_summary)
+                with alf.summary.record_if(lambda: do_summary):
+                    mini_batch_list, mini_batch_info_list = \
+                        self._extract_mini_batch_and_info_from_experience(
+                                                indices,
+                                                [experience],
+                                                [batch_info],
+                                                batch_size,
+                                                b,
+                                                mini_batch_size,
+                                                update_counter_every_mini_batch)
 
-                exp, train_info, loss_info, params = self._update(
-                    mini_batch_list[0],
-                    mini_batch_info_list[0],
-                    weight=alf.nest.get_nest_size(mini_batch_list[0], 1) /
-                    mini_batch_size)
-                if do_summary:
-                    self.summarize_train(exp, train_info, loss_info, params)
-                # These are no longer used, release them to reduce memory usage.
-                del exp, train_info, loss_info, params
+                    exp, train_info, loss_info, params = self._update(
+                        mini_batch_list[0],
+                        mini_batch_info_list[0],
+                        weight=alf.nest.get_nest_size(mini_batch_list[0], 1) /
+                        mini_batch_size)
+                    if do_summary:
+                        self.summarize_train(exp, train_info, loss_info,
+                                             params)
+                    # These are no longer used, release them to reduce memory usage.
+                    del exp, train_info, loss_info, params
 
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
@@ -1931,7 +1932,7 @@ class Algorithm(AlgorithmInterface):
     def _extract_mini_batch_and_info_from_experience(
             self, indices, experience_list, batch_info_list, batch_size,
             mini_batch_start_position, mini_batch_size,
-            update_counter_every_mini_batch, do_summary):
+            update_counter_every_mini_batch):
         """Extract mini-batch and the corresponding batch info from experience.
         This function also convert the mini-batch to be time-major and to be on
         the default device.
@@ -1956,12 +1957,9 @@ class Algorithm(AlgorithmInterface):
                 from the experiences.
             update_counter_every_mini_batch (bool): whether to update the global
                 counter for each mini_batch.
-            do_summary (bool): whether to enable summary.
         """
         if update_counter_every_mini_batch:
             alf.summary.increment_global_counter()
-
-        alf.summary.enable_summary(do_summary)
 
         if indices is None:
             batch_indices = slice(
@@ -2044,37 +2042,38 @@ class Algorithm(AlgorithmInterface):
                 do_summary = (is_last_mini_batch
                               or update_counter_every_mini_batch)
 
-                mini_batch_list, mini_batch_info_list = \
-                    self._extract_mini_batch_and_info_from_experience(
-                                            indices,
-                                            [experience, offline_experience],
-                                            [batch_info, offline_batch_info],
-                                            batch_size,
-                                            b,
-                                            mini_batch_size,
-                                            update_counter_every_mini_batch,
-                                            do_summary)
+                with alf.summary.record_if(lambda: do_summary):
+                    mini_batch_list, mini_batch_info_list = \
+                        self._extract_mini_batch_and_info_from_experience(
+                                                indices,
+                                                [experience, offline_experience],
+                                                [batch_info, offline_batch_info],
+                                                batch_size,
+                                                b,
+                                                mini_batch_size,
+                                                update_counter_every_mini_batch)
 
-                batch, offline_batch = mini_batch_list
-                binfo, offline_binfo = mini_batch_info_list
+                    batch, offline_batch = mini_batch_list
+                    binfo, offline_binfo = mini_batch_info_list
 
-                (exp, train_info, loss_info, offline_exp, offline_train_info,
-                 offline_loss_info, params) = self._hybrid_update(
-                     batch,
-                     binfo,
-                     offline_batch,
-                     offline_binfo,
-                     weight=alf.nest.get_nest_size(offline_batch, 1) /
-                     mini_batch_size)
-                if do_summary:
-                    if exp:
-                        self.summarize_train(exp, train_info, loss_info,
-                                             params)
-                    if offline_exp:
-                        with alf.summary.scope("offline"):
-                            self.summarize_train(offline_exp,
-                                                 offline_train_info,
-                                                 offline_loss_info, None)
+                    (exp, train_info, loss_info, offline_exp,
+                     offline_train_info, offline_loss_info,
+                     params) = self._hybrid_update(
+                         batch,
+                         binfo,
+                         offline_batch,
+                         offline_binfo,
+                         weight=alf.nest.get_nest_size(offline_batch, 1) /
+                         mini_batch_size)
+                    if do_summary:
+                        if exp:
+                            self.summarize_train(exp, train_info, loss_info,
+                                                 params)
+                        if offline_exp:
+                            with alf.summary.scope("offline"):
+                                self.summarize_train(offline_exp,
+                                                     offline_train_info,
+                                                     offline_loss_info, None)
 
         train_steps = 2 * batch_size * mini_batch_length * num_updates
         return train_steps
