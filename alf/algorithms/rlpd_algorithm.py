@@ -74,8 +74,14 @@ class RlpdAlgorithm(SacAlgorithm):
       by ``TrainerConfig.num_updates_per_iter``. In this case, the train_mode is
       initialized to be ``critic``, and will be updated periodically between ``actor`` 
       and ``critic``, with each mode lasting for the corresponding UTD number of 
-      train_iter's. Under each of the two non-standard modes, RLPD only updates either 
+      updates. Under each of the two non-standard modes, RLPD only updates either 
       the actor or the critic once per train_iter.
+
+    - If both actor_utd and critic_utd are not None, the train_mode is initialized 
+      to be ``critic``, and will be updated periodically between ``actor`` and
+      ``critic``, with each mode lasting for the corresponding UTD number of updates.
+      Note that ``TrainerConfig.num_updates_per_iter`` may not match the sum of
+      actor_utd and critic_utd in this case.
 
     An exemplar config is in ``alf/examples/rlpd_dmc_conf.py``. There are several key
     settings to be aware of:
@@ -186,17 +192,20 @@ class RlpdAlgorithm(SacAlgorithm):
         if actor_utd is None and critic_utd is None:
             self._train_mode = TrainMode.standard
         else:
-            total_utd = alf.config_util.get_config_value(
-                "num_updates_per_train_iter")
-            if critic_utd is not None:
+            total_utd = config.num_updates_per_train_iter
+            if actor_utd is None:
                 assert critic_utd < total_utd, (
-                    "critic_utd should be less than num_updates_per_train_iter"
-                )
+                    "critic_utd should be less than num_updates_per_train_iter "
+                    "if actor_utd is not provided.")
                 actor_utd = total_utd - critic_utd
-            else:
+            elif critic_utd is None:
                 assert actor_utd < total_utd, (
-                    "actor_utd should be less than num_updates_per_train_iter")
+                    "actor_utd should be less than num_updates_per_train_iter "
+                    "if critic_utd is not provided.")
                 critic_utd = total_utd - actor_utd
+            assert actor_utd <= critic_utd, (
+                f"actor_utd {actor_utd} should not be greater than critic_utd {critic_utd}"
+            )
             self._train_mode = TrainMode.critic
             self._actor_utd = actor_utd
             self._critic_utd = critic_utd
