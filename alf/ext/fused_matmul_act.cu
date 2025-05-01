@@ -33,7 +33,6 @@ TensorBase empty_cuda(IntArrayRef size,
                       ScalarType dtype,
                       std::optional<Device> device_opt,
                       std::optional<c10::MemoryFormat> memory_format_opt) {
-  at::globalContext().lazyInitDevice(c10::DeviceType::CUDA);
   const auto device = device_or_default(device_opt);
   TORCH_INTERNAL_ASSERT(device.is_cuda());
   const DeviceGuard device_guard(device);
