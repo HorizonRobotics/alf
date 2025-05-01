@@ -19,9 +19,21 @@ import torch.nn.functional as F
 import pathlib
 import os
 from .act_backward import act_backward
+from packaging.version import parse as parse_version
 
 DIR = pathlib.Path(__file__).parent.absolute()
-if torch.cuda.is_available():
+
+# Requires torch >= 2.6.0-rc1 to build this extension
+# May also set ALF_DISABLE_CUDA_EXT=1 to disable the extension
+_ext = None
+_min_torch_version = parse_version("2.6.0-rc1")
+_torch_version = parse_version(torch.__version__)
+
+_should_load_ext = (torch.cuda.is_available()
+                    and _torch_version >= _min_torch_version
+                    and os.environ.get('ALF_DISABLE_CUDA_EXT', '0') != '1')
+
+if _should_load_ext:
     try:
         _ext = load(name="fused_matmul_act",
                     sources=[os.path.join(DIR, "fused_matmul_act.cu")],
