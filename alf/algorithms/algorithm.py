@@ -1638,8 +1638,8 @@ class Algorithm(AlgorithmInterface):
 
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)
-                do_summary = (is_last_mini_batch
-                              or update_counter_every_mini_batch)
+                do_summary = alf.summary.should_record_summaries() and (
+                    is_last_mini_batch or update_counter_every_mini_batch)
 
                 with alf.summary.record_if(lambda: do_summary):
                     mini_batch_list, mini_batch_info_list = \
@@ -2039,8 +2039,8 @@ class Algorithm(AlgorithmInterface):
 
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)
-                do_summary = (is_last_mini_batch
-                              or update_counter_every_mini_batch)
+                do_summary = alf.summary.should_record_summaries() and (
+                    is_last_mini_batch or update_counter_every_mini_batch)
 
                 with alf.summary.record_if(lambda: do_summary):
                     mini_batch_list, mini_batch_info_list = \
