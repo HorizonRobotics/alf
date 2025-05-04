@@ -4,7 +4,7 @@ from rff.layers import GaussianEncoding
 
 import alf
 from alf.networks.param_networks import ActorParamNetwork
-from .probe_features import GraphProbeFeatures
+from .param_net_eval_graph import ParamNetEvalGraph
 
 
 def batch_to_graphs(
@@ -66,7 +66,7 @@ class GraphConstructor(nn.Module):
         sin_emb=False,
         sin_emb_dim=128,
         use_pos_embed=True,
-        num_probe_features=0,
+        num_eval_samples=0,
         inr_model=None,
         stats=None,
     ):
@@ -132,18 +132,14 @@ class GraphConstructor(nn.Module):
         self.proj_node_in = nn.Linear(d_node, d_node)
         self.proj_edge_in = nn.Linear(d_edge, d_edge)
 
-        if num_probe_features > 0:
-            self.gpf = GraphProbeFeatures(
-                d_in=layer_layout[0],
-                num_inputs=num_probe_features,
-                inr_model=inr_model,
-                input_init=None,
-                proj_dim=d_node,
-            )
+        if num_eval_samples > 0:
+            self.param_eval_graph = ParamNetEvalGraph(
+                param_net_kwargs,
+                num_samples=num_eval_samples,
+                sample_init=None,
+                proj_dim=d_node)
         else:
-            self.gpf = None
-
-        self.param_net = param_net_ctor(**param_net_kwargs)
+            self.param_eval_graph = None
 
     def forward(self, inputs):
         node_features, edge_features = batch_to_graphs(*inputs, **self.stats)
@@ -167,7 +163,7 @@ class GraphConstructor(nn.Module):
         else:
             edge_features = self.proj_weight(edge_features)
         if self.zero_out_bias:
-            # only zero out bias, not gpf
+            # only zero out bias, not param_eval_graph
             node_features = torch.zeros(
                 (*node_features.shape[:-1], self._d_node),
                 device=node_features.device,
@@ -176,8 +172,8 @@ class GraphConstructor(nn.Module):
         else:
             node_features = self.proj_bias(node_features)
 
-        if self.gpf is not None:
-            probe_features = self.gpf(*inputs)
+        if self.param_eval_graph is not None:
+            probe_features = self.param_eval_graph(*inputs)
             node_features = node_features + probe_features
 
         node_features = self.proj_node_in(node_features)

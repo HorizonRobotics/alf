@@ -354,7 +354,7 @@ class ActorFCNetwork(Network):
         self._output_spec = action_spec
         self._weight_params = [m.weight for m in self._fc_layers]
         self._bias_params = [m.bias for m in self._fc_layers]
-        self._actor_kwargs = {
+        self._network_kwargs = {
             "input_tensor_spec": input_tensor_spec,
             "action_spec": action_spec,
             "fc_layer_params": fc_layer_params,
@@ -385,8 +385,8 @@ class ActorFCNetwork(Network):
         return self._bias_params
 
     @property
-    def actor_kwargs(self):
-        return self._actor_kwargs
+    def network_kwargs(self):
+        return self._network_kwargs
 
     def forward(self, inputs, state=()):
         """

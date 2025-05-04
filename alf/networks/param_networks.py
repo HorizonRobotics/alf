@@ -21,7 +21,7 @@ import alf
 from alf.initializers import variance_scaling_init
 from alf.layers import ParamFC, ParamConv2D
 from alf.networks.network import Network
-from alf.tensor_specs import TensorSpec
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import common
 import alf.utils.math_ops as math_ops
 
@@ -235,8 +235,9 @@ class ParamNetwork(Network):
                     input_tensor_spec.shape)
             input_channels, height, width = input_tensor_spec.shape
             self._conv_net = ParamConvNet(
-                input_channels, (height, width),
-                conv_layer_params,
+                input_channels=input_channels, 
+                input_size=(height, width),
+                conv_layer_params=conv_layer_params,
                 activation=activation,
                 use_bias=use_conv_bias,
                 use_ln=use_conv_ln,
@@ -428,3 +429,21 @@ class ActorParamNetwork(ParamNetwork):
             last_use_bias=use_bias,
             last_use_ln=False,
             last_kernel_initializer=last_kernel_initializer)
+
+        def forward(self, inputs, state=(), full_neurons=False):
+            if not full_neurons:
+                return super().forward(inputs, state=state)
+            else:
+                neurons = []
+                x = inputs
+                if len(self._fc_layers) > 0:
+                    x = self._fc_layers[0](x, store_inputs=True)
+                    neurons.append(self._fc_layers[0].inputs)
+                    neurons.append(x)
+                    if len(self._fc_layers) > 1:
+                        for fc_l in self._fc_layers[1:]:
+                            x = fc_l(x)
+                            neurons.append(x)
+                else:
+                    neurons.append(x)
+                return neurons, state

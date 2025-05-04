@@ -1986,6 +1986,8 @@ class ParamFC(nn.Module):
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
+        self._inputs = None
+        self._neurons = None
 
         self._weight_length = output_size * input_size
         if use_bias:
@@ -2013,6 +2015,14 @@ class ParamFC(nn.Module):
     def bias(self):
         """Get stored bias tensor or batch of bias tensors."""
         return self._bias
+
+    @property
+    def inputs(self):
+        return self._inputs
+
+    @property
+    def neurons(self):
+        return self._neurons
 
     @property
     def weight_length(self):
@@ -2124,7 +2134,7 @@ class ParamFC(nn.Module):
 
         self._bias = bias  # [n, bias_length]
 
-    def forward(self, inputs):
+    def forward(self, inputs, store_inputs=False):
         """Forward
 
         Args:
@@ -2140,6 +2150,7 @@ class ParamFC(nn.Module):
                 operations will take inputs as the same shared inputs.
                 When the shape of inputs is ``[B, n, D]``, each linear operator
                 will have its own input data by slicing inputs.
+            store_inputs (bool): whether to store (parallel) inputs to self._inputs.
 
         Returns:
             torch.Tensor: with shape ``[B, n, D]`` or ``[B, D]``
@@ -2166,6 +2177,9 @@ class ParamFC(nn.Module):
         else:
             raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
 
+        if store_inputs:
+            self._inputs = inputs
+
         if self._bias is not None:
             res = torch.baddbmm(
                 self._bias.unsqueeze(1), inputs, self._weight.transpose(1, 2))
@@ -2178,7 +2192,8 @@ class ParamFC(nn.Module):
         else:
             res = res.squeeze(1)  # [B, D] if n=1
 
-        return self._activation(res)
+        self._neurons = self._activation(res)
+        return self._neurons
 
 
 @alf.configurable

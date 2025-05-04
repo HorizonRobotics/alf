@@ -53,6 +53,38 @@ def _check_action_specs_for_critic_networks(
     nest.map_structure(_check_individual, action_spec, action_input_processors)
 
 
+# def CrossBatchConcat(tensors, second_batch_dominate: bool = False):
+#     assert len(tensors) == 2, "Only support 2 tensors."
+#     if isinstance(tensor1, TensorSpec):
+#         tensors = nest.map_structure(
+#             lambda spec: spec.zeros(outer_dims=(1, )), tensors)
+#         second_batch_dominate = False
+#
+#     tensor1, tensor2 = tensors 
+#     batch1, dim1 = tensor1.shape
+#     batch2, dim2 = tensor2.shape
+#
+#     if second_batch_dominate:
+#         assert batch2 % batch1 == 0, (
+#             "shape[0] of tensor2 has to be multiples of shape[0] of tensor1 "
+#             "if second_batch_dominate is True.")
+#         num_repeat1 = int(batch2 / batch1)
+#
+#         # repeat the entirety of tensor1 num_repeat1 times -> [batch2, dim1]
+#         tensor1_repeated = tensor1.repeat(num_repeat1, 1)
+#
+#         tensor2_repeated = tensor2
+#     else:
+#         # repeat the entirety of tensor1 batch2 times -> [batch1 * batch2, dim1]
+#         tensor1_repeated = tensor1.repeat(num_repeat1, 1)
+#
+#         # repeat each row of tensor2 batch1 times -> [batch1 * batch2, dim2]
+#         tensor2_repeated = tensor2.repeat_interleave(batch1, dim=0)
+#
+#     # concatenate along the last dim -> [batch1 * batch2 or batch2, dim1 + dim2]
+#     return torch.cat([tensor1_repeated, tensor2_repeated], dim=1)
+
+
 @alf.configurable
 class CriticNetwork(EncodingNetwork):
     """Creates an instance of ``CriticNetwork`` for estimating action-value of
@@ -247,6 +279,7 @@ class FuncCriticNetwork(EncodingNetwork):
                  observation_action_combiner=None,
                  obs_action_joint_fc_layer_params=None,
                  actor_obs_action_combiner=None,
+                 obs_action_batch_dominate=False,
                  actor_obs_action_joint_fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
@@ -286,7 +319,6 @@ class FuncCriticNetwork(EncodingNetwork):
             observation_input_processors_ctor=observation_input_processors_ctor,
             observation_preprocessing_combiner=observation_preprocessing_combiner,
             observation_fc_layer_params=observation_fc_layer_params,
-            observation_fc_layer_params=observation_fc_layer_params,
             action_input_processors=action_input_processors,
             action_input_processors_ctor=action_input_processors_ctor,
             action_preprocessing_combiner=action_preprocessing_combiner,
@@ -303,7 +335,7 @@ class FuncCriticNetwork(EncodingNetwork):
             torch.nn.init.uniform_, a=-0.003, b=0.003)
 
         if actor_obs_action_combiner is None:
-            actor_obs_action_combiner = CrossBatchConcat()
+            actor_obs_action_combiner = self._cross_batch_concat,
 
         super().__init__(
             input_tensor_spec=input_tensor_spec,
@@ -321,6 +353,41 @@ class FuncCriticNetwork(EncodingNetwork):
             last_use_fc_bn=last_use_fc_bn,
             last_use_fc_ln=last_use_fc_ln,
             name=name)
+
+        self._obs_action_batch_dominate = obs_action_batch_dominate
+
+    def _cross_batch_concat(self, tensors):
+        assert len(tensors) == 2, "Only support 2 tensors."
+        tensor1, tensor2 = tensors 
+
+        if isinstance(tensor1, TensorSpec):
+            return TensorSpec(shape=(tensor1.shape[-1] + tensor2.shape[-1],))
+        else:
+            bs1, d1 = tensor1.shape
+            bs2, d2 = tensor2.shape
+
+            if self._obs_action_batch_dominate:
+                assert bs2 % bs1 == 0, (
+                    "shape[0] of tensor2 has to be multiples of shape[0] of tensor1 "
+                    "if obs_action_batch_dominate is True.")
+                num_repeat1 = int(bs2 / bs1)
+
+                # repeat the entirety of tensor1 num_repeat1 times -> [bs2, d1]
+                tensor1_repeated = tensor1.repeat(num_repeat1, 1)
+
+                tensor2_repeated = tensor2
+            else:
+                # repeat the entirety of tensor1 bs2 times -> [bs1 * bs2, d1]
+                tensor1_repeated = tensor1.repeat(num_repeat1, 1)
+
+                # repeat each row of tensor2 b1 times -> [bs1 * bs2, d2]
+                tensor2_repeated = tensor2.repeat_interleave(bs1, dim=0)
+
+            # concatenate along the last dim -> [bs1 * bs2 or bs2, d1 + d2]
+            return torch.cat([tensor1_repeated, tensor2_repeated], dim=1)
+
+    def set_obs_action_batch_dominate(self, flag: bool):
+        self._second_batch_dominate = flag
 
 
 @alf.configurable
