@@ -4,10 +4,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops.layers.torch import Rearrange
 
+import alf
 from .pooling import HomogeneousAggregator
 from .graph_constructor import GraphConstructor
 
 
+@alf.configurable
 class RelationalTransformer(nn.Module):
     def __init__(
         self,
@@ -23,6 +25,7 @@ class RelationalTransformer(nn.Module):
         n_layers=4,
         n_heads=8,
         graph_constructor=GraphConstructor,
+        num_graph_eval_samples=64,
         dropout=0.0,
         node_update_type="rt",
         disable_edge_updates=False,
@@ -49,16 +52,16 @@ class RelationalTransformer(nn.Module):
         # )
         self.construct_graph = GraphConstructor( 
             layer_layout=layer_layout,
-            param_net_kwargs=param_net_kwargs,
             d_node=d_node,
             d_edge=d_edge,
+            param_net_kwargs=param_net_kwargs,
             rev_edge_features=rev_edge_features,
             zero_out_bias=True,
             zero_out_weights=True,
             inp_factor=1,
             input_layers=1,
             use_pos_embed=True,
-            num_probe_features=64)
+            num_eval_samples=num_graph_eval_samples)
 
         self.use_cls_token = use_cls_token
         if use_cls_token:

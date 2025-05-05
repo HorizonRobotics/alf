@@ -5,17 +5,7 @@ from einops.layers.torch import Rearrange
 
 import alf
 from alf.networks.param_networks import ActorParamNetwork
-# from nn.inr import make_functional, params_to_tensor, wrap_func
 
-
-# class GraphProbeFeatures(nn.Module):
-#     def __init__(self, d_in, num_inputs, inr_model, input_init=None, proj_dim=None):
-#         super().__init__()
-#         inr = hydra.utils.instantiate(inr_model)
-#         fmodel, params = make_functional(inr)
-#
-#         vparams, vshapes = params_to_tensor(params)
-#         self.sirens = torch.vmap(wrap_func(fmodel, vshapes))
 
 @alf.configurable
 class ParamNetEvalGraph(nn.Module):

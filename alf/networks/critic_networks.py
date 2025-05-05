@@ -115,6 +115,7 @@ class CriticNetwork(EncodingNetwork):
                  kernel_initializer=None,
                  use_fc_bn=False,
                  use_fc_ln=False,
+                 last_layer_size=None,
                  last_use_fc_bn=False,
                  last_use_fc_ln=False,
                  last_layer_activation=math_ops.identity,
@@ -216,12 +217,8 @@ class CriticNetwork(EncodingNetwork):
         if observation_action_combiner is None:
             observation_action_combiner = alf.layers.NestConcat(dim=-1)
 
-        if output_tensor_spec is None:
-            last_layer_size = None
-            last_layer_activation = None
-        else:
+        if output_tensor_spec is not None:
             last_layer_size = output_tensor_spec.numel
-            last_layer_activation = last_layer_activation
 
         super().__init__(
             input_tensor_spec=input_tensor_spec,
@@ -267,6 +264,7 @@ class FuncCriticNetwork(EncodingNetwork):
                  actor_kwargs={},
                  actor_encoder_ctor=None,
                  actor_encoding_dim=64,
+                 obs_action_encoding_dim=64,
                  observation_input_processors=None,
                  observation_input_processors_ctor=None,
                  observation_preprocessing_combiner=None,
@@ -329,6 +327,10 @@ class FuncCriticNetwork(EncodingNetwork):
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,
             use_fc_ln=use_fc_ln,
+            last_layer_size=obs_action_encoding_dim,
+            last_layer_activation=activation,
+            last_use_fc_bn=last_use_fc_bn,
+            last_use_fc_ln=last_use_fc_ln,
             name=name + ".obs_action_encoder")
 
         last_kernel_initializer = functools.partial(
