@@ -306,7 +306,7 @@ class FuncCriticNetwork(EncodingNetwork):
         # super: preprocessing_combiner=actor_obs_action_combiner
 
         actor_encoder = actor_encoder_ctor(
-            layer_sizes=actor_layer_layout,
+            layer_layout=actor_layer_layout,
             d_out=actor_encoding_dim,
             param_net_kwargs=actor_kwargs)
 
@@ -329,15 +329,15 @@ class FuncCriticNetwork(EncodingNetwork):
             use_fc_ln=use_fc_ln,
             last_layer_size=obs_action_encoding_dim,
             last_layer_activation=activation,
-            last_use_fc_bn=last_use_fc_bn,
-            last_use_fc_ln=last_use_fc_ln,
+            last_use_fc_bn=use_fc_bn,
+            last_use_fc_ln=use_fc_ln,
             name=name + ".obs_action_encoder")
 
         last_kernel_initializer = functools.partial(
             torch.nn.init.uniform_, a=-0.003, b=0.003)
 
         if actor_obs_action_combiner is None:
-            actor_obs_action_combiner = self._cross_batch_concat,
+            actor_obs_action_combiner = self._cross_batch_concat
 
         super().__init__(
             input_tensor_spec=input_tensor_spec,
@@ -380,7 +380,7 @@ class FuncCriticNetwork(EncodingNetwork):
                 tensor2_repeated = tensor2
             else:
                 # repeat the entirety of tensor1 bs2 times -> [bs1 * bs2, d1]
-                tensor1_repeated = tensor1.repeat(num_repeat1, 1)
+                tensor1_repeated = tensor1.repeat(bs2, 1)
 
                 # repeat each row of tensor2 b1 times -> [bs1 * bs2, d2]
                 tensor2_repeated = tensor2.repeat_interleave(bs1, dim=0)
@@ -389,7 +389,7 @@ class FuncCriticNetwork(EncodingNetwork):
             return torch.cat([tensor1_repeated, tensor2_repeated], dim=1)
 
     def set_obs_action_batch_dominate(self, flag: bool):
-        self._second_batch_dominate = flag
+        self._obs_action_batch_dominate = flag
 
 
 @alf.configurable

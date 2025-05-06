@@ -325,7 +325,6 @@ class ActorFCNetwork(Network):
             fc_layer_params = []
         else:
             assert isinstance(fc_layer_params, tuple)
-            fc_layer_params = list(fc_layer_params)
 
         for size in fc_layer_params:
             self._fc_layers.append(
