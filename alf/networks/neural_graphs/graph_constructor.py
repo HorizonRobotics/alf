@@ -27,18 +27,18 @@ def batch_to_graphs(
     row_offset = 0
     col_offset = weights[0].shape[2]  # no edge to input nodes
     for i, w in enumerate(weights):
-        _, num_in, num_out, _ = w.shape
+        _, num_out, num_in = w.shape
         w_mean = weights_mean[i] if weights_mean is not None else 0
         w_std = weights_std[i] if weights_std is not None else 1
         edge_features[
-            :, row_offset:row_offset + num_in, col_offset:col_offset + num_out
+            :, col_offset:col_offset + num_out, row_offset:row_offset + num_in
         ] = (w - w_mean) / w_std
         row_offset += num_in
         col_offset += num_out
 
     row_offset = weights[0].shape[2]  # no bias in input nodes
     for i, b in enumerate(biases):
-        _, num_out, _ = b.shape
+        _, num_out = b.shape
         b_mean = biases_mean[i] if biases_mean is not None else 0
         b_std = biases_std[i] if biases_std is not None else 1
         node_features[:, row_offset:row_offset + num_out] = (b - b_mean) / b_std
@@ -143,8 +143,8 @@ class GraphConstructor(nn.Module):
 
     def forward(self, inputs):
         node_features, edge_features = batch_to_graphs(*inputs, **self.stats)
-        node_features = node_features.unsqueeze(0)
-        edge_features = edge_features.unsqueeze(0)
+        node_features = node_features.unsqueeze(-1)
+        edge_features = edge_features.unsqueeze(-1)
         mask = edge_features.sum(dim=-1, keepdim=True) != 0
         if self.rev_edge_features:
             rev_edge_features = edge_features.transpose(-2, -3)

@@ -43,21 +43,14 @@ class RelationalTransformer(nn.Module):
         self.pooling_layer_idx = pooling_layer_idx
         self.rev_edge_features = rev_edge_features
         self.nodes_per_layer = layer_layout
-        # self.construct_graph = hydra.utils.instantiate(
-        #     graph_constructor,
-        #     d_node=d_node,
-        #     d_edge=d_edge,
-        #     layer_layout=layer_layout,
-        #     rev_edge_features=rev_edge_features,
-        # )
         self.construct_graph = GraphConstructor( 
             layer_layout=layer_layout,
             d_node=d_node,
             d_edge=d_edge,
             param_net_kwargs=param_net_kwargs,
             rev_edge_features=rev_edge_features,
-            zero_out_bias=True,
-            zero_out_weights=True,
+            zero_out_bias=False,
+            zero_out_weights=False,
             inp_factor=1,
             input_layers=1,
             use_pos_embed=True,
