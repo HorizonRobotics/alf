@@ -16,6 +16,7 @@
 import functools
 import torch
 import torch.nn as nn
+import math
 
 import alf
 from alf.initializers import variance_scaling_init
@@ -256,7 +257,7 @@ class ParamNetwork(Network):
             fc_layer_params = []
         else:
             assert isinstance(fc_layer_params, tuple)
-            fc_layer_params = list(fc_layer_params)
+            # fc_layer_params = list(fc_layer_params)
 
         for size in fc_layer_params:
             self._fc_layers.append(
@@ -288,16 +289,14 @@ class ParamNetwork(Network):
 
         self._output_spec = TensorSpec((input_size, ),
                                        dtype=self._input_tensor_spec.dtype)
-        self._weight_params = [m.weight for m in self._fc_layers]
-        self._bias_params = [m.bias for m in self._fc_layers]
 
     @property
     def weight_params(self):
-        return self._weight_params
+        return [m.weight for m in self._fc_layers]
 
     @property
     def bias_params(self):
-        return self._bias_params
+        return [m.bias for m in self._fc_layers]
 
     @property
     def param_length(self):
@@ -346,7 +345,8 @@ class ParamNetwork(Network):
                 fc_theta[:, pos:pos + param_length], reinitialize=reinitialize)
             pos = pos + param_length
 
-    def update_parameters(self, weight_params, bias_params, reinitialize=False):
+    def update_parameters(self, weight_params, bias_params, 
+                          update_n_groups=False, reinitialize=False):
         """Update weights and biases of all layers.
 
         Args:
@@ -356,8 +356,10 @@ class ParamNetwork(Network):
             reinitialize (bool): whether to reinitialize parameters of each layer.
         """
         for fc_l, w, b in zip(self._fc_layers, weight_params, bias_params):
-            fc_l.update_weight(w, reinitialize=reinitialize)
-            fc_l.update_bias(b, reinitialize=reinitialize)
+            fc_l.update_weight(w, reinitialize=reinitialize,
+                               update_n_groups=update_n_groups)
+            fc_l.update_bias(b, reinitialize=reinitialize,
+                             update_n_groups=update_n_groups)
 
     def forward(self, inputs, state=()):
         """
@@ -430,20 +432,20 @@ class ActorParamNetwork(ParamNetwork):
             last_use_ln=False,
             last_kernel_initializer=last_kernel_initializer)
 
-        def forward(self, inputs, state=(), full_neurons=False):
-            if not full_neurons:
-                return super().forward(inputs, state=state)
+    def forward(self, inputs, full_neurons=False, state=()):
+        if not full_neurons:
+            return super().forward(inputs, state=state)
+        else:
+            neurons = []
+            x = inputs
+            if len(self._fc_layers) > 0:
+                x = self._fc_layers[0](x, store_inputs=True)
+                neurons.append(self._fc_layers[0].inputs)
+                neurons.append(x)
+                if len(self._fc_layers) > 1:
+                    for fc_l in self._fc_layers[1:]:
+                        x = fc_l(x)
+                        neurons.append(x)
             else:
-                neurons = []
-                x = inputs
-                if len(self._fc_layers) > 0:
-                    x = self._fc_layers[0](x, store_inputs=True)
-                    neurons.append(self._fc_layers[0].inputs)
-                    neurons.append(x)
-                    if len(self._fc_layers) > 1:
-                        for fc_l in self._fc_layers[1:]:
-                            x = fc_l(x)
-                            neurons.append(x)
-                else:
-                    neurons.append(x)
-                return neurons, state
+                neurons.append(x)
+            return neurons, state
