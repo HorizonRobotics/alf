@@ -28,6 +28,7 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.algorithms.rlpd_algorithm import TrainMode
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
@@ -47,7 +48,8 @@ BafcState = namedtuple(
     "BafcState", ["action", "actor", "critic"],
     default_value=())
 
-BafcCriticInfo = namedtuple("BafcCriticInfo", ["critic", "target_critic"])
+BafcCriticInfo = namedtuple(
+    "BafcCriticInfo", ["critic", "target_critic"], default_value=())
 
 BafcActorInfo = namedtuple(
     "BafcActorInfo", ["action_loss", "param_loss"], default_value=())
@@ -100,31 +102,6 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         """
         Args:
         """
-        # create action_networks first
-        # extract actor_spec from actor_network
-        # create critic_network
-        # create target_critic_network (respect_second_batch)
-        # actor_utd and critic_utd 
-
-        # _predict_action (with train arg)
-        # sample one actor at the beginning of each episode rollout
-        # forward all actors when train
-
-        # predict_step (not train)
-        # rollout_step (not train)
-
-        # batched_actor_weights
-        # batched_actor_biases
-
-        ## train_step
-        # _predict_action (train)
-        ## _actor_train_step (action)
-        # actor_loss = - q_values
-        ## _critic_train_step
-        # std with batched actor weights and biases
-
-        ## calc_loss
-
         if actor_utd is None and critic_utd is None:
             self._train_mode = TrainMode.standard
         else:
@@ -178,7 +155,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 target_critic=critic_network.state_spec))
 
         super().__init__(
-            observation_spec=original_observation_spec,
+            observation_spec=observation_spec,
             action_spec=action_spec,
             reward_spec=reward_spec,
             train_state_spec=train_state_spec,
@@ -206,8 +183,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
-        self._critic_loss = critic_loss_ctor(
-            keep_multidim_reward=False, debug_summaries=debug_summaries)
+        self._critic_loss = critic_loss_ctor(debug_summaries=debug_summaries)
 
         self._rollout_actor_id = 0
         self._actor_update_counter = 0
@@ -263,7 +239,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             state=state._replace(action=action_state),
             info=BafcInfo(action=action))
 
-    def rollout_step(self, inputs: TimeStep, state: SacState):
+    def rollout_step(self, inputs: TimeStep, state: BafcState):
         """``rollout_step()`` basically predicts actions like what is done by
         ``predict_step()``. Additionally, if states are to be stored a in replay
         buffer, then this function also call ``_critic_networks`` and
@@ -292,13 +268,14 @@ class BafcAlgorithm(OffPolicyAlgorithm):
            with functional critic.
         """
         # [B * n_actor, d]
-        critic_observation = observation.repeat(action.shape[1], 1)
-        q_values, critic_state = self._critic_network(
+        critic_observation = observation.repeat_interleave(
+            self._num_bootstrapped_actors, dim=0)
+        q_value, critic_state = self._critic_network(
             (actor_params, (critic_observation, action)), state) 
 
         ## 1. actor loss corresponding to dqda
         # This sum() will reduce all dims so q_value can be any rank
-        dqda = nest_utils.grad(action, q_value.sum())
+        dqda = nest_utils.grad(action, q_value.sum(), retain_graph=True)
 
         def action_loss_fn(dqda, action):
             if self._dqda_clipping:
@@ -308,22 +285,27 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 (dqda + action).detach(), action)
             return loss.sum(list(range(1, loss.ndim)))
 
-        actor_action_loss = nest.map_structure(action_loss_fn, dqda, action)
-        actor_action_loss = math_ops.add_n(nest.flatten(actor_action_loss))
+        action_loss = nest.map_structure(action_loss_fn, dqda, action)
+        action_loss = action_loss.reshape(
+            -1, self._num_bootstrapped_actors).sum(-1)
+        # action_loss = math_ops.add_n(nest.flatten(action_loss))
 
         ## 2. actor loss corresponding to dqdw
-        # Its shape does not match the (T, B) of training batch, reduce to scalar_loss
-        dqdw = nest_utils.grad(actor_params, q_value.sum())
-        actor_param_loss = nest.map_structure(
+        # Its shape does not match the ALF required shape of the training batch
+        # workaround: reduce to scalar_loss and repeat to [T*B]
+        # Will be averaged to a scalar_loss in calc_loss
+        dqdw = nest_utils.grad(actor_params, q_value.sum(), retain_graph=True)
+        param_loss = nest.map_structure(
             lambda x, y: torch.mean(x * y), dqdw, actor_params)
-        actor_param_loss = math_ops.add_n(nest.flatten(actor_param_loss))
+        # ALF workaround: make 
+        param_loss = math_ops.add_n(nest.flatten(param_loss)).repeat(
+            action_loss.shape[0])
 
         actor_info = LossInfo(
-            loss=actor_action_loss,
-            scalar_loss=actor_param_loss,
-            extra=BafcActorInfo(action_loss=actor_action_loss, 
-                                param_loss=actor_param_loss))
-        return critics_state, actor_info
+            loss=action_loss,
+            extra=BafcActorInfo(action_loss=action_loss, 
+                                param_loss=param_loss))
+        return critic_state, actor_info
 
     def _critic_train_step(self, observation, state: BafcCriticState, 
                            rollout_info: BafcInfo, action, actor_params):
@@ -333,8 +315,9 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         critics = critics.reshape(-1, self._num_bootstrapped_actors)
 
         with torch.no_grad():
-            target_observation = observation.repeat(action.shape[1], 1)
-            target_critics, target_critic_state = self._compute_critics(
+            target_observation = observation.repeat_interleave(
+                self._num_bootstrapped_actors, dim=0)
+            target_critics, target_critic_state = self._target_critic_network(
                 (actor_params, (target_observation, action)), state.target_critic)
 
         # [T*B, n_actor]
@@ -357,14 +340,14 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 self._train_mode = TrainMode.actor
                 self._critic_network.set_obs_action_batch_dominate(True)
 
-    def train_step(self, inputs: TimeStep, state: SacState,
-                   rollout_info: SacInfo):
+    def train_step(self, inputs: TimeStep, state: BafcState,
+                   rollout_info: BafcInfo):
         assert not self._is_eval
         self._training_started = True
         # [B, n_actor, d_a]
-        actions, action_state = self._predict_action(
-            inputs.observation, state=state.action, train=true)
-        action = action.view(-1, action.shape[-1])  # [B*n_actor, d_a]
+        action, action_state = self._predict_action(
+            inputs.observation, state=state.action, train=True)
+        action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
 
         new_state = BafcState(action=action_state,
                               actor=state.actor,
@@ -373,39 +356,59 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         actor_params = (self._actor_networks.weight_params, 
                         self._actor_networks.bias_params) 
 
-        if self._train_mode == TrainMode.actor:
-            actor_state, actor_loss = self._actor_train_step(
-                inputs.observation, actions, actor_params, state.actor)
-            critic_info = BafcCriticInfo()
-            new_state = new_state._replace(actor=actor_state)
-            self._actor_update_counter += 1
-        else:
+        if self._train_mode == TrainMode.standard or (
+                self._critic_update_counter == 0
+                and self._actor_update_counter == 0):
+            actor_state, actor_info = self._actor_train_step(
+                inputs.observation, action, actor_params, state.actor)
             critic_state, critic_info = self._critic_train_step(
                 inputs.observation, state.critic, rollout_info, action, actor_params)
-            actor_info = LossInfo(extra=BafcActorInfo())
-            new_state = new_state._replace(critic=critic_state)
+            new_state = new_state._replace(actor=actor_state,
+                                           critic=critic_state)
             self._critic_update_counter += 1
+        else:
+            if self._train_mode == TrainMode.actor:
+                actor_state, actor_info = self._actor_train_step(
+                    inputs.observation, action, actor_params, state.actor)
+                critic_info = BafcCriticInfo()
+                new_state = new_state._replace(actor=actor_state)
+                self._actor_update_counter += 1
+            else:
+                critic_state, critic_info = self._critic_train_step(
+                    inputs.observation, state.critic, rollout_info, action, actor_params)
+                actor_info = LossInfo(extra=BafcActorInfo())
+                # actor_info = LossInfo()
+                new_state = new_state._replace(critic=critic_state)
+                self._critic_update_counter += 1
 
         info = BafcInfo(
             reward=inputs.reward,
             step_type=inputs.step_type,
             discount=inputs.discount,
             action=rollout_info.action,
-            actor=actor_loss,
+            actor=actor_info,
             critic=critic_info,
             discounted_return=rollout_info.discounted_return)
         return AlgStep(action, new_state, info)
 
     def calc_loss(self, info: BafcInfo):
         assert not self._is_eval
-        critic_loss = self._calc_critic_loss(info)
         actor_loss = info.actor
+        scalar_loss = actor_loss.extra.param_loss
+        if isinstance(scalar_loss, torch.Tensor):
+            scalar_loss = scalar_loss.mean()
+        if self._train_mode == TrainMode.actor:
+            critic_loss = LossInfo()
+        else:
+            critic_loss = self._calc_critic_loss(info)
+
         loss = math_ops.add_ignore_empty(actor_loss.loss, critic_loss.loss)
 
         return LossInfo(
             loss=loss,
-            priority=critic_loss.priority,
-            extra=BafcLossInfo(actor=actor_loss.extra, critic=critic_loss.extra))
+            scalar_loss=scalar_loss,
+            extra=BafcLossInfo(
+                actor=actor_loss.extra, critic=critic_loss.extra))
 
     def _calc_critic_loss(self, info: BafcInfo):
         critic_info = info.critic
@@ -416,22 +419,13 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             value=critic_info.critic,
             target_value=critic_info.target_critic).loss
 
-        if self._calculate_priority:
-            valid_masks = (info.step_type != StepType.LAST).to(torch.float32)
-            valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
-            priority = (
-                (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
-        else:
-            priority = ()
-
         return LossInfo(
             loss=critic_loss,
-            priority=priority,
             extra=critic_loss)
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_networks', '_target_repr_alg']
 
-    def after_update(self, root_inputs, info: SacInfo):
+    def after_update(self, root_inputs, info: BafcInfo):
         self._update_train_mode()
         self._update_target()
