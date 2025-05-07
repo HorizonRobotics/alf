@@ -16,6 +16,7 @@ import torch
 from typing import Any, Literal, Optional
 from torch.utils.cpp_extension import load
 import torch.nn.functional as F
+from absl import logging
 import pathlib
 import os
 from .act_backward import act_backward
@@ -34,7 +35,16 @@ if torch.cuda.is_available():
         # This can result in a python version mismatch error.
         # For now, we'll just catch this and ignore it.
         # See https://github.com/pybind/pybind11/issues/5626
-        pass
+        logging.warning(
+            "pybind11 uses a mismatched system python version. Skip using CUDA fused_matmul_act."
+        )
+    except OSError:
+        # OSError: can be triggered if the docker image has no CUDA_HOME environment
+        # defined. If other repos depend on ALF but has a cuda image without
+        # CUDA_HOME defined, we skip compiling this.
+        logging.warning(
+            "No CUDA is found and CUDA_HOME is not defined. Skip using CUDA fused_matmul_act."
+        )
 
 
 class StaticState:
