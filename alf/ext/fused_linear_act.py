@@ -28,7 +28,10 @@ if torch.cuda.is_available():
                     verbose=True)
 
         fused_matmul_act_cuda = _ext.fused_matmul_act
-    except ImportError:
+    except (ImportError, OSError):
+        # OSError: can be triggered if the docker image has no CUDA_HOME environment
+        # defined. If other repos depend on ALF but has a cuda image without
+        # CUDA_HOME defined, we skip compiling this.
         # There is a bug in pybind11 currently where pybind11 will
         # incorrectly use the system python instead of the virtualenv python.
         # This can result in a python version mismatch error.
