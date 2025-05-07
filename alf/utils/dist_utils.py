@@ -48,9 +48,9 @@ def __categorical_init__(self, probs=None, logits=None, validate_args=None):
             logits.dtype)  # logits - logits.logsumexp(dim=-1, keepdim=True)
         valid = self.arg_constraints['logits'].check(self.logits)
         if not valid.all():
-            invalid = (~valid).nonzero(as_tuple=True)[0]
-            invalid_self_logits = self.logits[invalid]
-            invalid_logits = logits[invalid]
+            invalid = (~valid).nonzero(as_tuple=True)[0].cpu()
+            invalid_self_logits = self.logits[invalid].cpu()
+            invalid_logits = logits[invalid].cpu()
             torch.cuda.synchronize()
             raise ValueError(
                 f"Invalid logits: self.logits[{invalid}]={invalid_self_logits}, logits[{invalid}]={invalid_logits}."
