@@ -169,7 +169,7 @@ class Algorithm(AlgorithmInterface):
             self.use_rollout_state = config.use_rollout_state
             if (config.enable_amp and torch.cuda.is_available()
                     and config.amp_dtype == torch.float16):
-                self._grad_scaler = torch.cuda.amp.GradScaler()
+                self._grad_scaler = torch.GradScaler()
         if self._temporally_independent_train_step is None:
             self._temporally_independent_train_step = (len(
                 alf.nest.flatten(self.train_state_spec)) == 0)
@@ -1305,11 +1305,9 @@ class Algorithm(AlgorithmInterface):
                 # optimizer.step, so we don't need to explicitly unscale grad
                 # as the pytorch tutorial https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-clipping
                 self._grad_scaler.step(optimizer)
+                self._grad_scaler.update()
             else:
                 optimizer.step()
-
-        if self._grad_scaler is not None:
-            self._grad_scaler.update()
 
         all_params = [(self._param_to_name[p], p) for p in all_params]
         unused_parameters = [p[0] for p in all_params if p[1].grad is None]
