@@ -20,9 +20,11 @@ from alf.algorithms.agent import Agent
 from alf.algorithms.bafc_algorithm import BafcAlgorithm
 from alf.examples.benchmarks.dm_control import dmc_conf
 
+hidden_layers = (128, 128)
+
 actor_network_cls = partial(
     alf.networks.ActorFCNetwork,
-    fc_layer_params=dmc_conf.hidden_layers)
+    fc_layer_params=hidden_layers)
 
 critic_network_cls = partial(
     alf.networks.FuncCriticNetwork,
@@ -62,7 +64,9 @@ alf.config(
     enable_amp=True,
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
-    num_updates_per_train_iter=6,
+    num_updates_per_train_iter=1,
+    evaluate=False,
+    debug_summaries=True,
     summarize_gradient_noise_scale=False,
     summarize_action_distributions=False,
     random_seed=0)
