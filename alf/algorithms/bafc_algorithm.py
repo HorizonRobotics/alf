@@ -424,7 +424,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             extra=critic_loss)
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_critic_networks', '_target_repr_alg']
+        return ['_target_critic_network']
 
     def after_update(self, root_inputs, info: BafcInfo):
         self._update_train_mode()
