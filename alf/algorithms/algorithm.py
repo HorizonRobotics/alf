@@ -1426,9 +1426,7 @@ class Algorithm(AlgorithmInterface):
         return shape[0] * shape[1]
 
     @common.mark_replay
-    def train_from_replay_buffer(self,
-                                 effective_unroll_steps,
-                                 update_global_counter=False):
+    def train_from_replay_buffer(self, update_global_counter=False):
         """This function can be called by any algorithm that has its own
         replay buffer configured. There are several parameters specified in
         ``self._config`` that will affect how the training is performed:
@@ -1482,8 +1480,7 @@ class Algorithm(AlgorithmInterface):
         # training is not started yet, ``_replay_buffer`` will be None since it
         # is only lazily created later when online RL training started.
         if (self._replay_buffer and self._replay_buffer.total_size
-                < config.initial_collect_steps) or (effective_unroll_steps
-                                                    == 0):
+                < config.initial_collect_steps):
             assert (
                 self._replay_buffer.num_environments *
                 self._replay_buffer.max_length >= config.initial_collect_steps
