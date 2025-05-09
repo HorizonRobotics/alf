@@ -1,7 +1,5 @@
-import hydra
 import torch
 import torch.nn as nn
-from einops.layers.torch import Rearrange
 
 import alf
 from alf.networks.param_networks import ActorParamNetwork
