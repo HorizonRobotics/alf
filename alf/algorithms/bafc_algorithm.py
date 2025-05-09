@@ -190,6 +190,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         self._critic_update_counter = 0
         self._dqda_clipping = dqda_clipping
         self._training_started = False
+        self._do_critic_summary = False
 
         def _filter(x):
             return list(filter(lambda x: x is not None, x))
@@ -381,6 +382,9 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 new_state = new_state._replace(critic=critic_state)
                 self._critic_update_counter += 1
 
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            self._do_critic_summary = True
+
         info = BafcInfo(
             reward=inputs.reward,
             step_type=inputs.step_type,
@@ -411,13 +415,16 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 actor=actor_loss.extra, critic=critic_loss.extra))
 
     def _calc_critic_loss(self, info: BafcInfo):
-        critic_info = info.critic
-        critic_losses = []
-        # [T, B, n_actor]
-        critic_loss = self._critic_loss(
-            info=info,
-            value=critic_info.critic,
-            target_value=critic_info.target_critic).loss
+        with alf.summary.record_if(lambda: self._do_critic_summary):
+            critic_info = info.critic
+            critic_losses = []
+            # [T, B, n_actor]
+            critic_loss = self._critic_loss(
+                info=info,
+                value=critic_info.critic,
+                target_value=critic_info.target_critic).loss
+
+        self._do_critic_summary = False
 
         return LossInfo(
             loss=critic_loss,
