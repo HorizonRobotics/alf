@@ -387,13 +387,28 @@ class ActorFCNetwork(Network):
     def network_kwargs(self):
         return self._network_kwargs
 
-    def forward(self, inputs, state=()):
+    def forward(self, inputs, full_neurons=False, id=None, state=()):
         """
         Args:
             inputs (Tensor):
             state: not used, just keeps the interface same with other networks.
         """
         x = inputs
-        for fc_l in self._fc_layers:
-            x = fc_l(x)
-        return x, state
+        if not full_neurons:
+            for fc_l in self._fc_layers:
+                x = fc_l(x, id=id)
+            return x, state
+        else:
+            neurons = []
+            if len(self._fc_layers) > 0:
+                x = self._fc_layers[0](x, store_inputs=True)
+                neurons.append(self._fc_layers[0].inputs)
+                neurons.append(x)
+                if len(self._fc_layers) > 1:
+                    for fc_l in self._fc_layers[1:]:
+                        x = fc_l(x)
+                        neurons.append(x)
+            else:
+                neurons.append(x)
+
+            return neurons, state
