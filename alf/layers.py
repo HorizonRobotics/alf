@@ -719,6 +719,7 @@ class ParallelFC(nn.Module):
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
         self._bias_initializer = bias_initializer
+        self._inputs = None
         self._use_bias = use_bias
         self._use_bn = use_bn
         self._use_ln = use_ln
@@ -735,6 +736,10 @@ class ParallelFC(nn.Module):
             self._weight.opt_args = weight_opt_args
         if bias_opt_args and self._bias is not None:
             self._bias.opt_args = bias_opt_args
+
+    @property
+    def inputs(self):
+        return self._inputs
 
     def reset_parameters(self):
         for i in range(self._n):
@@ -767,7 +772,7 @@ class ParallelFC(nn.Module):
         if self._use_bn:
             self._bn.reset_parameters()
 
-    def forward(self, inputs, id=None):
+    def forward(self, inputs, store_inputs=False, id=None):
         """Forward
 
         Args:
@@ -794,6 +799,9 @@ class ParallelFC(nn.Module):
             inputs = inputs.transpose(0, 1)  # [n, B, l]
         else:
             raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
+
+        if store_inputs:
+            self._inputs = inputs.transpose(0, 1)  # [B, n, l]
 
         if self._output_size == 1:
             # Temp fix due to https://github.com/pytorch/pytorch/issues/106951
@@ -828,7 +836,8 @@ class ParallelFC(nn.Module):
         """
         weight = self._weight[id]
         if self._use_bias:
-            y = torch.addmm(self._bias, inputs, weight.t())
+            bias = self._bias[id]
+            y = torch.addmm(bias, inputs, weight.t())
         else:
             y = inputs.matmul(self._weight.t())
         if self._use_ln:
