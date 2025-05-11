@@ -41,7 +41,6 @@ class RelationalTransformer(nn.Module):
         self.pooling_method = pooling_method
         self.pooling_layer_idx = pooling_layer_idx
         self.rev_edge_features = rev_edge_features
-        self.nodes_per_layer = layer_layout
         self.construct_graph = GraphConstructor( 
             layer_layout=layer_layout,
             d_node=d_node,

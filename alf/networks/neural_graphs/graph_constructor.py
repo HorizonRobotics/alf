@@ -72,7 +72,6 @@ class GraphConstructor(nn.Module):
     ):
         super().__init__()
         self.rev_edge_features = rev_edge_features
-        self.nodes_per_layer = layer_layout
         self.zero_out_bias = zero_out_bias
         self.zero_out_weights = zero_out_weights
         self.use_pos_embed = use_pos_embed
