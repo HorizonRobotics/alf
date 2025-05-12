@@ -20,7 +20,7 @@ class ActorGraph(nn.Module):
         zero_out_weights=False,
         inp_factor=1,
         input_layers=1,
-        sin_emb=False,
+        sin_emb=True,
         sin_emb_dim=128,
         use_pos_embed=True,
         # stats=None,

@@ -51,13 +51,11 @@ alf.config(
     target_update_tau=0.005)
 
 alf.config(
-    'RelationalTransformer',
-    num_graph_eval_samples=50,
-    use_cls_token=False,
+    'GraphNetwork',
     pooling_method="cat")
 
 alf.config(
-    'GraphConstructor',
+    'ActorGraph',
     sin_emb=True,
     sin_emb_dim=128)
 
@@ -70,6 +68,8 @@ alf.config(
     num_updates_per_train_iter=1,
     evaluate=False,
     debug_summaries=True,
+    summary_interval=100,
+    summarize_grads_and_vars=True,
     summarize_gradient_noise_scale=False,
     summarize_action_distributions=False,
     random_seed=0)
