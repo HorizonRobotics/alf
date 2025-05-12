@@ -28,8 +28,6 @@ actor_network_cls = partial(
 
 critic_network_cls = partial(
     alf.networks.FuncCriticNetwork,
-    actor_encoding_dim=32,
-    obs_action_encoding_dim=32,
     obs_action_joint_fc_layer_params=dmc_conf.hidden_layers,
     actor_obs_action_joint_fc_layer_params=dmc_conf.hidden_layers,
     use_fc_ln=True)  # turning on critic layernorm is crucial for high utd
@@ -43,6 +41,11 @@ alf.config(
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     num_bootstrapped_actors=5,
+    num_actor_eval_samples=64,
+    actor_graph_node_dim=32,
+    actor_graph_edge_dim=32,
+    actor_encoding_dim=32,
+    obs_action_encoding_dim=32,
     actor_utd=1,
     critic_utd=5,
     target_update_tau=0.005)
