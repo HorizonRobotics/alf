@@ -210,7 +210,8 @@ class OaecAlgorithm(OffPolicyAlgorithm):
                 :math:`Q_ub(s,a) = \mu_Q(s,a) + \beta_ub * \sigma_Q(s,a)`    
             beta_lb
             conservative_actor_training (bool): whether to train actor using
-                conservative critic values.
+                conservative critic values. It has not effect if
+                separate_conservative_actor is True.
             conservative_critic_training (bool): whether to train critic using
                 conservative target critic values.
             separate_conservative_actor (bool): whether to train a separate
@@ -624,7 +625,7 @@ class OaecAlgorithm(OffPolicyAlgorithm):
             conservative_training=not self._separate_conservative_actor and
             self._conservative_actor_training)
 
-        # collect infor for critic_networks training
+        # collect info for critic_networks training
         target_critic_action = action
         target_action_dist = action_dist
 
