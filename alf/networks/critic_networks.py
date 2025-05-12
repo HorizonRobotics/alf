@@ -261,9 +261,6 @@ class FuncCriticNetwork(EncodingNetwork):
     def __init__(self,
                  input_tensor_spec,
                  output_tensor_spec=TensorSpec(()),
-                 actor_kwargs={},
-                 actor_encoder_ctor=None,
-                 actor_encoding_dim=64,
                  obs_action_encoding_dim=64,
                  observation_input_processors=None,
                  observation_input_processors_ctor=None,
@@ -289,29 +286,8 @@ class FuncCriticNetwork(EncodingNetwork):
                  use_naive_parallel_network=False,
                  name="FuncCriticNetwork"):
 
-        actor_spec, obs_action_spec = input_tensor_spec
-
-        if actor_encoder_ctor is None:
-            actor_encoder_ctor = RelationalTransformer 
-
-        weight_spec, bias_spec = actor_spec
-
-        actor_layer_layout = [
-            weight_spec[0].shape[1]] + [b.shape[0] for b in bias_spec] 
-
-        # actor encoder: actor_encoding_dim
-        # obs_action_encoder: CriticNetwork (output_dim = actor_encoding_dim)
-        # actor_obs_action_combiner: CrossBatchConcat
-        # CrossBatchConcat: respect_second_batch
-        # super: preprocessing_combiner=actor_obs_action_combiner
-
-        actor_encoder = actor_encoder_ctor(
-            layer_layout=actor_layer_layout,
-            d_out=actor_encoding_dim,
-            param_net_kwargs=actor_kwargs)
-
         obs_action_encoder = CriticNetwork(
-            obs_action_spec,
+            input_tensor_spec[1],
             output_tensor_spec=None,
             observation_input_processors=observation_input_processors,
             observation_input_processors_ctor=observation_input_processors_ctor,
@@ -342,7 +318,7 @@ class FuncCriticNetwork(EncodingNetwork):
         super().__init__(
             input_tensor_spec=input_tensor_spec,
             output_tensor_spec=output_tensor_spec,
-            input_preprocessors=(actor_encoder, obs_action_encoder),
+            input_preprocessors=(None, obs_action_encoder),
             preprocessing_combiner=actor_obs_action_combiner,
             fc_layer_params=actor_obs_action_joint_fc_layer_params,
             activation=activation,
