@@ -17,7 +17,7 @@ class GraphNetwork(nn.Module):
         d_attn_hid=128,
         d_node_hid=128,
         d_edge_hid=64,
-        d_out_hid=128,
+        d_out_hid=256,
         n_layers=4,
         n_heads=8,
         dropout=0.0,

@@ -20,7 +20,7 @@ from alf.algorithms.agent import Agent
 from alf.algorithms.bafc_algorithm import BafcAlgorithm
 from alf.examples.benchmarks.dm_control import dmc_conf
 
-hidden_layers = (128, 128)
+hidden_layers = (256, 128)
 
 actor_network_cls = partial(
     alf.networks.ActorFCNetwork,
@@ -40,18 +40,20 @@ alf.config(
     'BafcAlgorithm',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
-    num_bootstrapped_actors=5,
-    num_actor_eval_samples=64,
-    actor_graph_node_dim=32,
+    num_bootstrapped_actors=10,
+    num_actor_eval_samples=512,
+    actor_graph_node_dim=64,
     actor_graph_edge_dim=32,
-    actor_encoding_dim=32,
-    obs_action_encoding_dim=32,
+    actor_encoding_dim=128,
+    obs_action_encoding_dim=128,
     actor_utd=1,
     critic_utd=5,
     target_update_tau=0.005)
 
 alf.config(
     'GraphNetwork',
+    d_out_hid=256,
+    dropout=0.0,
     pooling_method="cat")
 
 alf.config(

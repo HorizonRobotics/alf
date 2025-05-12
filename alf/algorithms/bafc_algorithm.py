@@ -193,9 +193,9 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                                  d_edge=actor_graph_edge_dim,
                                  num_eval_samples=num_actor_eval_samples)
         graph_network = GraphNetwork(layer_layout=actor_layer_layout,
+                                     d_out=actor_encoding_dim, 
                                      d_node=actor_graph_node_dim,
-                                     d_edge=actor_graph_edge_dim,
-                                     d_out=actor_encoding_dim) 
+                                     d_edge=actor_graph_edge_dim)
 
         actor_spec = TensorSpec(shape=(actor_encoding_dim,))
         obs_action_spec = (observation_spec, action_spec)

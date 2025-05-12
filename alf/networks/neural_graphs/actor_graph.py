@@ -10,7 +10,7 @@ class ActorGraph(nn.Module):
     def __init__(
         self,
         layer_layout,
-        d_node=32,
+        d_node=64,
         d_edge=32,
         num_eval_samples=64,
         d_in=1,
