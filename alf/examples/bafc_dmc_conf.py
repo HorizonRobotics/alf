@@ -19,8 +19,10 @@ import alf
 from alf.algorithms.agent import Agent
 from alf.algorithms.bafc_algorithm import BafcAlgorithm
 from alf.examples.benchmarks.dm_control import dmc_conf
+from alf.optimizers import Adam
 
 hidden_layers = (256, 128)
+optimizer = Adam(lr=3e-4)
 
 actor_network_cls = partial(
     alf.networks.ActorFCNetwork,
@@ -33,7 +35,7 @@ critic_network_cls = partial(
     use_fc_ln=True)  # turning on critic layernorm is crucial for high utd
 
 alf.config('Agent',
-           optimizer=dmc_conf.optimizer,
+           optimizer=optimizer,
            rl_algorithm_cls=BafcAlgorithm)
 
 alf.config(
@@ -47,14 +49,15 @@ alf.config(
     actor_encoding_dim=128,
     obs_action_encoding_dim=128,
     actor_utd=1,
-    critic_utd=5,
+    critic_utd=1,
     target_update_tau=0.005)
 
 alf.config(
     'GraphNetwork',
     d_out_hid=256,
     dropout=0.0,
-    pooling_method="cat")
+    pooling_method="cat",
+    pooling_layer_idx="last")
 
 alf.config(
     'ActorGraph',
