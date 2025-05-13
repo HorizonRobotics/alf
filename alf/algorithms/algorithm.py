@@ -1369,6 +1369,11 @@ class Algorithm(AlgorithmInterface):
         """
         try:
             if isinstance(rollout_info, BasicRolloutInfo):
+                logging.log_first_n(
+                    logging.WARNING,
+                    "Detected offline buffer training without Agent wrapper. "
+                    "For best compatibility, it is advised to use the Agent wrapper.",
+                    n=1)
                 rollout_info = rollout_info.rl
             return self.train_step(inputs, state, rollout_info)
         except:

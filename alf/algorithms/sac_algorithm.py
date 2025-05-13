@@ -27,8 +27,7 @@ import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.data_structures import TimeStep, LossInfo, namedtuple, \
-    BasicRLInfo
+from alf.data_structures import TimeStep, LossInfo, namedtuple
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 import alf.nest.utils as nest_utils
@@ -845,9 +844,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return q_values.gather(2, action).squeeze(2)
 
     def _critic_train_step(self, observation, target_observation,
-                           state: SacCriticState,
-                           rollout_info: SacInfo | BasicRLInfo, action,
-                           action_distribution):
+                           state: SacCriticState, rollout_info: SacInfo,
+                           action, action_distribution):
 
         critics, critics_state = self._compute_critics(
             self._critic_networks,
@@ -899,7 +897,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return sum(nest.flatten(alpha_loss))
 
     def train_step(self, inputs: TimeStep, state: SacState,
-                   rollout_info: SacInfo | BasicRLInfo):
+                   rollout_info: SacInfo):
         assert not self._is_eval
         self._training_started = True
         if self._target_repr_alg is not None:
