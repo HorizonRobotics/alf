@@ -5,6 +5,48 @@ from rff.layers import GaussianEncoding
 import alf
 
 
+def batch_to_graphs(
+    # weights,  # list of shape [bs, out, in] tensors
+    # biases,   # list of shape [bs, out] tensors
+    params,
+    weights_mean=None,
+    weights_std=None,
+    biases_mean=None,
+    biases_std=None,
+):
+    weights, biases = params
+    device = weights[0].device
+    bsz = weights[0].shape[0]
+    num_nodes = weights[0].shape[2] + sum(w.shape[1] for w in weights)
+
+    node_features = torch.zeros(bsz, num_nodes, device=device)
+    edge_features = torch.zeros(
+        bsz, num_nodes, num_nodes, device=device
+    )
+
+    row_offset = 0
+    col_offset = weights[0].shape[2]  # no edge to input nodes
+    for i, w in enumerate(weights):
+        _, num_out, num_in = w.shape
+        w_mean = weights_mean[i] if weights_mean is not None else 0
+        w_std = weights_std[i] if weights_std is not None else 1
+        edge_features[
+            :, col_offset:col_offset + num_out, row_offset:row_offset + num_in
+        ] = (w - w_mean) / w_std
+        row_offset += num_in
+        col_offset += num_out
+
+    row_offset = weights[0].shape[2]  # no bias in input nodes
+    for i, b in enumerate(biases):
+        _, num_out = b.shape
+        b_mean = biases_mean[i] if biases_mean is not None else 0
+        b_std = biases_std[i] if biases_std is not None else 1
+        node_features[:, row_offset:row_offset + num_out] = (b - b_mean) / b_std
+        row_offset += num_out
+
+    return node_features, edge_features
+
+
 @alf.configurable
 class ActorGraph(nn.Module):
     def __init__(
@@ -96,7 +138,8 @@ class ActorGraph(nn.Module):
         )
 
     def forward(self, inputs):
-        node_features, edge_features, eval_out = inputs
+        params, eval_out = inputs
+        node_features, edge_features = batch_to_graphs(params)
         eval_out = [
             proj(eval_out[i].permute(1, 2, 0)) for i, proj in enumerate(
                 self.proj_eval_out)]
