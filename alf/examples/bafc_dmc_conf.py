@@ -22,7 +22,7 @@ from alf.examples.benchmarks.dm_control import dmc_conf
 from alf.optimizers import Adam
 
 hidden_layers = (256, 128)
-optimizer = Adam(lr=3e-4)
+optimizer = Adam(lr=1e-3)
 
 actor_network_cls = partial(
     alf.networks.ActorFCNetwork,
@@ -70,7 +70,8 @@ alf.config(
     enable_amp=True,
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
-    num_updates_per_train_iter=1,
+    num_updates_per_train_iter=5,
+    num_env_steps=int(1e7),
     evaluate=False,
     debug_summaries=True,
     summary_interval=100,
