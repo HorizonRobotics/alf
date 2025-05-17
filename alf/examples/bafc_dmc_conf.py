@@ -22,7 +22,7 @@ from alf.examples.benchmarks.dm_control import dmc_conf
 from alf.optimizers import Adam
 
 hidden_layers = (256, 128)
-optimizer = Adam(lr=1e-3)
+optimizer = Adam(lr=5e-4)
 
 actor_network_cls = partial(
     alf.networks.ActorFCNetwork,
@@ -50,7 +50,10 @@ alf.config(
     obs_action_encoding_dim=128,
     actor_utd=1,
     critic_utd=1,
-    target_update_tau=0.005)
+    use_target_critic=True,
+    target_update_tau=0.005,
+    target_update_period=5,
+    target_update_use_ema=True)
 
 alf.config(
     'GraphNetwork',
