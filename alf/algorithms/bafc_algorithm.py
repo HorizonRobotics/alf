@@ -96,8 +96,10 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
+                 use_target_critic=True,
                  target_update_tau: Union[float, Scheduler] = 0.05,
                  target_update_period: Union[int, Scheduler] = 1,
+                 target_update_use_ema=False,
                  parameter_reset_period: Union[int, Scheduler] = -1,
                  dqda_clipping=None,
                  actor_optimizer=None,
@@ -162,6 +164,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         critic_network = critic_network_cls(
             input_tensor_spec=(actor_spec, obs_action_spec), 
             obs_action_encoding_dim=obs_action_encoding_dim)
+        self._use_target_critic = use_target_critic
 
         action_state_spec = BafcActionState(
             actor_network=actor_networks.state_spec,
@@ -197,9 +200,10 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         self._actor_graph = actor_graph
         self._graph_network = graph_network
         self._critic_network = critic_network
-        self._target_critic_network = critic_network.copy(
-            name='target_critic_network')
-        self._target_critic_network.set_obs_action_batch_dominate(True)
+        if use_target_critic:
+            self._target_critic_network = critic_network.copy(
+                name='target_critic_network')
+            self._target_critic_network.set_obs_action_batch_dominate(True)
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
@@ -221,9 +225,11 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 target_models=_filter(
                     [self._target_critic_network]),
                 tau=target_update_tau,
-                period=target_update_period)
+                period=target_update_period,
+                delayed_update=target_update_use_ema)
 
-        _create_target_updater()
+        if use_target_critic:
+            _create_target_updater()
 
     def _predict_action(self,
                         observation,
@@ -310,6 +316,8 @@ class BafcAlgorithm(OffPolicyAlgorithm):
 
         # This sum() will reduce all dims so q_value can be any rank
         dqda = nest_utils.grad(action, q_value.sum(), retain_graph=True)
+        # need to exclude the input actor_eval_samples, since they don't requires_grad
+        # for actor TrainMode
         eval_action_in_graph = eval_action[1:]
         dqde = nest_utils.grad(eval_action_in_graph, 
                                q_value.sum(), retain_graph=True)
@@ -365,8 +373,15 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         with torch.no_grad():
             target_observation = observation.repeat_interleave(
                 self._num_bootstrapped_actors, dim=0)
-            target_critics, target_critic_state = self._target_critic_network(
-                (actor_encoding, (target_observation, action)), state.target_critic)
+            if self._use_target_critic:
+                target_critics, target_critic_state = self._target_critic_network(
+                    (actor_encoding, (target_observation, action)), state.target_critic)
+            else:
+                self._critic_network.set_obs_action_batch_dominate(True)
+                target_critics, target_critic_state = self._critic_network(
+                    (actor_encoding, (target_observation, action)), state.target_critic)
+                critic_state = target_critic_state
+                self._critic_network.set_obs_action_batch_dominate(False)
 
         # [T*B, n_actor]
         target_critics = target_critics.reshape(-1, self._num_bootstrapped_actors)
@@ -485,8 +500,12 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             extra=critic_loss)
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_critic_network']
+        if self._use_target_critic:
+            return ['_target_critic_network']
+        else:
+            return []
 
     def after_update(self, root_inputs, info: BafcInfo):
         self._update_train_mode()
-        self._update_target()
+        if self._use_target_critic:
+            self._update_target()
