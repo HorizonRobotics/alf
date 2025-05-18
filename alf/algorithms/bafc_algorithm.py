@@ -59,7 +59,7 @@ BafcActorInfo = namedtuple(
 BafcInfo = namedtuple(
     "BafcInfo", [
         "reward", "step_type", "discount", "action", "actor", "critic", 
-        "discounted_return"
+        "discounted_return", "bootstrap_mask"
     ],
     default_value=())
 
@@ -85,7 +85,9 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                  critic_network_cls=FuncCriticNetwork,
                  reward_weights=None,
                  calculate_priority=False,
-                 num_bootstrapped_actors=10,
+                 num_actors=10,
+                 use_bootstrap_actors=False,
+                 bootstrap_mask_prob=0.8,
                  num_actor_eval_samples=256,
                  actor_graph_node_dim=64,
                  actor_graph_edge_dim=32,
@@ -132,11 +134,14 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             self._actor_utd = actor_utd
             self._critic_utd = critic_utd
 
-        self._num_bootstrapped_actors = num_bootstrapped_actors
+        self._num_actors = num_actors
+        self._use_bootstrap_actors = use_bootstrap_actors
+        self._bootstrap_mask_prob = bootstrap_mask_prob
+        self._bootstrap_mask = ()
         actor_networks = actor_network_cls(
             input_tensor_spec=observation_spec,
             action_spec=action_spec,
-            n_groups=num_bootstrapped_actors)
+            n_groups=num_actors)
         actor_eval_samples = 2 * torch.rand(
             num_actor_eval_samples, observation_spec.shape[0]) - 1
 
@@ -277,7 +282,13 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         """
         assert not self._is_eval
         if inputs.step_type == StepType.FIRST:
-            self._rollout_actor_id = torch.randint(self._num_bootstrapped_actors, ())
+            self._rollout_actor_id = torch.randint(self._num_actors, ())
+            if self._use_bootstrap_actors:
+                # [n_env, n_actors] masks for bootstrap actors
+                prob_t = torch.full(
+                    (inputs.step_type.shape[0], self._num_actors),
+                    self._bootstrap_mask_prob)
+                self._bootstrap_mask = torch.bernoulli(prob_t)
 
         action, action_state = self._predict_action(
             inputs.observation,
@@ -285,14 +296,14 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         return AlgStep(
             output=action,
             state=state._replace(action=action_state),
-            info=BafcInfo(action=action))
+            info=BafcInfo(action=action, bootstrap_mask=self._bootstrap_mask))
 
     def _encode_actor(self, params, eval_out):
         inputs = (params, eval_out)
         graph_inputs = self._actor_graph(inputs)
         return self._graph_network(graph_inputs)
 
-    def _actor_train_step(self, observation, action, state):
+    def _actor_train_step(self, observation, action, mask, state):
         """Compute the full off-policy policy gradient from the functional critic,
         which consists of three terms, 
 
@@ -310,7 +321,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         actor_encoding = self._encode_actor(actor_params, eval_action)
         # [B * n_actor, d]
         critic_observation = observation.repeat_interleave(
-            self._num_bootstrapped_actors, dim=0)
+            self._num_actors, dim=0)
         q_value, critic_state = self._critic_network(
             (actor_encoding, (critic_observation, action)), state) 
 
@@ -333,8 +344,10 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         # 1. loss corresponding to input action
         action_loss = nest.map_structure(action_loss_fn, dqda, action)
         action_loss = action_loss.reshape(
-            -1, self._num_bootstrapped_actors).sum(-1)
-        # action_loss = math_ops.add_n(nest.flatten(action_loss))
+            -1, self._num_actors)
+        if self._use_bootstrap_actors:
+            action_loss = action_loss * mask / self._bootstrap_mask_prob
+        action_loss = action_loss.sum(-1)
 
         # 2. loss corresponding to input eval_action
         eval_action_loss = nest.map_structure(
@@ -368,11 +381,11 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         critics, critic_state = self._critic_network(
             (actor_encoding, (observation, rollout_info.action)), state.critic)
         # [T*B, n_actor]
-        critics = critics.reshape(-1, self._num_bootstrapped_actors)
+        critics = critics.reshape(-1, self._num_actors)
 
         with torch.no_grad():
             target_observation = observation.repeat_interleave(
-                self._num_bootstrapped_actors, dim=0)
+                self._num_actors, dim=0)
             if self._use_target_critic:
                 target_critics, target_critic_state = self._target_critic_network(
                     (actor_encoding, (target_observation, action)), state.target_critic)
@@ -384,7 +397,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 self._critic_network.set_obs_action_batch_dominate(False)
 
         # [T*B, n_actor]
-        target_critics = target_critics.reshape(-1, self._num_bootstrapped_actors)
+        target_critics = target_critics.reshape(-1, self._num_actors)
         target_critics = target_critics.detach()
 
         state = BafcCriticState(
@@ -426,7 +439,8 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 self._critic_update_counter == 0
                 and self._actor_update_counter == 0):
             actor_state, actor_info = self._actor_train_step(
-                inputs.observation, action, state.actor)
+                inputs.observation, action, 
+                rollout_info.bootstrap_mask, state.actor)
             critic_state, critic_info = self._critic_train_step(
                 inputs.observation, state.critic, rollout_info, action)
             new_state = new_state._replace(actor=actor_state,
@@ -435,7 +449,8 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         else:
             if self._train_mode == TrainMode.actor:
                 actor_state, actor_info = self._actor_train_step(
-                    inputs.observation, action, state.actor)
+                    inputs.observation, action, 
+                    rollout_info.bootstrap_mask, state.actor)
                 critic_info = BafcCriticInfo()
                 new_state = new_state._replace(actor=actor_state)
                 self._actor_update_counter += 1
