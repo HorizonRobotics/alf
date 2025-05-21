@@ -572,10 +572,11 @@ class RLAlgorithm(Algorithm):
             step_time += unroll_result.step_time
             max_step_time = max(max_step_time, unroll_result.step_time)
 
-            store_exp_time += self._process_unroll_step(
+            store_exp_time_i, effective_unroll_steps = self._process_unroll_step(
                 policy_step, policy_step.output, time_step,
                 transformed_time_step, policy_state, experience_list,
                 original_reward_list)
+            store_exp_time += store_exp_time_i
 
         alf.summary.scalar("time/unroll_env_step",
                            env_step_time,
@@ -602,7 +603,7 @@ class RLAlgorithm(Algorithm):
 
         self._current_transform_state = common.detach(trans_state)
 
-        return experience
+        return experience, effective_unroll_steps
 
     def should_post_process_episode(self, rollout_info, step_type: StepType):
         """A function that determines whether the ``post_process_episode`` function should
@@ -804,7 +805,7 @@ class RLAlgorithm(Algorithm):
         with record_time("time/unroll"):
             with torch.cuda.amp.autocast(self._config.enable_amp,
                                          dtype=self._config.amp_dtype):
-                experience = self.unroll(self._config.unroll_length)
+                experience, _ = self.unroll(self._config.unroll_length)
             self.summarize_metrics()
 
         train_info = experience.rollout_info
