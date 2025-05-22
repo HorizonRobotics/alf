@@ -17,22 +17,15 @@ from torch.utils.cpp_extension import load
 import pathlib
 import os
 
-DIR = pathlib.Path(__file__).parent.absolute()
+_ext = None
 
-if torch.cuda.is_available():
-    try:
-        _ext = load(name="act_backward",
-                    sources=[os.path.join(DIR, "act_backward.cu")],
-                    verbose=True)
 
-        relu_backward_cuda = _ext.relu_backward
-    except ImportError:
-        # There is a bug in pybind11 currently where pybind11 will
-        # incorrectly use the system python instead of the virtualenv python.
-        # This can result in a python version mismatch error.
-        # For now, we'll just catch this and ignore it.
-        # See https://github.com/pybind/pybind11/issues/5626
-        pass
+def _load_ext():
+    global _ext
+    DIR = pathlib.Path(__file__).parent.absolute()
+    _ext = load(name="act_backward",
+                sources=[os.path.join(DIR, "act_backward.cu")],
+                verbose=True)
 
 
 def relu_backward(output, grad_output):
@@ -57,7 +50,9 @@ def relu_backward(output, grad_output):
     assert output.dtype.is_floating_point
     if output.is_cuda and output.is_contiguous() and grad_output.is_contiguous(
     ):
-        return relu_backward_cuda(output, grad_output)
+        if _ext is None:
+            _load_ext()
+        return _ext.relu_backward(output, grad_output)
     else:
         return grad_output * (output > 0).float()
 

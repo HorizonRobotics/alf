@@ -20,21 +20,16 @@ import pathlib
 import os
 from .act_backward import act_backward
 
-DIR = pathlib.Path(__file__).parent.absolute()
-if torch.cuda.is_available():
-    try:
-        _ext = load(name="fused_matmul_act",
-                    sources=[os.path.join(DIR, "fused_matmul_act.cu")],
-                    verbose=True)
+_ext = None
 
-        fused_matmul_act_cuda = _ext.fused_matmul_act
-    except ImportError:
-        # There is a bug in pybind11 currently where pybind11 will
-        # incorrectly use the system python instead of the virtualenv python.
-        # This can result in a python version mismatch error.
-        # For now, we'll just catch this and ignore it.
-        # See https://github.com/pybind/pybind11/issues/5626
-        pass
+
+def _load_ext():
+    global _ext
+
+    DIR = pathlib.Path(__file__).parent.absolute()
+    _ext = load(name="fused_matmul_act",
+                sources=[os.path.join(DIR, "fused_matmul_act.cu")],
+                verbose=True)
 
 
 class StaticState:
@@ -65,7 +60,9 @@ def fused_matmul_act(a, b, bias, activation):
         workspace = StaticState.get("workspace", a.device)
         if bias is None:
             bias = StaticState.get("bias", a.device)
-        return fused_matmul_act_cuda(a, b, bias, activation, workspace)
+        if _ext is None:
+            _load_ext()
+        return _ext.fused_matmul_act(a, b, bias, activation, workspace)
     else:
         if activation == "RELU":
             act = F.relu_
