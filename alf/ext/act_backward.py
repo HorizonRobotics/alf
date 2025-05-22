@@ -20,7 +20,8 @@ import os
 
 DIR = pathlib.Path(__file__).parent.absolute()
 
-if torch.cuda.is_available():
+# if torch.cuda.is_available():
+if False:
     try:
         _ext = load(name="act_backward",
                     sources=[os.path.join(DIR, "act_backward.cu")],

@@ -22,7 +22,8 @@ import os
 from .act_backward import act_backward
 
 DIR = pathlib.Path(__file__).parent.absolute()
-if torch.cuda.is_available():
+# if torch.cuda.is_available():
+if False:
     try:
         _ext = load(name="fused_matmul_act",
                     sources=[os.path.join(DIR, "fused_matmul_act.cu")],
