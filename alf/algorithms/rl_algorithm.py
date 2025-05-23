@@ -235,6 +235,7 @@ class RLAlgorithm(Algorithm):
         self._current_time_step = None
         self._current_policy_state = None
         self._current_transform_state = None
+
         if self._env is not None and not self.on_policy:
             replay_buffer_length = adjust_replay_buffer_length(
                 config, self._num_earliest_frames_ignored)
@@ -598,7 +599,9 @@ class RLAlgorithm(Algorithm):
 
         self._current_transform_state = common.detach(trans_state)
 
-        effective_unroll_iters = effective_unroll_steps // unroll_length
+        # if the input unroll_length is 0 (e.g. fractional unroll), then this it treated as
+        # an effective unroll iter
+        effective_unroll_iters = 1 if unroll_length == 0 else effective_unroll_steps // unroll_length
         return experience, effective_unroll_iters
 
     def post_process_experience(self, rollout_info, step_type: StepType,
@@ -637,11 +640,12 @@ class RLAlgorithm(Algorithm):
         effective_unroll_steps = 1
         store_exp_time = 0
         if not self.on_policy:
-            rollout_info = policy_step.info
-            # 1) process
+            # 1) post process
             post_processed_exp_list = self.post_process_experience(
-                rollout_info, time_step.step_type, exp)
-            effective_unroll_steps = len(post_processed_exp_list)
+                policy_step.info, time_step.step_type, exp)
+            effective_unroll_steps = sum(
+                exp.step_type.shape[0]
+                for exp in post_processed_exp_list) / exp.step_type.shape[0]
             # 2) observe
             t0 = time.time()
             for exp in post_processed_exp_list:
@@ -764,7 +768,9 @@ class RLAlgorithm(Algorithm):
         self._current_policy_state = common.detach(policy_state)
         self._current_transform_state = common.detach(trans_state)
 
-        effective_unroll_iters = effective_unroll_steps // unroll_length
+        # if the input unroll_length is 0 (e.g. fractional unroll), then this it treated as
+        # an effective unroll iter
+        effective_unroll_iters = 1 if unroll_length == 0 else effective_unroll_steps // unroll_length
         return experience, effective_unroll_iters
 
     def train_iter(self):
