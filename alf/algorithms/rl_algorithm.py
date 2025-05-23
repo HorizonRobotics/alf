@@ -147,7 +147,6 @@ class RLAlgorithm(Algorithm):
                  optimizer=None,
                  checkpoint=None,
                  is_eval: bool = False,
-                 episodic_annotation: bool = False,
                  overwrite_policy_output=False,
                  debug_summaries=False,
                  name="RLAlgorithm"):
@@ -187,10 +186,6 @@ class RLAlgorithm(Algorithm):
                 during deployment.  In this case, the algorithm do not need to
                 create certain components such as value_network for ActorCriticAlgorithm,
                 critic_networks for SacAlgorithm.
-            episodic_annotation: episodic annotation is an operation that annotates the
-                episode after it being collected, and then the annotated episode will be
-                observed by the replay buffer. If True, annotate the episode before being 
-                observed by the replay buffer. Otherwise, episodic annotation is not applied.
             overwrite_policy_output (bool): if True, overwrite the policy output
                 with next_step.prev_action. This option can be used in some
                 cases such as data collection.
@@ -208,7 +203,6 @@ class RLAlgorithm(Algorithm):
                              debug_summaries=debug_summaries,
                              name=name)
         self._is_eval = is_eval
-        self._episodic_annotation = episodic_annotation
 
         self._env = env
         self._observation_spec = observation_spec
@@ -241,7 +235,6 @@ class RLAlgorithm(Algorithm):
         self._current_time_step = None
         self._current_policy_state = None
         self._current_transform_state = None
-        self._cached_exp = []  # for lazy observation
         if self._env is not None and not self.on_policy:
             replay_buffer_length = adjust_replay_buffer_length(
                 config, self._num_earliest_frames_ignored)
@@ -550,6 +543,7 @@ class RLAlgorithm(Algorithm):
         store_exp_time = 0.
         step_time = 0.
         max_step_time = 0.
+        effective_unroll_steps = 0
         qsize = self._async_unroller.get_queue_size()
         unroll_results = self._async_unroller.gather_unroll_results(
             unroll_length, self._config.max_unroll_length)
@@ -572,11 +566,12 @@ class RLAlgorithm(Algorithm):
             step_time += unroll_result.step_time
             max_step_time = max(max_step_time, unroll_result.step_time)
 
-            store_exp_time_i, effective_unroll_steps = self._process_unroll_step(
+            store_exp_time_i, effective_unroll_steps_i = self._process_unroll_step(
                 policy_step, policy_step.output, time_step,
                 transformed_time_step, policy_state, experience_list,
                 original_reward_list)
             store_exp_time += store_exp_time_i
+            effective_unroll_steps += effective_unroll_steps_i
 
         alf.summary.scalar("time/unroll_env_step",
                            env_step_time,
@@ -603,70 +598,80 @@ class RLAlgorithm(Algorithm):
 
         self._current_transform_state = common.detach(trans_state)
 
-        return experience, effective_unroll_steps
+        effective_unroll_iters = effective_unroll_steps // unroll_length
+        return experience, effective_unroll_iters
 
-    def should_post_process_episode(self, rollout_info, step_type: StepType):
-        """A function that determines whether the ``post_process_episode`` function should
-        be applied to the current list of experiences.
-        Users can customize this function in the derived class.
-        Bu default, it returns True all the time steps. When this is combined with
-        ``post_process_episode`` which simply return the input unmodified (as the default
-        implementation in this class), it is a dummy version of eposodic annotation with
-        logic equivalent to the case of episodic_annotation=False.
+    def should_post_process_experience(self, rollout_info,
+                                       step_type: StepType):
+        """A function that determines whether the ``post_process_experience`` function should
+        be called. Users can customize this pair of functions in the derived class to achieve
+        different effects. For example:
+        - per-step processing: ``should_post_process_experience``
+            returns True for all the steps (by default), and ``post_process_experience``
+            returns the current step of experience unmodified (by default) or a modified version
+            according to their customized ``post_process_experience`` function.
+            As another example, task filtering can be simply achieved by returning ``[]``
+            in ``post_process_experience`` for that particular task.
+        - per-episode processing: ``should_post_process_experience`` returns True on episode
+            end and ``post_process_experience`` can return a list of cached and processed
+            experiences. For example, this can be used for success episode labeling.
         """
         return True
 
-    def post_process_episode(self, experiences: List[Experience]):
+    def post_process_experience(self, experiences: Experience):
         """A function for postprocessing a list of experience. It is called when 
-        ``should_post_process_episode`` is True.
+        ``should_post_process_experience`` is True.
+        By default, it returns the input unmodified.
+        Users can customize this function in the derived class, to create a number of
+        useful features such as 'hindsight relabeling' of a trajectory etc.
+
+        Args:
+            experiences: one step of experience.
+
+        Returns:
+            A list of experiences. Users can customize this pair of functions in the
+            derived class to achieve different effects. For example: 
+            - return a list that contains only the input experience (default behavior).
+            - return a list that contains a number of experiences. This can be useful
+                for episode processing such as success episode labeling.
+        """
+        return [experiences]
+
+    def _process_unroll_step(self, policy_step, action, time_step,
+                             transformed_time_step, policy_state,
+                             experience_list, original_reward_list):
+        """A function for processing the unroll steps.
         By default, it returns the input unmodified.
         Users can customize this function in the derived class, to create a number of
         useful features such as 'hindsight relabeling' of a trajectory etc.
 
         Args:
             experiences: a list of experience, containing the experience starting from the
-            initial time when ``should_post_process_episode`` is False to the step where
-            ``should_post_process_episode`` is True.
+            initial time when ``should_post_process_experience`` is False to the step where
+            ``should_post_process_experience`` is True.
         """
-        return experiences
 
-    def _process_unroll_step(self, policy_step, action, time_step,
-                             transformed_time_step, policy_state,
-                             experience_list, original_reward_list):
         self.observe_for_metrics(time_step.cpu())
         exp = make_experience(time_step.cpu(),
                               alf.layers.to_float32(policy_step),
                               alf.layers.to_float32(policy_state))
-        effective_number_of_unroll_steps = 1
-        if self._episodic_annotation:
-            assert not self.on_policy, "only support episodic annotation for off policy training"
-            store_exp_time = 0
-            # if last step, annotate
+        effective_unroll_steps = 1
+        store_exp_time = 0
+        if not self.on_policy:
             rollout_info = policy_step.info
-            self._cached_exp.append(exp)
-            if self.should_post_process_episode(rollout_info,
-                                                time_step.step_type):
-
+            if self.should_post_process_experience(rollout_info,
+                                                   time_step.step_type):
                 # 1) process
-                annotated_exp_list = self.post_process_episode(
-                    self._cached_exp)
-                effective_number_of_unroll_steps = len(annotated_exp_list)
+                post_processed_exp_list = self.post_process_experience(exp)
+                effective_unroll_steps = len(post_processed_exp_list)
                 # 2) observe
                 t0 = time.time()
-                for exp in annotated_exp_list:
+                for exp in post_processed_exp_list:
                     self.observe_for_replay(exp)
                 store_exp_time = time.time() - t0
-                # clean up the exp cache
-                self._cached_exp = []
             else:
-                # effective unroll steps as 0 if not post_process_episode timepoint yet
-                effective_number_of_unroll_steps = 0
-        else:
-            store_exp_time = 0
-            if not self.on_policy:
-                t0 = time.time()
-                self.observe_for_replay(exp)
-                store_exp_time = time.time() - t0
+                # effective unroll steps as 0 if ``should_post_process_experience condition`` is False
+                effective_unroll_steps = 0
 
         exp_for_training = Experience(
             time_step=transformed_time_step,
@@ -676,7 +681,7 @@ class RLAlgorithm(Algorithm):
 
         experience_list.append(exp_for_training)
         original_reward_list.append(time_step.reward)
-        return store_exp_time, effective_number_of_unroll_steps
+        return store_exp_time, effective_unroll_steps
 
     def reset_state(self):
         """Reset the state of the algorithm.
@@ -700,6 +705,8 @@ class RLAlgorithm(Algorithm):
         Returns:
             Experience: The stacked experience with shape :math:`[T, B, \ldots]`
             for each of its members.
+            effective_unroll_iters: the effective number of unroll iterations.
+                Each unroll iteration contains ``unroll_length`` unroll steps.
         """
         if self._current_time_step is None:
             self._current_time_step = common.get_initial_time_step(self._env)
@@ -750,10 +757,11 @@ class RLAlgorithm(Algorithm):
             if self._overwrite_policy_output:
                 policy_step = policy_step._replace(
                     output=next_time_step.prev_action)
-            store_exp_time_i, effective_unroll_steps = self._process_unroll_step(
+            store_exp_time_i, effective_unroll_steps_i = self._process_unroll_step(
                 policy_step, action, time_step, transformed_time_step,
                 policy_state, experience_list, original_reward_list)
             store_exp_time += store_exp_time_i
+            effective_unroll_steps += effective_unroll_steps_i
 
             time_step = next_time_step
             policy_state = policy_step.state
@@ -781,7 +789,8 @@ class RLAlgorithm(Algorithm):
         self._current_policy_state = common.detach(policy_state)
         self._current_transform_state = common.detach(trans_state)
 
-        return experience, effective_unroll_steps
+        effective_unroll_iters = effective_unroll_steps // unroll_length
+        return experience, effective_unroll_iters
 
     def train_iter(self):
         """Perform one iteration of training.
@@ -846,6 +855,9 @@ class RLAlgorithm(Algorithm):
                 unroll length, it may not have been called.
             - root_inputs: root-level time step returned by the unroll
             - rollout_info: rollout info returned by the unroll
+            - effective_unroll_iters: the effective number of unroll iterations.
+                ``train_from_replay_buffer`` will be run ``effective_unroll_iters`` times
+                during ``_train_iter_off_policy``.
         """
         config: TrainerConfig = self._config
 
@@ -862,7 +874,7 @@ class RLAlgorithm(Algorithm):
         unrolled = False
         root_inputs = None
         rollout_info = None
-        effective_unroll_steps = 0
+        effective_unroll_iters = 0
         if (alf.summary.get_global_counter()
                 >= self._rl_train_after_update_steps
                 and (unroll_length > 0 or config.unroll_length == 0) and
@@ -881,7 +893,7 @@ class RLAlgorithm(Algorithm):
                     # need to remember whether summary has been written between
                     # two unrolls.
                     with self._ensure_rollout_summary:
-                        experience, effective_unroll_steps = self.unroll(
+                        experience, effective_unroll_iters = self.unroll(
                             unroll_length)
                         if experience:
                             self.summarize_rollout(experience)
@@ -890,11 +902,11 @@ class RLAlgorithm(Algorithm):
                             if config.use_root_inputs_for_after_train_iter:
                                 root_inputs = experience.time_step
                             del experience
-        return unrolled, root_inputs, rollout_info, effective_unroll_steps
+        return unrolled, root_inputs, rollout_info, effective_unroll_iters
 
     def _train_iter_off_policy(self):
         """User may override this for their own training procedure."""
-        unrolled, root_inputs, rollout_info, effective_unroll_steps = self._unroll_iter_off_policy(
+        unrolled, root_inputs, rollout_info, effective_unroll_iters = self._unroll_iter_off_policy(
         )
 
         # replay buffer may not have been created for two different reasons:
@@ -908,7 +920,7 @@ class RLAlgorithm(Algorithm):
 
         self.train()
         steps = 0
-        for i in range(effective_unroll_steps):
+        for i in range(effective_unroll_iters):
             steps += self.train_from_replay_buffer(update_global_counter=True)
             if unrolled:
                 with record_time("time/after_train_iter"):
