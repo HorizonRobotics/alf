@@ -19,7 +19,7 @@ from collections import namedtuple
 import os
 import time
 import torch
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 from absl import logging
 
 import alf
@@ -601,35 +601,25 @@ class RLAlgorithm(Algorithm):
         effective_unroll_iters = effective_unroll_steps // unroll_length
         return experience, effective_unroll_iters
 
-    def should_post_process_experience(self, rollout_info,
-                                       step_type: StepType):
-        """A function that determines whether the ``post_process_experience`` function should
-        be called. Users can customize this pair of functions in the derived class to achieve
-        different effects. For example:
-        - per-step processing: ``should_post_process_experience``
-            returns True for all the steps (by default), and ``post_process_experience``
-            returns the current step of experience unmodified (by default) or a modified version
-            according to their customized ``post_process_experience`` function.
+    def post_process_experience(self, rollout_info, step_type: StepType,
+                                experiences: Experience):
+        """A function for postprocessing experience. By default, it returns the input
+        experience unmodified. Users can customize this function in the derived
+        class to achieve different effects. For example:
+        - per-step processing: return the current step of experience unmodified (by default)
+            or a modified version according to the customized ``post_process_experience``.
             As another example, task filtering can be simply achieved by returning ``[]``
-            in ``post_process_experience`` for that particular task.
-        - per-episode processing: ``should_post_process_experience`` returns True on episode
-            end and ``post_process_experience`` can return a list of cached and processed
+            for that particular task.
+        - per-episode processing: this can be achieved by returning a list of processed
             experiences. For example, this can be used for success episode labeling.
-        """
-        return True
-
-    def post_process_experience(self, experiences: Experience):
-        """A function for postprocessing a list of experience. It is called when 
-        ``should_post_process_experience`` is True.
-        By default, it returns the input unmodified.
-        Users can customize this function in the derived class, to create a number of
-        useful features such as 'hindsight relabeling' of a trajectory etc.
 
         Args:
+            rollout_info: the rollout info.
+            step_type: the step type of the current experience.
             experiences: one step of experience.
 
         Returns:
-            A list of experiences. Users can customize this pair of functions in the
+            A list of experiences. Users can customize this functions in the
             derived class to achieve different effects. For example: 
             - return a list that contains only the input experience (default behavior).
             - return a list that contains a number of experiences. This can be useful
@@ -640,17 +630,6 @@ class RLAlgorithm(Algorithm):
     def _process_unroll_step(self, policy_step, action, time_step,
                              transformed_time_step, policy_state,
                              experience_list, original_reward_list):
-        """A function for processing the unroll steps.
-        By default, it returns the input unmodified.
-        Users can customize this function in the derived class, to create a number of
-        useful features such as 'hindsight relabeling' of a trajectory etc.
-
-        Args:
-            experiences: a list of experience, containing the experience starting from the
-            initial time when ``should_post_process_experience`` is False to the step where
-            ``should_post_process_experience`` is True.
-        """
-
         self.observe_for_metrics(time_step.cpu())
         exp = make_experience(time_step.cpu(),
                               alf.layers.to_float32(policy_step),
@@ -659,19 +638,15 @@ class RLAlgorithm(Algorithm):
         store_exp_time = 0
         if not self.on_policy:
             rollout_info = policy_step.info
-            if self.should_post_process_experience(rollout_info,
-                                                   time_step.step_type):
-                # 1) process
-                post_processed_exp_list = self.post_process_experience(exp)
-                effective_unroll_steps = len(post_processed_exp_list)
-                # 2) observe
-                t0 = time.time()
-                for exp in post_processed_exp_list:
-                    self.observe_for_replay(exp)
-                store_exp_time = time.time() - t0
-            else:
-                # effective unroll steps as 0 if ``should_post_process_experience condition`` is False
-                effective_unroll_steps = 0
+            # 1) process
+            post_processed_exp_list = self.post_process_experience(
+                rollout_info, time_step.step_type, exp)
+            effective_unroll_steps = len(post_processed_exp_list)
+            # 2) observe
+            t0 = time.time()
+            for exp in post_processed_exp_list:
+                self.observe_for_replay(exp)
+            store_exp_time = time.time() - t0
 
         exp_for_training = Experience(
             time_step=transformed_time_step,
