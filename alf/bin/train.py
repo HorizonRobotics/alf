@@ -435,6 +435,9 @@ def main(_):
             raise ChildProcessError(f'Training failed on subprocess exception')
 
     elif FLAGS.distributed == 'multi-node-multi-gpu':
+        assert FLAGS.num_gpus_per_ddp_worker == 1, \
+            'Using more than 1 GPU per DDP worker is not supported in multi-node-multi-gpu mode'
+
         local_rank = int(os.environ['LOCAL_RANK'])
         rank = int(os.environ['RANK'])
         world_size = int(os.environ['WORLD_SIZE'])
