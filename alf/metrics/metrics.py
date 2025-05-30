@@ -424,13 +424,20 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
                 as ``transformed_reward = reward_transformer(original_reward)``.
             device (str): device of the metric ('cpu' or 'cuda')
         """
-        torch.nn.Module.__init__(self)
         self._discount = discount
         batch_size = alf.nest.get_nest_batch_size(example_time_step)
         self._accumulated_discount = torch.zeros(batch_size, device=device)
         self._timestep_discount = torch.zeros(batch_size, device=device)
-        self._reward_transformer = reward_transformer
         self._current_step = torch.zeros(batch_size, device=device)
+        # Temporarily set self._reward_transformer to None so that when super().__init__()
+        # calls _extract_metric_values(), it won't fail because of missing attribute.
+        # Note that we cannot set self._reward_transformer = reward_transformer
+        # because torch.nn.Module.__init__() needs to be called before any
+        # nn.Module is assigned to an attribute.
+        # We can neither directly call `torch.nn.Module.__init__(self)` here because
+        # super().__init__() will also call `torch.nn.Module.__init__(self)`, which
+        # will clear the attribute assignment.
+        self._reward_transformer = None
 
         super().__init__(name=name,
                          dtype=dtype,
@@ -438,6 +445,8 @@ class AverageDiscountedReturnMetric(AverageEpisodicAggregationMetric):
                          buffer_size=buffer_size,
                          example_time_step=example_time_step,
                          device=device)
+
+        self._reward_transformer = reward_transformer
 
     def _extract_metric_values(self, time_step):
         """Accumulate discounted immediate rewards to get discounted episodic

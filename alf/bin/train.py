@@ -83,6 +83,12 @@ def _define_flags():
     flags.DEFINE_enum(
         'distributed', 'none', ['none', 'multi-gpu', 'multi-node-multi-gpu'],
         'Set whether and how to run training in distributed mode.')
+    flags.DEFINE_integer(
+        'num_gpus_per_ddp_worker', 1,
+        "The number of gpus per DDP worker. If specified will create N DDP workers where each worker "
+        "has num_gpus_per_ddp_worker gpus assigned to it. N will be CUDA_VISIBLE_DEVICES // num_gpus_per_ddp_worker. "
+        "Therefore, CUDA_VISIBLE_DEVICES % num_gpu_per_group must be 0. "
+        "Only used if distributed is set to multi-gpu.")
     flags.DEFINE_bool('as_remote_trainer', False,
                       'Whether to run in a remote trainer mode.')
     flags.DEFINE_bool('as_remote_unroller', False,
@@ -354,7 +360,20 @@ def main(_):
                         conf_file=conf_file,
                         root_dir=root_dir)
     elif FLAGS.distributed == 'multi-gpu':
-        world_size = torch.cuda.device_count()
+        CUDA_VISIBLE_DEVICES = os.environ.get('CUDA_VISIBLE_DEVICES', None)
+        # If CUDA_VISIBLE_DEVICES is not set, we will set it to all available gpus
+        if CUDA_VISIBLE_DEVICES is None:
+            devices = [str(i) for i in range(torch.cuda.device_count())]
+            device_list = ','.join(devices)
+            CUDA_VISIBLE_DEVICES = device_list
+            os.environ['CUDA_VISIBLE_DEVICES'] = device_list
+        else:
+            devices = CUDA_VISIBLE_DEVICES.split(',')
+
+        num_devices = len(devices)
+        assert num_devices % FLAGS.num_gpus_per_ddp_worker == 0, \
+            'The number of GPUs must be divisible by num_gpus_per_ddp_worker'
+        world_size = num_devices // FLAGS.num_gpus_per_ddp_worker
 
         if world_size == 1:
             logging.warn(
@@ -376,13 +395,6 @@ def main(_):
                 # The other process will communicate with the authoritative
                 # process via network protocol on localhost:port.
                 os.environ['MASTER_PORT'] = str(port)
-                CUDA_VISIBLE_DEVICES = os.environ.get('CUDA_VISIBLE_DEVICES')
-                if CUDA_VISIBLE_DEVICES is None:
-                    devices = list(range(world_size))
-                else:
-                    devices = CUDA_VISIBLE_DEVICES.split(',')
-                    assert len(devices) == world_size
-                    devices = [int(d) for d in devices]
 
                 processes = []
                 mp_ctx = multiprocessing.get_context('spawn')
@@ -397,7 +409,9 @@ def main(_):
                     # This is because some other user of cuda (e.g. Taichi) may
                     # only use the first GPU. If multiple GPUs are visible to the
                     # process, all the processes will compete for the first GPU.
-                    os.environ['CUDA_VISIBLE_DEVICES'] = str(devices[i])
+                    ngpu = FLAGS.num_gpus_per_ddp_worker
+                    vis_devices = ','.join(devices[i * ngpu:(i + 1) * ngpu])
+                    os.environ['CUDA_VISIBLE_DEVICES'] = vis_devices
                     process = mp_ctx.Process(target=training_worker,
                                              args=(i, world_size, conf_file,
                                                    root_dir, paras_queue),
@@ -406,10 +420,7 @@ def main(_):
                     processes.append(process)
 
                 # Restore the original CUDA_VISIBLE_DEVICES
-                if CUDA_VISIBLE_DEVICES is not None:
-                    os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
-                else:
-                    os.environ.pop('CUDA_VISIBLE_DEVICES', None)
+                os.environ['CUDA_VISIBLE_DEVICES'] = CUDA_VISIBLE_DEVICES
 
                 training_worker(0, world_size, conf_file, root_dir,
                                 paras_queue)
@@ -424,6 +435,9 @@ def main(_):
             raise ChildProcessError(f'Training failed on subprocess exception')
 
     elif FLAGS.distributed == 'multi-node-multi-gpu':
+        assert FLAGS.num_gpus_per_ddp_worker == 1, \
+            'Using more than 1 GPU per DDP worker is not supported in multi-node-multi-gpu mode'
+
         local_rank = int(os.environ['LOCAL_RANK'])
         rank = int(os.environ['RANK'])
         world_size = int(os.environ['WORLD_SIZE'])
