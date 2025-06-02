@@ -2155,7 +2155,8 @@ class Algorithm(AlgorithmInterface):
         else:
             loss_info = offline_loss_info
 
-        params = self._backward_and_gradient_update(loss_info.loss * weight)
+        params, gns = self._backward_and_gradient_update(loss_info.loss *
+                                                         weight)
 
         if self._RL_train:
             # for now, there is no need to do a hybrid after update
