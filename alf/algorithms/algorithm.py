@@ -1265,7 +1265,11 @@ class Algorithm(AlgorithmInterface):
         Args:
             loss (Tensor): an aggregated scalar loss
         Returns:
-            params (list[(name, Parameter)]): list of parameters being updated.
+            A tuple containing:
+                params (list[(name, Parameter)]): list of parameters being updated.
+                simple_gns (list[float]): list of estimated gradient noise scales. Will
+                    simply be an empty list if TrainerConfig.summarize_gradient_noise_scale
+                    is False.
         """
         unhandled = self._setup_optimizers()
         unhandled = [self._param_to_name[p] for p in unhandled]
