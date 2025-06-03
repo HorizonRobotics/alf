@@ -814,7 +814,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if self._act_type == ActionType.Discrete:
             # Pure discrete case doesn't need to learn an actor network
-            return (), LossInfo(extra=SacActorInfo(neg_entropy=neg_entropy))
+            return (), LossInfo(extra=SacActorInfo(
+                neg_entropy=neg_entropy)), ()
 
         adv_loss = ()
         alphas = ()
