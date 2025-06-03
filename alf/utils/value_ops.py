@@ -28,6 +28,7 @@ def action_importance_ratio(action_distribution,
                             log_prob_clipping,
                             check_numerics,
                             debug_summaries,
+                            f_log_prob=dist_utils.compute_log_probability,
                             rollout_log_prob=None):
     """ ratio for importance sampling, used in PPO loss and vtrace loss.
 
@@ -75,8 +76,7 @@ def action_importance_ratio(action_distribution,
         sample_action_log_probs = dist_utils.compute_log_probability(
             rollout_action_distribution, action).detach()
 
-    action_log_prob = dist_utils.compute_log_probability(
-        current_policy_distribution, action)
+    action_log_prob = f_log_prob(current_policy_distribution, action)
 
     if log_prob_clipping > 0.0:
         action_log_prob = action_log_prob.clamp(-log_prob_clipping,
@@ -339,6 +339,7 @@ def generalized_advantage_estimation(rewards,
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
     is_lasts = common.expand_dims_as(is_lasts, values)
     discounts = common.expand_dims_as(discounts, values)
+    rewards = common.expand_dims_as(rewards, values)
 
     weighted_discounts = discounts[1:] * td_lambda
 

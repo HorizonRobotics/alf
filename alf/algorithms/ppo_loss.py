@@ -19,7 +19,7 @@ import alf
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.utils.losses import element_wise_squared_loss
-from alf.utils import value_ops
+from alf.utils import dist_utils, value_ops
 
 
 @alf.configurable
@@ -40,6 +40,7 @@ class PPOLoss(ActorCriticLoss):
                  td_loss_weight=1.0,
                  importance_ratio_clipping=0.2,
                  log_prob_clipping=0.0,
+                 f_log_prob=dist_utils.compute_log_probability,
                  pg_only=False,
                  check_numerics=False,
                  debug_summaries=False,
@@ -122,6 +123,7 @@ class PPOLoss(ActorCriticLoss):
         self._log_prob_clipping = log_prob_clipping
         self._check_numerics = check_numerics
         self._compute_advantages_internally = compute_advantages_internally
+        self._f_log_prob = f_log_prob
 
     def _pg_loss(self, info, advantages):
         scope = alf.summary.scope(self._name)
@@ -135,6 +137,7 @@ class PPOLoss(ActorCriticLoss):
             importance_ratio_clipping=self._importance_ratio_clipping,
             log_prob_clipping=self._log_prob_clipping,
             check_numerics=self._check_numerics,
+            f_log_prob=self._f_log_prob,
             debug_summaries=self._debug_summaries)
         # Pessimistically choose the maximum objective value for clipped and
         # unclipped importance ratios.

@@ -13,6 +13,7 @@
 # limitations under the License.
 """Actor critic algorithm."""
 
+from functools import partial
 import torch
 from typing import Tuple
 
@@ -50,6 +51,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  actor_network_ctor=ActorDistributionNetwork,
                  value_network_ctor=ValueNetwork,
                  distribution_adapter_ctor=None,
+                 f_log_prob=dist_utils.compute_log_probability,
                  epsilon_greedy=None,
                  top_k_sample: int = 0,
                  top_p_sample: float = 0,
@@ -157,6 +159,9 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         self._actor_network = actor_network
         self._value_network = value_network
         self._distribution_adapter = distribution_adapter
+        self._f_log_prob = f_log_prob
+        if f_log_prob != dist_utils.compute_log_probability:
+            loss_class = partial(loss_class, f_log_prob=f_log_prob)
         if loss is None:
             loss = loss_class(
                 reward_dim=reward_spec.numel, debug_summaries=debug_summaries)
@@ -231,7 +236,9 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             adapter_state = ()
 
         action, log_prob = dist_utils.sample_action_distribution(
-            action_distribution, return_log_prob=True)
+            action_distribution,
+            return_log_prob=True,
+            f_log_prob=self._f_log_prob)
 
         if self.has_multidim_reward():
             reward_weights = tensor_utils.tensor_extend_new_dim(

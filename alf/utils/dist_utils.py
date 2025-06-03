@@ -1068,7 +1068,9 @@ def rsample_action_distribution(nested_distributions, return_log_prob=False):
         return sample
 
 
-def sample_action_distribution(nested_distributions, return_log_prob=False):
+def sample_action_distribution(nested_distributions,
+                               return_log_prob=False,
+                               f_log_prob=compute_log_probability):
     """Sample actions from distributions with conventional sampling without
         enabling backpropagation.
     Args:
@@ -1096,7 +1098,7 @@ def sample_action_distribution(nested_distributions, return_log_prob=False):
         return nested_distributions.sample_and_return_log_prob()
     sample = nest.map_structure(lambda d: d.sample(), nested_distributions)
     if return_log_prob:
-        log_prob = compute_log_probability(nested_distributions, sample)
+        log_prob = f_log_prob(nested_distributions, sample)
         return sample, log_prob
     else:
         return sample
