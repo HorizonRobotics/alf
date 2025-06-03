@@ -836,7 +836,8 @@ class RLAlgorithm(Algorithm):
     def _train_iter_off_policy(self):
         """User may override this for their own training procedure."""
         if PerProcessContext().ddp_rank >= 0:
-            torch.distributed.barrier()
+            with record_time("time/barrier_before_unroll"):
+                torch.distributed.barrier()
         unrolled, root_inputs, rollout_info = self._unroll_iter_off_policy()
 
         # replay buffer may not have been created for two different reasons:
@@ -850,10 +851,12 @@ class RLAlgorithm(Algorithm):
 
         self.train()
         if PerProcessContext().ddp_rank >= 0:
-            torch.distributed.barrier()
+            with record_time("time/barrier_before_train_from_replay_buffer"):
+                torch.distributed.barrier()
         steps = self.train_from_replay_buffer(update_global_counter=True)
         if PerProcessContext().ddp_rank >= 0:
-            torch.distributed.barrier()
+            with record_time("time/barrier_after_train_from_replay_buffer"):
+                torch.distributed.barrier()
 
         if unrolled:
             with record_time("time/after_train_iter"):
