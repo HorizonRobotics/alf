@@ -356,3 +356,45 @@ def generalized_advantage_estimation(rewards,
         advs = advs.transpose(0, 1)
 
     return advs.detach()
+
+
+def compute_td_target(info, gamma, td_lambda, target_value: torch.Tensor):
+    """Calculate the td target.
+
+        The first dimension of all the tensors is time dimension and the second
+        dimension is the batch dimension.
+
+        Args:
+            info (namedtuple): All tensors are time-major. ``info`` should
+                contain the following fields:
+                - reward:
+                - step_type:
+                - discount:
+            target_value (torch.Tensor): the time-major tensor for the value at
+                each time step. This is used to calculate return. ``target_value``
+                can be same as ``value``.
+        Returns:
+            td_target of shape [T-1, B, ...]
+        """
+    if td_lambda == 1.0:
+        returns = discounted_return(
+            rewards=info.reward,
+            values=target_value,
+            step_types=info.step_type,
+            discounts=info.discount * gamma)
+    elif td_lambda == 0.0:
+        returns = one_step_discounted_return(
+            rewards=info.reward,
+            values=target_value,
+            step_types=info.step_type,
+            discounts=info.discount * gamma)
+    else:
+        advantages = generalized_advantage_estimation(
+            rewards=info.reward,
+            values=target_value,
+            step_types=info.step_type,
+            discounts=info.discount * gamma,
+            td_lambda=td_lambda)
+        returns = advantages + target_value[:-1]
+
+    return returns
