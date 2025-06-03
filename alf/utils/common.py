@@ -1726,7 +1726,7 @@ def get_unused_port(start, end=65536, n=1):
     try:
         for port in range(start, end):
             process_locks.append(
-                InterProcessLock(path='/tmp/socialbot/{}.lock'.format(port)))
+                InterProcessLock(path='/tmp/socialbot2/{}.lock'.format(port)))
             if not process_locks[-1].acquire(blocking=False):
                 process_locks[-1].lockfile.close()
                 process_locks.pop()
