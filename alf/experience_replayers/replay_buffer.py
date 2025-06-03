@@ -328,9 +328,18 @@ class ReplayBuffer(RingBuffer):
 
             if self._keep_episodic_info:
                 # 3. Update associated episode end indices
-                # 3.1. find ending steps in batch (incl. MID and LAST steps)
+                # 3.1. find FIRST steps in batch
                 step_types = batch.step_type
                 epi_first = step_types == ds.StepType.FIRST
+                # If the length of an episode is 1, the LAST step is also the FIRST step
+                # and both its step type and the previous step type is LAST.
+                prev_step_type = buffer_step_types[
+                    env_ids, self.circular(overwriting_pos - 1)]
+                epi_first |= (prev_step_type == ds.StepType.LAST) & (
+                    step_types == ds.StepType.LAST)
+                # assert ((prev_step_type != ds.StepType.LAST) | (step_types == ds.StepType.FIRST)), (
+                #     "The previous step is LAST, but the current step is not FIRST."
+                #     "This is not allowed for keep_episodic_info.")
                 # 3.2. update episode ending positions
                 self._store_episode_end_pos(~epi_first, overwriting_pos,
                                             env_ids)
