@@ -110,6 +110,7 @@ class ActorCriticLoss(Loss):
         self._use_gae = use_gae
         self._lambda = td_lambda
         self._use_td_lambda_return = use_td_lambda_return
+        self._adv_norm = None
         if normalize_scalar_advantages:
             self._adv_norm = torch.nn.BatchNorm1d(
                 num_features=1,
@@ -184,6 +185,18 @@ class ActorCriticLoss(Loss):
                         suffix = '/' + str(i)
                         _summarize(value[..., i], returns[..., i],
                                    advantages[..., i], suffix)
+
+                if self._adv_norm is not None:
+                    running_mean = self._adv_norm.running_mean.cpu()
+                    running_var = self._adv_norm.running_var.cpu()
+                    n = running_mean.numel()
+                    for i in range(n):
+                        suffix = '' if n == 1 else str(i)
+                        alf.summary.scalar("advantage_running_mean" + suffix,
+                                           running_mean[i])
+                        alf.summary.scalar("advantage_running_std" + suffix,
+                                           running_var[i]**0.5)
+
         if self._normalize_advantages:
             if hasattr(info, "normalized_advantages"):
                 advantages = info.normalized_advantages
