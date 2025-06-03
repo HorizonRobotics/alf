@@ -250,7 +250,7 @@ torch::Tensor fused_matmul_act(torch::Tensor a,
     throw std::invalid_argument("Invalid epilogue type");
   }
   if (a.scalar_type() != b.scalar_type()) {
-    throw std::invalid_argument("Input tensors must be same");
+    throw std::invalid_argument("The dtypes of the input tensors must be same");
   }
 
   cudaDataType_t cublasBiasDataType =

@@ -42,7 +42,7 @@ template <typename T>
 __global__ void relu_backward_kernel(const T* grad_output,
                                      const T* input,
                                      T* grad_input,
-                                     int n) {
+                                     int64_t n) {
   int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < n) {
     grad_input[idx] = relu_grad(input[idx], grad_output[idx]);
@@ -52,7 +52,7 @@ __global__ void relu_backward_kernel(const T* grad_output,
 // Host launcher
 template <typename T>
 void relu_backward_cuda_launcher(
-    const T* grad_output, const T* input, T* grad_input, int rows, int cols) {
+    const T* grad_output, const T* input, T* grad_input, int64_t rows, int64_t cols) {
   dim3 blockDim(512);
   dim3 gridDim((rows * cols + blockDim.x - 1) / blockDim.x);
   relu_backward_kernel<T>
@@ -83,8 +83,8 @@ torch::Tensor relu_backward(const torch::Tensor input,
   TORCH_CHECK(input.scalar_type() == grad_output.scalar_type(),
               "Input and grad_output must have the same dtype");
 
-  int rows = input.size(0);
-  int cols = input.size(1);
+  int64_t rows = input.size(0);
+  int64_t cols = input.size(1);
 
   auto grad_input = at::empty({rows, cols}, input.options());
   AT_DISPATCH_FLOATING_TYPES_AND2(
