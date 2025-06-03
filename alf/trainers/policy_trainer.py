@@ -366,15 +366,16 @@ class Trainer(object):
 
             if self._config.profiling:
                 pr.disable()
-                pr.dump_stats(os.path.join(self._root_dir, "profile.prof"))
-                s = io.StringIO()
-                ps = pstats.Stats(pr, stream=s).sort_stats('time')
-                ps.print_stats()
-                ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
-                ps.print_stats()
-                ps.print_callees()
+                if PerProcessContext().ddp_rank <= 0:
+                    pr.dump_stats(os.path.join(self._root_dir, "profile.prof"))
+                    s = io.StringIO()
+                    ps = pstats.Stats(pr, stream=s).sort_stats('time')
+                    ps.print_stats()
+                    ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
+                    ps.print_stats()
+                    ps.print_callees()
 
-                logging.info(s.getvalue())
+                    logging.info(s.getvalue())
             self._save_checkpoint()
             checkpoint_saved = True
         finally:
