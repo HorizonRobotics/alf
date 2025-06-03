@@ -23,7 +23,7 @@ import torch.distributions as td
 import alf
 from alf.data_structures import LossInfo
 from alf.nest import is_namedtuple, is_nested, py_map_structure_with_path, map_structure
-from alf.utils import dist_utils
+from alf.utils import dist_utils, common
 from alf.summary import should_record_summaries, get_global_counter
 from typing import List, Optional
 
@@ -125,8 +125,13 @@ def summarize_variables(name_and_params, with_histogram=True):
             # error
             alf.summary.histogram(name='summarize_vars/' + var_name + '_value',
                                   data=var_values)
-        alf.summary.scalar(name='summarize_vars/' + var_name + '_value_norm',
-                           data=var_values.norm())
+        try:
+            alf.summary.scalar(name='summarize_vars/' + var_name +
+                               '_value_norm',
+                               data=var_values.norm())
+        except RuntimeError as e:
+            common.warning_once("Failed to summarize %s. Got exception: %s" %
+                                (var_name, e))
 
 
 @_summary_wrapper
