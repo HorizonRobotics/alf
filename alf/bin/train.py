@@ -55,6 +55,7 @@ faulthandler.enable()
 from absl import app
 from absl import flags
 from absl import logging
+import datetime
 import os
 import pathlib
 import sys
@@ -176,7 +177,7 @@ def training_worker(rank: int,
         _setup_device(rank)
         if world_size > 1:
             # Specialization for distributed mode
-            dist.init_process_group('nccl', rank=rank, world_size=world_size)
+            dist.init_process_group('nccl', rank=rank, world_size=world_size, timeout=datetime.timedelta(minutes=60))
             # Recover the flags when spawned as a sub process
             if rank > 0:
                 _define_flags()
