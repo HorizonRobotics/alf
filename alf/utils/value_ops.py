@@ -104,7 +104,10 @@ def action_importance_ratio(action_distribution,
                 clip_fraction = (torch.abs(importance_ratio - 1.0)
                                  > importance_ratio_clipping).to(
                                      torch.float32).mean()
-                alf.summary.scalar('clip_fraction', clip_fraction)
+                alf.summary.scalar('importance_ratio_clip_fraction',
+                                   clip_fraction)
+                alf.summary.histogram('importance_ratio_clipped',
+                                      importance_ratio_clipped)
 
             alf.summary.histogram('action_log_prob', action_log_prob)
             alf.summary.histogram('action_log_prob_sample',
@@ -112,8 +115,6 @@ def action_importance_ratio(action_distribution,
             alf.summary.histogram('importance_ratio', importance_ratio)
             alf.summary.scalar('importance_ratio_mean',
                                importance_ratio.mean())
-            alf.summary.histogram('importance_ratio_clipped',
-                                  importance_ratio_clipped)
 
     return importance_ratio, importance_ratio_clipped
 
