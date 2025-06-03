@@ -72,6 +72,7 @@ alf.config(
 
 alf.config(
     'TrainerConfig',
+    random_seed=1,
     epsilon_greedy=0.05,
     initial_collect_steps=1e5,
     mini_batch_length=2,
@@ -82,9 +83,11 @@ alf.config(
     num_env_steps=12000000,
     evaluate=True,
     num_eval_episodes=100,
+    num_eval_environments=10,
     num_evals=10,
-    num_checkpoints=5,
+    num_checkpoints=1,
     num_summaries=100,
     debug_summaries=True,
+    summarize_first_interval=False,
     use_rollout_state=True,
     replay_buffer_length=33334)  # 20GB CPU memory: 30 envs, 84x84
