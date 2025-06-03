@@ -542,6 +542,28 @@ class TestNFTransformedDistributionParams(alf.test.TestCase):
                          {'z': z4})
 
 
+class TopPSampleTest(alf.test.TestCase):
+
+    def test_top_p_sample(self):
+        num_samples = 10000
+        probs = torch.tensor([0.1, 0.2, 0.3, 0.4])
+        dist = td.Categorical(probs=probs.repeat(num_samples, 1))
+        top_p = 0.5
+
+        samples = dist_utils.top_p_sample(dist, top_p)
+        self.assertEqual(samples.shape, (num_samples, ))
+        self.assertFalse((samples == 0).any())
+        self.assertFalse((samples == 1).any())
+        self.assertAlmostEqual((samples == 2).float().mean().item(), 3/7, delta=0.02)
+        self.assertAlmostEqual((samples == 3).float().mean().item(), 4/7, delta=0.02)
+
+        top_p = 1
+        samples = dist_utils.top_p_sample(dist, top_p)
+        for i in range(4):
+            print((samples == i).float().mean().item())
+            self.assertAlmostEqual((samples == i).float().mean().item(), (i+1)/10, delta=0.02)
+
+
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     alf.test.main()

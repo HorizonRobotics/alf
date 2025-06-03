@@ -216,11 +216,15 @@ class ActorCriticLoss(Loss):
         loss = pg_loss + self._td_loss_weight * td_loss
 
         entropy_loss = ()
-        if self._entropy_regularization is not None:
+        entropy_regularization = self._entropy_regularization
+        if getattr(info, 'entropy_regularization', ()) != ():
+            entropy_regularization = getattr(info, 'entropy_regularization',
+                                             ())
+        if entropy_regularization is not None:
             entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
                 info.action_distribution, return_sum=False)
             entropy_loss = alf.nest.map_structure(lambda x: -x, entropy)
-            loss -= self._entropy_regularization * sum(
+            loss -= entropy_regularization * sum(
                 alf.nest.flatten(entropy_for_gradient))
 
         return LossInfo(loss=loss,
