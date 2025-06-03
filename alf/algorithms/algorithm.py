@@ -1480,12 +1480,18 @@ class Algorithm(AlgorithmInterface):
         # returns 0 if haven't started training yet, when ``_replay_buffer`` is
         # not None and the number of samples in the buffer is less than
         # ``initial_collect_steps``; throughput will be 0 in this phase.
-        # Note that the conditional that ``_replay_buffer`` is not None is
+        # Note that the condition that ``_replay_buffer`` is not None is
         # required here since in the case of offline pre-training when online RL
         # training is not started yet, ``_replay_buffer`` will be None since it
         # is only lazily created later when online RL training started.
         if (self._replay_buffer and
                 self._replay_buffer.total_size < config.initial_collect_steps):
+            assert (
+                self._replay_buffer.num_environments *
+                self._replay_buffer.max_length >= config.initial_collect_steps
+            ), ("The replay buffer is too small to store the initial_collect_steps"
+                f"({config.initial_collect_steps}) samples. Please increase the"
+                " replay buffer length or reduce the initial_collect_steps.")
             return 0
 
         def _replay():
