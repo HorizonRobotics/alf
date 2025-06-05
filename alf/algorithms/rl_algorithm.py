@@ -19,7 +19,7 @@ from collections import namedtuple
 import os
 import time
 import torch
-from typing import Callable, Optional
+from typing import Callable, List, Optional, Tuple
 from absl import logging
 
 import alf
@@ -605,7 +605,7 @@ class RLAlgorithm(Algorithm):
         return experience, effective_unroll_iters
 
     def post_process_experience(self, rollout_info, step_type: StepType,
-                                experiences: Experience):
+                                experiences: Experience) -> Tuple[List, int]:
         """A function for postprocessing experience. By default, it returns the input
         experience unmodified. Users can customize this function in the derived
         class to achieve different effects. For example:
@@ -622,17 +622,22 @@ class RLAlgorithm(Algorithm):
             experiences: one step of experience.
 
         Returns:
-            A list of experiences. Users can customize this functions in the
-            derived class to achieve different effects. For example: 
-            - return a list that contains only the input experience (default behavior).
-            - return a list that contains a number of experiences. This can be useful
-                for episode processing such as success episode labeling.
+            - a list of experiences. Users can customize this functions in the
+                derived class to achieve different effects. For example: 
+                * return a list that contains only the input experience (default behavior).
+                * return a list that contains a number of experiences. This can be useful
+                    for episode processing such as success episode labeling.
+            - an integer representing the effective number of unroll steps per env. The
+                default value of 1, meaning the length of effective experience is 1 
+                after calling ``post_process_experience``, the same as the input length
+                of experience.
         """
-        return [experiences]
+        return [experiences], 1
 
     def _process_unroll_step(self, policy_step, action, time_step,
                              transformed_time_step, policy_state,
-                             experience_list, original_reward_list):
+                             experience_list,
+                             original_reward_list) -> Tuple[int, int]:
         self.observe_for_metrics(time_step.cpu())
         exp = make_experience(time_step.cpu(),
                               alf.layers.to_float32(policy_step),
@@ -641,11 +646,8 @@ class RLAlgorithm(Algorithm):
         store_exp_time = 0
         if not self.on_policy:
             # 1) post process
-            post_processed_exp_list = self.post_process_experience(
+            post_processed_exp_list, effective_unroll_steps = self.post_process_experience(
                 policy_step.info, time_step.step_type, exp)
-            effective_unroll_steps = sum(
-                exp.step_type.shape[0]
-                for exp in post_processed_exp_list) / exp.step_type.shape[0]
             # 2) observe
             t0 = time.time()
             for exp in post_processed_exp_list:
