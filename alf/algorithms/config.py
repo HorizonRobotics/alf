@@ -314,8 +314,21 @@ class TrainerConfig(object):
                 ``ReplayBuffer``.
             priority_replay_eps (float): minimum priority for priority replay.
             offline_buffer_dir (str|[str]): path to the offline replay buffer
-                checkpoint to be loaded. If a list of strings provided, each
-                will represent the directory to one replay buffer checkpoint.
+                checkpoint to be loaded. Has several scenarios:
+                - If a single string is provided and that path is to a replay buffer,
+                  then the buffer will be loaded.
+                - If a list of strings is provided, each string will be assumed
+                  to be a replay buffer and each will be loaded and concatenated.
+                - If a single string is provided and that path is to a directory,
+                  then there are two further cases:
+                    - If we're not using DDP, then all the replay buffers from the
+                      directory will be loaded.
+                    - If we are using DDP, then a unique replay buffer from the directory
+                      will be loaded for each DDP worker. The replay buffers being used
+                      for each worker will be determined by the worker number indexing
+                      into the sorted buffer names. This means that the directory must
+                      contain at least one replay buffer for each DDP worker.
+                - Will error if you provide multiple directories.
             offline_buffer_length (int): the maximum length will be loaded
                 from each replay buffer checkpoint. Therefore the total
                 buffer length is offline_buffer_length * len(offline_buffer_dir).

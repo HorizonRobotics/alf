@@ -645,7 +645,7 @@ class RLTrainer(Trainer):
 
         # recover offline buffer
         self._algorithm.load_offline_replay_buffer(
-            untransformed_observation_spec)
+            untransformed_observation_spec, ddp_rank)
 
         self._algorithm.set_path('')
         if ddp_rank >= 0:

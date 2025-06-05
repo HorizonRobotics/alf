@@ -855,7 +855,8 @@ class RLAlgorithm(Algorithm):
         # For now, we only return the steps of the primary algorithm's training
         return steps
 
-    def load_offline_replay_buffer(self, untransformed_observation_spec):
+    def load_offline_replay_buffer(self, untransformed_observation_spec,
+                                   ddp_rank):
         """Load replay buffer from a replay buffer checkpoint.
         It will construct a replay buffer (``self._offline_replay_buffer``)
         holding the data loaded from the checkpoint, which can be used for
@@ -863,7 +864,10 @@ class RLAlgorithm(Algorithm):
 
         Args:
             untransformed_observation_spec (nested TensorSpec): spec that
-                describes the structure of the utransformed observations.
+                describes the structure of the untransformed observations.
+            ddp_rank (int): the rank of the DDP worker. -1 if DDP is not being
+                used. The rank will be used to assign a unique replay buffer
+                to each worker if a directory of replay buffers is provided.
         """
 
         if self._offline_buffer_dir is None or self._offline_buffer_dir == "":
@@ -873,6 +877,36 @@ class RLAlgorithm(Algorithm):
             logging.info('------offline replay buffer loading started------')
 
             offline_buffer_dir_list = common.as_list(self._offline_buffer_dir)
+
+            # If providing a directory of replay buffers, allow only one path.
+            if any(os.path.isdir(f) for f in offline_buffer_dir_list):
+                assert len(offline_buffer_dir_list) == 1, \
+                    "If providing a directory of replay buffers, only one path is allowed."
+
+            first_path = offline_buffer_dir_list[0]
+            if os.path.isdir(first_path):
+                # Reconstruct the path of offline buffers from the directory's contents
+                offline_buffer_dir_list = []
+                for fn in os.listdir(first_path):
+                    fn_path = os.path.join(first_path, fn)
+                    if os.path.isfile(fn_path):
+                        offline_buffer_dir_list.append(fn_path)
+
+                if not offline_buffer_dir_list:
+                    raise ValueError(
+                        f"No replay buffers found in {first_path}")
+
+                # If we're using DDP, assign a unique buffer to each worker
+                if ddp_rank >= 0:
+                    assert len(offline_buffer_dir_list) > ddp_rank, \
+                        (f"Worker has DDP rank {ddp_rank} but only {len(offline_buffer_dir_list)} "
+                         f"replay buffers provided.")
+                    # Sort so that we can make sure unique buffers are assigned
+                    offline_buffer_dir_list.sort()
+                    # Assign a unique buffer
+                    offline_buffer_dir_list = [
+                        offline_buffer_dir_list[ddp_rank]
+                    ]
 
             def _get_full_key(dict, partial_key):
                 full_key = next((key for key in dict if partial_key in key),
@@ -911,7 +945,7 @@ class RLAlgorithm(Algorithm):
 
                 buffer_dict = replay_buffer_checkpoint['algorithm']
 
-                # prepare specs for buffer resonctruction
+                # prepare specs for buffer reconstruction
                 reward_key = _get_full_key(buffer_dict, "time_step|reward")
                 step_type_key = _get_full_key(buffer_dict,
                                               "time_step|step_type")
@@ -919,7 +953,6 @@ class RLAlgorithm(Algorithm):
                 env_id_key = _get_full_key(buffer_dict, "time_step|env_id")
 
                 env_batch_size = buffer_dict[reward_key].shape[0]
-                replay_buffer_length = buffer_dict[reward_key].shape[1]
 
                 step_type_spec = dist_utils.extract_spec(
                     buffer_dict[step_type_key], from_dim=2)
