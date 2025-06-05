@@ -13,18 +13,13 @@
 # limitations under the License.
 
 import torch
-from torch.utils.cpp_extension import load
-from absl import logging
+from alf.utils.common import lazy_load_extension
 import pathlib
 import os
 
-_ext = None
 
-
-def _load_ext():
-    global _ext
-    DIR = pathlib.Path(__file__).parent.absolute()
-    _ext = load(name="act_backward",
+DIR = pathlib.Path(__file__).parent.absolute()
+_ext = lazy_load_extension(name="act_backward",
                 sources=[os.path.join(DIR, "act_backward.cu")],
                 verbose=True)
 
@@ -51,8 +46,6 @@ def relu_backward(output, grad_output):
     assert output.dtype.is_floating_point
     if output.is_cuda and output.is_contiguous() and grad_output.is_contiguous(
     ):
-        if _ext is None:
-            _load_ext()
         return _ext.relu_backward(output, grad_output)
     else:
         return grad_output * (output > 0).float()

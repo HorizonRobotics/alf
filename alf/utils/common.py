@@ -18,6 +18,7 @@ from absl import logging
 import contextlib
 import copy
 from fasteners.process_lock import InterProcessLock
+from filelock import FileLock
 from functools import wraps
 import gin
 import glob
@@ -35,6 +36,7 @@ import time
 import torch
 import torch.distributions as td
 import torch.nn as nn
+import torch.utils.cpp_extension
 import traceback
 import types
 from typing import Callable, List, Dict, Optional, Union
@@ -1836,3 +1838,68 @@ def save_video(frames: List[np.ndarray],
 
     # Release the writer
     out.release()
+
+
+class LazyExtention(object):
+    """A class to lazily load a torch extension.
+
+    The extension will be loaded at the time when its attribute is accessed. This
+    is useful for extensions that are not always being used. It will save a lot
+    of time for compiling the extension at the beginning of the program.
+
+    Args:
+        nane (str): the name of the extension to be loaded.
+        **kwargs: keyword arguments to be passed to ``torch.utils.cpp_extension.load()``.
+    """
+    def __init__(self, name, **kwargs):
+        """Initialize the LazyExtention with the module name and optional kwargs."""
+        self._kwargs = kwargs
+        self._ext = None
+        self._name = name
+
+    def __getattr__(self, name):
+        """Get an attribute of the extenstion.
+
+        If the extension is not loaded yet, it will be loaded first.
+
+        Args:
+            name (str): the name of the attribute to be accessed.
+        """
+        if self._ext is None:
+            # mutex to ensure only one process loads the extension at a time
+            file_lock = FileLock('/tmp/alf_lazy_load_extension.lock')
+            with file_lock:
+                build_directory = self._kwargs.get(
+                    'build_directory',
+                    torch.utils.cpp_extension._get_build_directory(
+                        self._name, verbose=False))
+                torch_lock_file = os.path.join(build_directory, 'lock')
+                if os.path.exists(torch_lock_file):
+                    # If the lock file exists, it is likely due to that a previous
+                    # process is stopped before it finishes loading the extension.
+                    # Need to remove the lock file so that we can load the extension.
+                    logging.warning(
+                        f"Removing stale lock file {torch_lock_file} to load extension {self._name}.")
+                    os.remove(torch_lock_file)
+                logging.info(f"Loading extension {self._name}...")
+                self._ext = torch.utils.cpp_extension.load(name=self._name, **self._kwargs)
+                logging.info(f"Extension {self._name} loaded.")
+
+        f = getattr(self._ext, name)
+        self.__setattr__(name, f)
+        return f
+
+
+def lazy_load_extension(**kwargs):
+    """Load a torch extension lazily.
+
+    The extension will be loaded at the time when its attribute is accessed. This
+    is useful for extensions that are not always being used. It will save a lot
+    of time for compiling the extension at the beginning of the program.
+
+    Args:
+        **kwargs: keyword arguments to be passed to
+            ``torch.utils.cpp_extension.load()``. The most important one is
+            ``name``, which should be the name of the extension.
+    """
+    return LazyExtention(**kwargs)

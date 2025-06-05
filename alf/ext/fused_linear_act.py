@@ -14,21 +14,14 @@
 
 import torch
 from typing import Any, Literal, Optional
-from torch.utils.cpp_extension import load
+from alf.utils.common import lazy_load_extension
 import torch.nn.functional as F
-from absl import logging
 import pathlib
 import os
 from .act_backward import act_backward
 
-_ext = None
-
-
-def _load_ext():
-    global _ext
-
-    DIR = pathlib.Path(__file__).parent.absolute()
-    _ext = load(name="fused_matmul_act",
+DIR = pathlib.Path(__file__).parent.absolute()
+_ext = lazy_load_extension(name="fused_matmul_act",
                 sources=[os.path.join(DIR, "fused_matmul_act.cu")],
                 verbose=True)
 
@@ -61,8 +54,6 @@ def fused_matmul_act(a, b, bias, activation):
         workspace = StaticState.get("workspace", a.device)
         if bias is None:
             bias = StaticState.get("bias", a.device)
-        if _ext is None:
-            _load_ext()
         return _ext.fused_matmul_act(a, b, bias, activation, workspace)
     else:
         if activation == "RELU":
