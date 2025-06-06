@@ -17,11 +17,10 @@ from alf.utils.common import lazy_load_extension
 import pathlib
 import os
 
-
 DIR = pathlib.Path(__file__).parent.absolute()
 _ext = lazy_load_extension(name="act_backward",
-                sources=[os.path.join(DIR, "act_backward.cu")],
-                verbose=True)
+                           sources=[os.path.join(DIR, "act_backward.cu")],
+                           verbose=True)
 
 
 def relu_backward(output, grad_output):

@@ -1848,17 +1848,17 @@ class LazyExtention(object):
     of time for compiling the extension at the beginning of the program.
 
     Args:
-        nane (str): the name of the extension to be loaded.
+        name (str): the name of the extension to be loaded.
         **kwargs: keyword arguments to be passed to ``torch.utils.cpp_extension.load()``.
     """
+
     def __init__(self, name, **kwargs):
-        """Initialize the LazyExtention with the module name and optional kwargs."""
         self._kwargs = kwargs
         self._ext = None
         self._name = name
 
     def __getattr__(self, name):
-        """Get an attribute of the extenstion.
+        """Get an attribute of the extension.
 
         If the extension is not loaded yet, it will be loaded first.
 
@@ -1879,10 +1879,12 @@ class LazyExtention(object):
                     # process is stopped before it finishes loading the extension.
                     # Need to remove the lock file so that we can load the extension.
                     logging.warning(
-                        f"Removing stale lock file {torch_lock_file} to load extension {self._name}.")
+                        f"Removing stale lock file {torch_lock_file} to load "
+                        f"extension {self._name}.")
                     os.remove(torch_lock_file)
                 logging.info(f"Loading extension {self._name}...")
-                self._ext = torch.utils.cpp_extension.load(name=self._name, **self._kwargs)
+                self._ext = torch.utils.cpp_extension.load(name=self._name,
+                                                           **self._kwargs)
                 logging.info(f"Extension {self._name} loaded.")
 
         f = getattr(self._ext, name)

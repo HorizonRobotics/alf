@@ -22,8 +22,8 @@ from .act_backward import act_backward
 
 DIR = pathlib.Path(__file__).parent.absolute()
 _ext = lazy_load_extension(name="fused_matmul_act",
-                sources=[os.path.join(DIR, "fused_matmul_act.cu")],
-                verbose=True)
+                           sources=[os.path.join(DIR, "fused_matmul_act.cu")],
+                           verbose=True)
 
 
 class StaticState:
