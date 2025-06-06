@@ -604,13 +604,15 @@ class RLAlgorithm(Algorithm):
         effective_unroll_iters = 1 if unroll_length == 0 else effective_unroll_steps // unroll_length
         return experience, effective_unroll_iters
 
-    def post_process_experience(self, rollout_info, step_type: StepType,
-                                experiences: Experience) -> Tuple[List, int]:
-        """A function for postprocessing experience. By default, it returns the input
+    def preprocess_unroll_experience(
+            self, rollout_info, step_type: StepType,
+            experiences: Experience) -> Tuple[List, float]:
+        """A function for processing the experience obtained from an unroll step before
+        being saved into the replay buffer. By default, it returns the input
         experience unmodified. Users can customize this function in the derived
         class to achieve different effects. For example:
         - per-step processing: return the current step of experience unmodified (by default)
-            or a modified version according to the customized ``post_process_experience``.
+            or a modified version according to the customized ``preprocess_unroll_experience``.
             As another example, task filtering can be simply achieved by returning ``[]``
             for that particular task.
         - per-episode processing: this can be achieved by returning a list of processed
@@ -622,22 +624,66 @@ class RLAlgorithm(Algorithm):
             experiences: one step of experience.
 
         Returns:
-            - a list of experiences. Users can customize this functions in the
-                derived class to achieve different effects. For example: 
+            - ``effective_experiences``: a list of experiences. Users can customize this
+                functions in the derived class to achieve different effects. For example: 
                 * return a list that contains only the input experience (default behavior).
                 * return a list that contains a number of experiences. This can be useful
                     for episode processing such as success episode labeling.
-            - an integer representing the effective number of unroll steps per env. The
-                default value of 1, meaning the length of effective experience is 1 
-                after calling ``post_process_experience``, the same as the input length
-                of experience.
+            - ``effective_unroll_steps`` : a value representing the effective number of
+                unroll steps per env. The default value of 1, meaning the length of
+                effective experience is 1 after calling ``preprocess_unroll_experience``,
+                the same as the input length of experience.
+                The value of ``effective_unroll_steps`` can be set differently according
+                to different scenarios, e.g.:
+                (1) per-step saving without delay: saving each step of unroll experience
+                    into the replay buffer as we get it. Set ``effective_unroll_steps``
+                    as 1 so that each step will be counted as valid and there will be no
+                    impact on the train/unroll ratio.
+                (2) all-step saving with delay: saving all the steps of unroll experience into
+                    the replay buffer with delay. This can happen in the case where we want to
+                    annotate an trajectory based on some quantities that are not immediately
+                    available in the current step (e.g. task success/failure). In this case,
+                    we can simply caching the experiences and set ``effective_experiences=[]``
+                    before obtaining the quantities required for annotation.
+                    After obtaining the quantities required for annotation, we can 
+                    set ``effective_experiences`` as the cached and annotated experience.
+                    To maintain the original unroll/train iter ratio, we can set
+                    ``effective_unroll_steps=1``, meaning each unroll step is regarded as
+                    effective in terms of the unroll/train iter ratio, even though the
+                    pace of saving the unroll steps into replay buffer has been altered.
+                (3) selective saving: exclude some of the unroll experiences and only save
+                    the rest. This could be useful in the case where there are transitions
+                    that are irrelevant to the training (e.g. in the multi-task case, where
+                    we want to exclude data from certain subtasks).
+                    This can be achieved by setting ``effective_experiences=[]``for the
+                    steps to be excluded, while ``effective_experiences = [experiences]``
+                    otherwise. If we do not want to trigger a train iter for the unroll
+                    step that will be excluded, we can simply set ``effective_unroll_steps=0``.
+                    Otherwise, we can simply set ``effective_unroll_steps=1``.
+                (4) parallel environments: in the case of parallel environments, the value
+                    of ``effective_unroll_steps`` can be set according to the modes described
+                    above and the status of each environment (e.g. ``effective_unroll_steps``
+                    can be set to an average value across environments). Note that this could
+                    resulf to a floating number.
         """
-        return [experiences], 1
+        effective_experiences = [experiences]
+        effective_unroll_steps = 1
+        return effective_experiences, effective_unroll_steps
 
     def _process_unroll_step(self, policy_step, action, time_step,
                              transformed_time_step, policy_state,
                              experience_list,
-                             original_reward_list) -> Tuple[int, int]:
+                             original_reward_list) -> Tuple[int, float]:
+        """
+
+            Returns:
+                - ``store_exp_time``: the time spent on storing the experience
+                - ``effective_unroll_steps``: a value representing the effective number
+                    of unroll steps per env. The default value of 1, meaning the length of
+                    effective experience is 1  after calling ``preprocess_unroll_experience``,
+                    the same as the input length of experience. For more details on it,
+                    please refer to the docstr of ``preprocess_unroll_experience``.
+        """
         self.observe_for_metrics(time_step.cpu())
         exp = make_experience(time_step.cpu(),
                               alf.layers.to_float32(policy_step),
@@ -645,12 +691,12 @@ class RLAlgorithm(Algorithm):
         effective_unroll_steps = 1
         store_exp_time = 0
         if not self.on_policy:
-            # 1) post process
-            post_processed_exp_list, effective_unroll_steps = self.post_process_experience(
+            # 1) pre-process unroll experience
+            pre_processed_exp_list, effective_unroll_steps = self.preprocess_unroll_experience(
                 policy_step.info, time_step.step_type, exp)
             # 2) observe
             t0 = time.time()
-            for exp in post_processed_exp_list:
+            for exp in pre_processed_exp_list:
                 self.observe_for_replay(exp)
             store_exp_time = time.time() - t0
 
@@ -771,7 +817,9 @@ class RLAlgorithm(Algorithm):
         self._current_transform_state = common.detach(trans_state)
 
         # if the input unroll_length is 0 (e.g. fractional unroll), then this it treated as
-        # an effective unroll iter
+        # an effective unroll iter.
+        # one ``effective_unroll_iter`` refers to the ``unroll_length`` times of calling
+        # of ``rollout_step`` in the unroll phase.
         effective_unroll_iters = 1 if unroll_length == 0 else effective_unroll_steps // unroll_length
         return experience, effective_unroll_iters
 
