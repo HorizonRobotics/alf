@@ -22,11 +22,12 @@ import atexit
 from enum import Enum
 from functools import partial
 import multiprocessing
+import os
 import sys
 import threadpoolctl
 import torch
 import traceback
-from typing import Dict, Any, Callable, List, Tuple
+from typing import Any, Callable, List, Tuple
 
 import alf
 import alf.nest as nest
@@ -34,7 +35,15 @@ from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
 from alf.utils.schedulers import update_all_progresses, get_all_progresses, disallow_scheduler
 from alf.utils.spawned_process_utils import SpawnedProcessContext, get_spawned_process_context, set_spawned_process_context
-from . import _penv
+from alf.utils.common import lazy_load_extension
+import pathlib
+
+DIR = pathlib.Path(__file__).parent.absolute()
+_penv = lazy_load_extension(
+    name="penv",
+    sources=[os.path.join(DIR, "parallel_environment.cpp")],
+    extra_cflags=['-O3'],
+    verbose=True)
 
 FLAGS = flags.FLAGS
 

@@ -616,7 +616,11 @@ void ProcessEnvironment::Worker() {
   }
 }
 
-PYBIND11_MODULE(_penv, m) {
+#ifndef TORCH_EXTENSION_NAME
+#define TORCH_EXTENSION_NAME _penv
+#endif
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   py::class_<ParallelEnvironment>(m, "ParallelEnvironment")
       .def(py::init<int,
                     int,

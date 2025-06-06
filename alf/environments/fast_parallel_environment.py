@@ -18,11 +18,10 @@ import torch
 from absl import logging
 import alf
 from alf.environments import alf_environment
-from alf.environments.process_environment import ProcessEnvironment
+from alf.environments.process_environment import ProcessEnvironment, _penv
 import alf.nest as nest
 import os
 import time
-from . import _penv
 
 
 @alf.configurable
