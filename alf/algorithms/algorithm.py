@@ -1208,8 +1208,10 @@ class Algorithm(AlgorithmInterface):
 
         loss_info = self._aggregate_loss(loss_info, valid_masks, batch_info)
 
-        all_params, gns = self._backward_and_gradient_update(loss_info.loss *
-                                                             weight)
+        loss = loss_info.loss
+        if loss != ():
+            loss = loss * weight
+        all_params, gns = self._backward_and_gradient_update(loss)
 
         loss_info = loss_info._replace(gns=gns)
         loss_info = alf.nest.map_structure(torch.mean, loss_info)
