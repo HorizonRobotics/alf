@@ -1892,7 +1892,7 @@ class LazyExtention(object):
         return f
 
 
-def lazy_load_extension(**kwargs):
+def lazy_load_extension(name, **kwargs):
     """Load a torch extension lazily.
 
     The extension will be loaded at the time when its attribute is accessed. This
@@ -1900,8 +1900,7 @@ def lazy_load_extension(**kwargs):
     of time for compiling the extension at the beginning of the program.
 
     Args:
-        **kwargs: keyword arguments to be passed to
-            ``torch.utils.cpp_extension.load()``. The most important one is
-            ``name``, which should be the name of the extension.
+        name (str): the name of the extension to be loaded.
+        **kwargs: keyword arguments to be passed to ``torch.utils.cpp_extension.load()``.
     """
-    return LazyExtention(**kwargs)
+    return LazyExtention(name, **kwargs)

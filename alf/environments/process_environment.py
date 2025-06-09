@@ -42,7 +42,9 @@ DIR = pathlib.Path(__file__).parent.absolute()
 _penv = lazy_load_extension(
     name="penv",
     sources=[os.path.join(DIR, "parallel_environment.cpp")],
-    extra_cflags=['-O3'],
+    extra_cflags=[
+        '-O3', '-Wall', '-shared', '-std=c++17', '-fPIC', '-fvisibility=hidden'
+    ],
     verbose=True)
 
 FLAGS = flags.FLAGS

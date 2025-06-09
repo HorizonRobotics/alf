@@ -51,14 +51,6 @@ setup(
         'torchvision==0.21.0',
         'wheel'
     ],  # And any other dependencies alf needs
-    ext_modules=[
-        Pybind11Extension(
-            'alf.environments._penv',
-            sources=['alf/environments/parallel_environment.cpp'],
-            extra_compile_args=[
-                '-O3', '-Wall', '-std=c++17', '-fPIC', '-fvisibility=hidden'
-            ])
-    ],
     cmdclass={'build_ext': build_ext},
     extras_require={
         'metadrive': ['metadrive-simulator==0.2.5.1', ],
