@@ -102,6 +102,7 @@ def wrap_optimizer(cls):
                  *,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
+                 ignore_param_not_requiring_grad=False,
                  parvi=None,
                  repulsive_weight=1.,
                  capacity_ratio: Union[float, Scheduler] = 1.0,
@@ -126,6 +127,10 @@ def wrap_optimizer(cls):
             clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
                 to clip gradient. If False, use `tensor_utils.clip_by_norms` for
                 each grad.
+            ignore_param_not_requiring_grad (bool): if True, not to
+                add parameters that do not require gradients to the optimizer.
+                This could save optimizer memory epsecially if we want to finetune
+                a small part of model.
             parvi (string): if not ``None``, parameters with attribute
                 ``ensemble_group`` will be updated by particle-based vi algorithm
                 specified by ``parvi``, options are [``svgd``, ``gfsf``],
@@ -187,6 +192,7 @@ def wrap_optimizer(cls):
             self.defaults['clip_by_global_norm'] = clip_by_global_norm
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
+        self._ignore_param_not_requiring_grad = ignore_param_not_requiring_grad
         self._parvi = parvi
         self._first_stepping_done = False  # whether done the first optimizer stepping
         self._min_capacity = min_capacity
@@ -441,6 +447,11 @@ def wrap_optimizer(cls):
             raise TypeError('Please use a list instead.')
         else:
             param_group['params'] = list(params)
+
+        param_group['params'] = [
+            p for p in param_group['params']
+            if (not self._ignore_param_not_requiring_grad or p.requires_grad)
+        ]
 
         lr_scheduler = param_group.get('lr_scheduler', None)
         if isinstance(lr_scheduler, Callable):
