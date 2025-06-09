@@ -85,6 +85,7 @@ class TrainerConfig(object):
                  priority_replay_eps=1e-6,
                  offline_buffer_dir=None,
                  offline_buffer_length=None,
+                 optimizer_ignore_param_not_requiring_grad=False,
                  rl_train_after_update_steps=0,
                  rl_train_every_update_steps=1,
                  empty_cache: bool = False,
@@ -321,6 +322,10 @@ class TrainerConfig(object):
                 buffer length is offline_buffer_length * len(offline_buffer_dir).
                 If None, all the samples from all the provided replay buffer
                 checkpoints will be loaded.
+            optimizer_ignore_param_not_requiring_grad (bool): if True, not to
+                add parameters that do not require gradients to the optimizer.
+                This could save optimizer memory epsecially if we want to finetune
+                a small part of model.
             rl_train_after_update_steps (int): only used in the hybrid training
                 mode. It is used as a starting criteria for the normal (non-offline)
                 part of the RL training, which only starts after so many number
@@ -423,6 +428,7 @@ class TrainerConfig(object):
         # offline options
         self.offline_buffer_dir = offline_buffer_dir
         self.offline_buffer_length = offline_buffer_length
+        self.optimizer_ignore_param_not_requiring_grad = optimizer_ignore_param_not_requiring_grad
         self.rl_train_after_update_steps = rl_train_after_update_steps
         self.rl_train_every_update_steps = rl_train_every_update_steps
         self.empty_cache = empty_cache

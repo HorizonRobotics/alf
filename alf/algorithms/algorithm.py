@@ -675,7 +675,11 @@ class Algorithm(AlgorithmInterface):
         def _add_params_to_optimizer(params, opt):
             existing_params = set(_get_optimizer_params(opt))
             added_param_list = list(
-                filter(lambda p: p not in existing_params, params))
+                filter(
+                    lambda p: (p not in existing_params and
+                               (not self._config.
+                                optimizer_ignore_param_not_requiring_grad or p.
+                                requires_grad)), params))
             if added_param_list:
                 opt.add_param_group({'params': added_param_list})
             return added_param_list
@@ -1870,6 +1874,8 @@ class Algorithm(AlgorithmInterface):
         """Update the priority of the ``replay buffer`` based on the ``priority``
         field of loss_info.
         """
+        if not self._config.priority_replay:
+            return
         if loss_info.priority != ():
             priority = (loss_info.priority + self._config.priority_replay_eps
                         )**self._config.priority_replay_alpha()
