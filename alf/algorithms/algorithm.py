@@ -29,7 +29,7 @@ import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
-from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
+from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, BasicRolloutInfo
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.optimizers.utils import GradientNoiseScaleEstimator
 from alf.utils.checkpoint_utils import (is_checkpoint_enabled,
@@ -1372,6 +1372,13 @@ class Algorithm(AlgorithmInterface):
               customized training.
         """
         try:
+            if isinstance(rollout_info, BasicRolloutInfo):
+                logging.log_first_n(
+                    logging.WARNING,
+                    "Detected offline buffer training without Agent wrapper. "
+                    "For best compatibility, it is advised to use the Agent wrapper.",
+                    n=1)
+                rollout_info = rollout_info.rl
             return self.train_step(inputs, state, rollout_info)
         except:
             # the default train_step is not compatible with the

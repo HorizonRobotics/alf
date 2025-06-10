@@ -27,13 +27,12 @@ import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
+from alf.data_structures import TimeStep, LossInfo, namedtuple
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork, CriticNetwork
-from alf.networks import QNetwork, QRNNNetwork
+from alf.networks import QNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
@@ -847,6 +846,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _critic_train_step(self, observation, target_observation,
                            state: SacCriticState, rollout_info: SacInfo,
                            action, action_distribution):
+
         critics, critics_state = self._compute_critics(
             self._critic_networks,
             observation,
