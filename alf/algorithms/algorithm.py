@@ -2097,9 +2097,6 @@ class Algorithm(AlgorithmInterface):
             weight (float): weight for this batch. Loss will be multiplied with
                 this weight before calculating gradient.
         """
-
-        length = alf.nest.get_nest_size(offline_experience, dim=0)
-
         if self._RL_train:
             with torch.cuda.amp.autocast(self._config.enable_amp,
                                          dtype=self._config.amp_dtype):
@@ -2162,7 +2159,9 @@ class Algorithm(AlgorithmInterface):
         params, gns = self._backward_and_gradient_update(loss_info.loss *
                                                          weight)
 
-        if self._RL_train:
+        if self._pre_train:
+            self.after_update(offline_experience.time_step, offline_train_info)
+        elif self._RL_train:
             # for now, there is no need to do a hybrid after update
             self.after_update(experience.time_step, train_info)
 

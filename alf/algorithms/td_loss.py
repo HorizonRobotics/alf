@@ -221,7 +221,6 @@ class TDLoss(nn.Module):
                 if value.ndim == 2:
                     _summarize(value, returns, td_error, '')
                 else:
-                    td = returns - value
                     for i in range(value.shape[2]):
                         suffix = '/' + str(i)
                         _summarize(value[..., i], returns[..., i],
