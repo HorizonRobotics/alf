@@ -28,6 +28,8 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.experience_replayers.replay_buffer import ReplayBuffer
+from alf.nest.utils import convert_device
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
@@ -1074,13 +1076,23 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def preprocess_experience(self, time_step: TimeStep, rollout_info: SacInfo,
                               batch_info):
 
-        _, mini_batch_length = time_step.step_type.shape
-        discounted_return = batch_info.discounted_return
-        discounted_return = discounted_return.unsqueeze(1).expand(
-            -1, mini_batch_length)
-        rollout_info = alf.nest.set_field(
-            rollout_info, 'discounted_return',
-            discounted_return if self._use_mc_return else ())
+        if self._use_mc_return:
+            assert batch_info != ()
+            replay_buffer: ReplayBuffer = batch_info.replay_buffer
+            mini_batch_length = time_step.step_type.shape[1]
+
+            with alf.device(replay_buffer.device):
+                # [B, 1]
+                positions = convert_device(batch_info.positions).unsqueeze(-1)
+                # [B, 1]
+                env_ids = convert_device(batch_info.env_ids).unsqueeze(-1)
+                # [B, T]
+                positions = positions + torch.arange(mini_batch_length)
+                discounted_return = replay_buffer.get_discounted_return(
+                    env_ids=env_ids, positions=positions)
+                discounted_return = convert_device(discounted_return)
+            rollout_info = rollout_info._replace(
+                discounted_return=discounted_return)
         return time_step, rollout_info
 
     def _trainable_attributes_to_ignore(self):
