@@ -327,10 +327,11 @@ class TrainerConfig(object):
                       will be loaded for each DDP worker. The replay buffers being used
                       for each worker will be determined by the worker number indexing
                       into the sorted buffer names. This means that the directory must
-                      contain at least one replay buffer for each DDP worker.
+                      contain at least one replay buffer for each DDP worker. Any remaining
+                      replay buffers will simply be ignored.
                 - Will error if you provide multiple directories.
             offline_buffer_length (int): the maximum length will be loaded
-                from each replay buffer checkpoint. Therefore the total
+                from each replay buffer checkpoint. Therefore, the total
                 buffer length is offline_buffer_length * len(offline_buffer_dir).
                 If None, all the samples from all the provided replay buffer
                 checkpoints will be loaded.
