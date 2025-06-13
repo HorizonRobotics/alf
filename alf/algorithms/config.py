@@ -72,6 +72,7 @@ class TrainerConfig(object):
                  summarize_gradient_noise_scale=False,
                  summarize_action_distributions=False,
                  summarize_output=False,
+                 summarize_train_every_mini_batch=False,
                  initial_collect_steps=0,
                  num_updates_per_train_iter=4,
                  mini_batch_length=None,
@@ -275,6 +276,9 @@ class TrainerConfig(object):
             summarize_gradient_noise_scale (bool): whether summarize gradient
                 noise scale. See ``alf.optimizers.utils.py`` for details.
             summarize_output (bool): If True, summarize output of certain networks.
+            summarize_train_every_mini_batch (bool): If True,  Algorithm will call
+                ``summarize_train`` for every mini_batch of the train_iter when
+                ``alf.summary.should_record_summaries()``.
             initial_collect_steps (int): if positive, number of steps each single
                 environment steps before perform first update. Only used
                 by ``OffPolicyAlgorithm``.
@@ -405,6 +409,7 @@ class TrainerConfig(object):
         self.summarize_gradient_noise_scale = summarize_gradient_noise_scale
         self.summarize_action_distributions = summarize_action_distributions
         self.summarize_output = summarize_output
+        self.summarize_train_every_mini_batch = summarize_train_every_mini_batch
         self.initial_collect_steps = initial_collect_steps
         self.num_updates_per_train_iter = num_updates_per_train_iter
         self.mini_batch_length = mini_batch_length
