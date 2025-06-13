@@ -38,6 +38,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.schedulers import Scheduler
+from alf.utils.summary_utils import safe_mean_hist_summary
 from alf.networks.neural_graphs.actor_graph import ActorGraph
 from alf.networks.neural_graphs.graph_network import GraphNetwork
 
@@ -86,6 +87,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                  reward_weights=None,
                  calculate_priority=False,
                  num_actors=10,
+                 use_target_actor=False,
                  use_bootstrap_actors=False,
                  bootstrap_mask_prob=0.8,
                  num_actor_eval_samples=256,
@@ -98,10 +100,12 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
-                 use_target_critic=True,
-                 target_update_tau: Union[float, Scheduler] = 0.05,
-                 target_update_period: Union[int, Scheduler] = 1,
-                 target_update_use_ema=False,
+                 target_critic_tau: Union[float, Scheduler] = 0.05,
+                 target_critic_period: Union[int, Scheduler] = 1,
+                 target_critic_use_ema=False,
+                 target_actor_tau: Union[float, Scheduler] = 0.05,
+                 target_actor_period: Union[int, Scheduler] = 1,
+                 target_actor_use_ema=False,
                  parameter_reset_period: Union[int, Scheduler] = -1,
                  dqda_clipping=None,
                  actor_optimizer=None,
@@ -135,6 +139,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             self._critic_utd = critic_utd
 
         self._num_actors = num_actors
+        self._use_target_actor = use_target_actor
         self._use_bootstrap_actors = use_bootstrap_actors
         self._bootstrap_mask_prob = bootstrap_mask_prob
         self._bootstrap_mask = ()
@@ -169,7 +174,6 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         critic_network = critic_network_cls(
             input_tensor_spec=(actor_spec, obs_action_spec), 
             obs_action_encoding_dim=obs_action_encoding_dim)
-        self._use_target_critic = use_target_critic
 
         action_state_spec = BafcActionState(
             actor_network=actor_networks.state_spec,
@@ -205,10 +209,14 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         self._actor_graph = actor_graph
         self._graph_network = graph_network
         self._critic_network = critic_network
-        if use_target_critic:
-            self._target_critic_network = critic_network.copy(
-                name='target_critic_network')
-            self._target_critic_network.set_obs_action_batch_dominate(True)
+        self._target_critic_network = critic_network.copy(
+            name='target_critic_network')
+        self._target_critic_network.set_obs_action_batch_dominate(True)
+        if use_target_actor:
+            self._target_actor_networks = actor_networks.copy(
+                name='target_actor_network')
+            for p in self._target_actor_networks.parameters():
+                p.requires_grad_(False)
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
@@ -224,19 +232,32 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         def _filter(x):
             return list(filter(lambda x: x is not None, x))
 
-        def _create_target_updater():
-            self._update_target = common.TargetUpdater(
-                models=_filter([self._critic_network]),
-                target_models=_filter(
-                    [self._target_critic_network]),
-                tau=target_update_tau,
-                period=target_update_period,
-                delayed_update=target_update_use_ema)
+        # models_list = [self._critic_network]
+        # target_models_list = [self._target_critic_network]
+        # if use_target_actor:
+        #     models_list.append(self._actor_networks)
+        #     target_models_list.append(self._target_actor_networks)
 
-        if use_target_critic:
-            _create_target_updater()
+        def _create_target_updater(model_list, target_model_list,
+                                   tau, period, use_ema):
+            return common.TargetUpdater(
+                models=_filter(model_list),
+                target_models=_filter(target_model_list),
+                tau=tau,
+                period=period,
+                delayed_update=use_ema)
+
+        self._update_target_critic = _create_target_updater(
+            [self._critic_network], [self._target_critic_network],
+            target_critic_tau, target_critic_period, target_critic_use_ema)
+
+        if use_target_actor:
+            self._update_target_actor = _create_target_updater(
+                [self._actor_networks], [self._target_actor_networks],
+                target_actor_tau, target_actor_period, target_actor_use_ema)
 
     def _predict_action(self,
+                        actor_net,
                         observation,
                         state: BafcActionState,
                         train=False):
@@ -254,10 +275,10 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             return action, state
 
         if train:
-            action, state = self._actor_networks(
+            action, state = actor_net(
                 observation, state=state.actor_network)
         else:
-            action, state = self._actor_networks(
+            action, state = actor_net(
                 observation,
                 id=self._rollout_actor_id,
                 state=state.actor_network)
@@ -267,6 +288,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
 
     def predict_step(self, inputs: TimeStep, state: BafcState):
         action, action_state = self._predict_action(
+            self._actor_networks,
             inputs.observation,
             state=state.action)
         return AlgStep(
@@ -291,6 +313,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 self._bootstrap_mask = torch.bernoulli(prob_t)
 
         action, action_state = self._predict_action(
+            self._actor_networks,
             inputs.observation,
             state=state.action)
         return AlgStep(
@@ -373,28 +396,38 @@ class BafcAlgorithm(OffPolicyAlgorithm):
 
     def _critic_train_step(self, observation, state: BafcCriticState, 
                            rollout_info: BafcInfo, action): 
-        actor_params = (self._actor_networks.weight_params, 
-                        self._actor_networks.bias_params) 
-        eval_action = self._actor_networks(
-            self._actor_eval_samples, full_neurons=True)[0]
+        if self._critic_update_counter % 2 == 1 and self._use_target_actor:
+            actor_params = (self._target_actor_networks.weight_params, 
+                            self._target_actor_networks.bias_params) 
+            eval_action = self._target_actor_networks(
+                self._actor_eval_samples, full_neurons=True)[0]
+        else:
+            actor_params = (self._actor_networks.weight_params, 
+                            self._actor_networks.bias_params) 
+            eval_action = self._actor_networks(
+                self._actor_eval_samples, full_neurons=True)[0]
+
         actor_encoding = self._encode_actor(actor_params, eval_action)
         critics, critic_state = self._critic_network(
             (actor_encoding, (observation, rollout_info.action)), state.critic)
         # [T*B, n_actor]
         critics = critics.reshape(-1, self._num_actors)
 
+        if not torch.isfinite(critics).all():
+            # check for any NaN/Inf
+            n_bad = int((~torch.isfinite(critics)).sum().item())
+            logging.warning(f'critics contain {n_bad} non-finite values.')
+
         with torch.no_grad():
             target_observation = observation.repeat_interleave(
                 self._num_actors, dim=0)
-            if self._use_target_critic:
-                target_critics, target_critic_state = self._target_critic_network(
-                    (actor_encoding, (target_observation, action)), state.target_critic)
-            else:
-                self._critic_network.set_obs_action_batch_dominate(True)
-                target_critics, target_critic_state = self._critic_network(
-                    (actor_encoding, (target_observation, action)), state.target_critic)
-                critic_state = target_critic_state
-                self._critic_network.set_obs_action_batch_dominate(False)
+            target_critics, target_critic_state = self._target_critic_network(
+                (actor_encoding, (target_observation, action)), state.target_critic)
+
+        if not torch.isfinite(target_critics).all():
+            # check for any NaN/Inf
+            n_bad = int((~torch.isfinite(target_critics)).sum().item())
+            logging.warning(f'target_critics contain {n_bad} non-finite values.')
 
         # [T*B, n_actor]
         target_critics = target_critics.reshape(-1, self._num_actors)
@@ -426,44 +459,59 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                    rollout_info: BafcInfo):
         assert not self._is_eval
         self._training_started = True
-        # [B, n_actor, d_a]
-        action, action_state = self._predict_action(
-            inputs.observation, state=state.action, train=True)
-        action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
-
-        new_state = BafcState(action=action_state,
-                              actor=state.actor,
-                              critic=state.critic)
 
         if self._train_mode == TrainMode.standard or (
                 self._critic_update_counter == 0
                 and self._actor_update_counter == 0):
+            # [B, n_actor, d_a]
+            action, action_state = self._predict_action(
+                self._actor_networks, inputs.observation, 
+                state=state.action, train=True)
+            action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
             actor_state, actor_info = self._actor_train_step(
                 inputs.observation, action, 
                 rollout_info.bootstrap_mask, state.actor)
             critic_state, critic_info = self._critic_train_step(
                 inputs.observation, state.critic, rollout_info, action)
-            new_state = new_state._replace(actor=actor_state,
-                                           critic=critic_state)
+            new_state = BafcState(action=action_state,
+                                  actor=actor_state,
+                                  critic=critic_state)
             self._critic_update_counter += 1
         else:
             if self._train_mode == TrainMode.actor:
+                # [B, n_actor, d_a]
+                action, action_state = self._predict_action(
+                    self._actor_networks, inputs.observation, 
+                    state=state.action, train=True)
+                action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
                 actor_state, actor_info = self._actor_train_step(
                     inputs.observation, action, 
                     rollout_info.bootstrap_mask, state.actor)
                 critic_info = BafcCriticInfo()
-                new_state = new_state._replace(actor=actor_state)
+                new_state = BafcState(action=action_state,
+                                      actor=actor_state,
+                                      critic=state.critic)
                 self._actor_update_counter += 1
             else:
+                if self._critic_update_counter % 2 == 1 and self._use_target_actor:
+                    actor_net = self._target_actor_networks
+                else:
+                    actor_net = self._actor_networks 
+                # [B, n_actor, d_a]
+                action, action_state = self._predict_action(
+                    actor_net, inputs.observation, state=state.action, train=True)
+                action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
                 critic_state, critic_info = self._critic_train_step(
                     inputs.observation, state.critic, rollout_info, action)
                 actor_info = LossInfo(extra=BafcActorInfo())
-                # actor_info = LossInfo()
-                new_state = new_state._replace(critic=critic_state)
+                new_state = BafcState(action=action_state,
+                                      actor=state.actor,
+                                      critic=critic_state)
                 self._critic_update_counter += 1
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             self._do_critic_summary = True
+            safe_mean_hist_summary('eval_samples', self._actor_eval_samples)
 
         info = BafcInfo(
             reward=inputs.reward,
@@ -515,12 +563,13 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             extra=critic_loss)
 
     def _trainable_attributes_to_ignore(self):
-        if self._use_target_critic:
-            return ['_target_critic_network']
-        else:
-            return []
+        ignore_list = ['_target_critic_network']
+        if self._use_target_actor:
+            ignore_list.append('_target_actor_networks')
+        return ignore_list
 
     def after_update(self, root_inputs, info: BafcInfo):
         self._update_train_mode()
-        if self._use_target_critic:
-            self._update_target()
+        self._update_target_critic()
+        if self._use_target_actor:
+            self._update_target_actor()
