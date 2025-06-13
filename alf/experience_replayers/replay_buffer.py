@@ -839,6 +839,25 @@ class ReplayBuffer(RingBuffer):
         result = alf.nest.map_structure(lambda x: x[indices], field)
         return convert_device(result)
 
+    def get_discounted_return(self, env_ids, positions):
+        """Get discounted return from the replay buffer by ``env_ids`` and ``positions``.
+
+        Args:
+            env_ids (Tensor): 1-D int64 Tensor.
+            positions (Tensor): 1-D int64 Tensor with same shape as ``env_ids``.
+                These positions should be obtained from the BatchInfo returned
+                by ``get_batch()``.
+        Returns:
+            Tensor: with the same shape as broadcasted shape of env_ids and positions
+        """
+        current_pos = self._current_pos[env_ids]
+        assert torch.all(positions < current_pos), "Invalid positions"
+        assert torch.all(positions >= current_pos -
+                         self._max_length), "Invalid positions"
+        indices = (env_ids, self.circular(positions))
+        result = self._episodic_discounted_return[indices]
+        return convert_device(result)
+
     @property
     def total_size(self):
         """Total size from all environments."""

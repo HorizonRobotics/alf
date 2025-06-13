@@ -34,6 +34,7 @@ class TDLoss(nn.Module):
                  td_error_loss_fn: Callable = element_wise_squared_loss,
                  td_lambda: float = 0.95,
                  normalize_target: bool = False,
+                 default_return: Optional[float] = None,
                  debug_summaries: bool = False,
                  name: str = "TDLoss"):
         r"""
@@ -85,6 +86,9 @@ class TDLoss(nn.Module):
             normalize_target (bool): whether to normalize target.
                 Note that the effect of this is to change the loss. The critic
                 value itself is not normalized.
+            default_return: The default values of ``discounted_return``  used in
+                ``ReplayBuffer`` when the episode has not ended. It is used to summarizing
+                the actual Monte Carlo return (MC-return) values.
             debug_summaries: True if debug summaries should be created.
             name: The name of this loss.
         """
@@ -97,6 +101,7 @@ class TDLoss(nn.Module):
         self._debug_summaries = debug_summaries
         self._normalize_target = normalize_target
         self._target_normalizer = None
+        self._default_return = default_return
 
     @property
     def gamma(self):
@@ -112,6 +117,10 @@ class TDLoss(nn.Module):
 
         The first dimension of all the tensors is time dimension and the second
         dimension is the batch dimension.
+
+        If ``info.discounted_return`` exists and contains valid value (Monte Carlo return,
+        or MC-return), then the td-target will be taken as the max between the bootstrapped
+        return and the MC-return (i.e. lower-bounded by MC-return).
 
         Args:
             info (namedtuple): experience collected from ``unroll()`` or
@@ -147,17 +156,15 @@ class TDLoss(nn.Module):
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
 
-        disc_ret = ()
-        if hasattr(info, "discounted_return"):
-            disc_ret = info.discounted_return
-        if disc_ret != ():
+        if hasattr(info, "discounted_return") and info.discounted_return != ():
+            discounted_return = info.discounted_return[:-1]
+            returns = torch.max(returns, discounted_return)
             with alf.summary.scope(self._name):
-                episode_ended = disc_ret > self._default_return
-                alf.summary.scalar("episodic_discounted_return_all",
-                                   torch.mean(disc_ret[episode_ended]))
-                alf.summary.scalar(
-                    "value_episode_ended_all",
-                    torch.mean(value[:-1][:, episode_ended[0, :]]))
+                mask = info.step_type[:-1] != StepType.LAST
+                episode_ended = discounted_return != self._default_return
+                mask = mask & episode_ended
+                safe_mean_hist_summary('episodic_discounted_return',
+                                       discounted_return, mask)
 
         return returns
 
