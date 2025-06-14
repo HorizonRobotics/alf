@@ -1208,8 +1208,14 @@ class Algorithm(AlgorithmInterface):
 
         loss_info = self._aggregate_loss(loss_info, valid_masks, batch_info)
 
-        all_params, gns = self._backward_and_gradient_update(loss_info.loss *
-                                                             weight)
+        if loss_info.loss != ():
+            all_params, gns = self._backward_and_gradient_update(
+                loss_info.loss * weight)
+        else:
+            common.warning_once(
+                'The algorithm does not have loss for some update. Double check '
+                'your calc_loss() to see if this is intentional.')
+            all_params, gns = None, ()
 
         loss_info = loss_info._replace(gns=gns)
         loss_info = alf.nest.map_structure(torch.mean, loss_info)
@@ -2099,9 +2105,6 @@ class Algorithm(AlgorithmInterface):
             weight (float): weight for this batch. Loss will be multiplied with
                 this weight before calculating gradient.
         """
-
-        length = alf.nest.get_nest_size(offline_experience, dim=0)
-
         if self._RL_train:
             with torch.cuda.amp.autocast(self._config.enable_amp,
                                          dtype=self._config.amp_dtype):
@@ -2164,7 +2167,9 @@ class Algorithm(AlgorithmInterface):
         params, gns = self._backward_and_gradient_update(loss_info.loss *
                                                          weight)
 
-        if self._RL_train:
+        if self._pre_train:
+            self.after_update(offline_experience.time_step, offline_train_info)
+        elif self._RL_train:
             # for now, there is no need to do a hybrid after update
             self.after_update(experience.time_step, train_info)
 

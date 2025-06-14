@@ -28,6 +28,8 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.experience_replayers.replay_buffer import ReplayBuffer
+from alf.nest.utils import convert_device
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
@@ -157,6 +159,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  train_eps_greedy=1.0,
                  epsilon_greedy=None,
                  use_entropy_reward=True,
+                 use_mc_return=False,
                  normalize_entropy_reward=False,
                  calculate_priority=False,
                  num_critic_replicas=2,
@@ -224,6 +227,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 from ``config.epsilon_greedy`` and then
                 ``alf.get_config_value(TrainerConfig.epsilon_greedy)``.
             use_entropy_reward (bool): whether to include entropy as reward
+            use_mc_return (bool): whether to use Monte Carlo return (MC-return)
+                to lower-bound the target return calculation.
             normalize_entropy_reward (bool): if True, normalize entropy reward
                 to reduce bias in episodic cases. Only used if
                 ``use_entropy_reward==True``.
@@ -313,6 +318,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_network_cls, q_network_cls)
 
         self._use_entropy_reward = use_entropy_reward
+        self._use_mc_return = use_mc_return
 
         if reward_spec.numel > 1:
             assert self._act_type != ActionType.Mixed, (
@@ -1066,6 +1072,28 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return LossInfo(loss=critic_loss,
                         priority=priority,
                         extra=critic_loss / float(self._num_critic_replicas))
+
+    def preprocess_experience(self, time_step: TimeStep, rollout_info: SacInfo,
+                              batch_info):
+
+        if self._use_mc_return:
+            assert batch_info != ()
+            replay_buffer: ReplayBuffer = batch_info.replay_buffer
+            mini_batch_length = time_step.step_type.shape[1]
+
+            with alf.device(replay_buffer.device):
+                # [B, 1]
+                positions = convert_device(batch_info.positions).unsqueeze(-1)
+                # [B, 1]
+                env_ids = convert_device(batch_info.env_ids).unsqueeze(-1)
+                # [B, T]
+                positions = positions + torch.arange(mini_batch_length)
+                discounted_return = replay_buffer.get_discounted_return(
+                    env_ids=env_ids, positions=positions)
+                discounted_return = convert_device(discounted_return)
+            rollout_info = rollout_info._replace(
+                discounted_return=discounted_return)
+        return time_step, rollout_info
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_networks', '_target_repr_alg']

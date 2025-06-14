@@ -103,6 +103,7 @@ def wrap_optimizer(cls):
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  ignore_param_not_requiring_grad=False,
+                 grad_accumulation_steps=1,
                  parvi=None,
                  repulsive_weight=1.,
                  capacity_ratio: Union[float, Scheduler] = 1.0,
@@ -131,6 +132,15 @@ def wrap_optimizer(cls):
                 add parameters that do not require gradients to the optimizer.
                 This could save optimizer memory epsecially if we want to finetune
                 a small part of model.
+            grad_accumulation_steps (int): If >1, accumulating (averaging) so
+                many gradients from ``loss.backward()`` before triggering an
+                optimizer step. Any optimizer ``step()`` call before the accumuation
+                is done will have no effect on the parameters. This flag can be
+                used to simulate training with a large batch size but with limited
+                memory. Note 1) with this option, grad clipping should only happen
+                after the accumulation is done; 2) all other schedulers will be
+                calculated based on the actual effective optimizer steps instead
+                of gradient steps.
             parvi (string): if not ``None``, parameters with attribute
                 ``ensemble_group`` will be updated by particle-based vi algorithm
                 specified by ``parvi``, options are [``svgd``, ``gfsf``],
@@ -191,6 +201,8 @@ def wrap_optimizer(cls):
             self.defaults['gradient_clipping'] = gradient_clipping
             self.defaults['clip_by_global_norm'] = clip_by_global_norm
         self._gradient_clipping = gradient_clipping
+        self._grad_accumulation_steps = grad_accumulation_steps
+        self._grad_counter = 0
         self._clip_by_global_norm = clip_by_global_norm
         self._ignore_param_not_requiring_grad = ignore_param_not_requiring_grad
         self._parvi = parvi
@@ -326,6 +338,21 @@ def wrap_optimizer(cls):
         """This function first clips the gradients if needed, then call the
         parent's ``step()`` function.
         """
+        params = []
+        for param_group in self.param_groups:
+            params.extend(param_group["params"])
+
+        self._grad_counter += 1
+        if self._grad_accumulation_steps > 1:
+            if self._grad_counter % self._grad_accumulation_steps == 0:
+                # Need to scale the grad by 1/self._grad_accumulation_steps
+                for p in params:
+                    if p.grad is not None:
+                        p.grad.mul_(1.0 / self._grad_accumulation_steps)
+            else:
+                # Do nothing while the grad is still being accumulated
+                return
+
         if self._lr_scheduler is not None:
             lr = float(self._lr_scheduler())
             for i, (lr_scheduler, param_group) in enumerate(
@@ -338,9 +365,6 @@ def wrap_optimizer(cls):
                     param_group['lr'] = lr
             if alf.summary.should_record_summaries():
                 alf.summary.scalar("lr/%s" % self.name, lr)
-        params = []
-        for param_group in self.param_groups:
-            params.extend(param_group["params"])
 
         if not isinstance(self, NeroPlus):
             for param in params:
