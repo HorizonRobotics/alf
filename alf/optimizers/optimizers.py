@@ -138,9 +138,9 @@ def wrap_optimizer(cls):
                 is done will have no effect on the parameters. This flag can be
                 used to simulate training with a large batch size but with limited
                 memory. Note 1) with this option, grad clipping should only happen
-                after the accumulation is done; 2) all other schedulers will be
-                calculated based on the actual effective optimizer steps instead
-                of gradient steps.
+                after the accumulation is done; 2) all other optimizer related
+                schedulers will take effect at the actual effective optimizer steps
+                instead of gradient steps.
             parvi (string): if not ``None``, parameters with attribute
                 ``ensemble_group`` will be updated by particle-based vi algorithm
                 specified by ``parvi``, options are [``svgd``, ``gfsf``],
