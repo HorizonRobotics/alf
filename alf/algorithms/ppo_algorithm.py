@@ -29,6 +29,7 @@ PPOInfo = namedtuple("PPOInfo", [
     "discount",
     "reward",
     "action",
+    "log_prob",
     "rollout_log_prob",
     "rollout_action_distribution",
     "returns",

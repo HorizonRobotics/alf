@@ -128,6 +128,7 @@ class PPOLoss(ActorCriticLoss):
             rollout_action_distribution=info.rollout_action_distribution,
             action=info.action,
             rollout_log_prob=info.rollout_log_prob,
+            log_prob=info.log_prob,
             clipping_mode='double_sided',
             scope=scope,
             importance_ratio_clipping=self._importance_ratio_clipping,
