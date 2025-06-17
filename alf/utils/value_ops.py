@@ -62,10 +62,10 @@ def action_importance_ratio(action_distribution,
             check_numerics (bool):  If true, adds checks to help find
                 ``NaN``/``Inf`` values. For debugging only.
             debug_summaries (bool): If true, output summary metrics to tensorboard.
-            rollout_log_prob (nested tensor): the rollout log probability of the action.
+            rollout_log_prob (tensor): the rollout log probability of the action.
                 If empty, will be computed from ``rollout_action_distribution``
                 and ``action``.
-            log_prob (nested tensor): the log probability of the action. If empty,
+            log_prob (tensor): the log probability of the action. If empty,
                 will be computed from ``action_distribution`` and ``action``.
 
 
