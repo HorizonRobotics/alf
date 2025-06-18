@@ -348,7 +348,7 @@ ValueOrScheduler = Union[Number, Scheduler]
 
 def as_scheduler(value_or_scheduler: ValueOrScheduler) -> Scheduler:
     """Convert a value to a scheduler, or return the original scheduler."""
-    if isinstance(value_or_scheduler, Scheduler):
+    if isinstance(value_or_scheduler, (Scheduler, ConstantScheduler)):
         return value_or_scheduler
     else:
         return ConstantScheduler(value_or_scheduler)
