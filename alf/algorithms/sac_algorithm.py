@@ -30,7 +30,8 @@ from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.nest.utils import convert_device
-from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
+from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple, \
+    BasicRLInfo
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 import alf.nest.utils as nest_utils
@@ -1091,8 +1092,18 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 discounted_return = replay_buffer.get_discounted_return(
                     env_ids=env_ids, positions=positions)
                 discounted_return = convert_device(discounted_return)
-            rollout_info = rollout_info._replace(
-                discounted_return=discounted_return)
+
+            # This can be true for offline updates. For this, we need
+            # to convert BasicRLInfo to SacInfo
+            if isinstance(rollout_info, BasicRLInfo):
+                rollout_info = SacInfo(
+                    action=rollout_info.action,
+                    discounted_return=discounted_return,
+                )
+            else:
+                rollout_info = rollout_info._replace(
+                    discounted_return=discounted_return)
+
         return time_step, rollout_info
 
     def _trainable_attributes_to_ignore(self):
