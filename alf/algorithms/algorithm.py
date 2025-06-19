@@ -62,6 +62,7 @@ def _flatten_module(module):
         return [module]
 
 
+@alf.configurable(whitelist=['checkpoint_preload_strict'])
 class Algorithm(AlgorithmInterface):
     """Base implementation for AlgorithmInterface."""
 
@@ -72,6 +73,7 @@ class Algorithm(AlgorithmInterface):
                  is_on_policy=None,
                  optimizer=None,
                  checkpoint=None,
+                 checkpoint_preload_strict=True,
                  config: TrainerConfig = None,
                  debug_summaries=False,
                  name="Algorithm"):
@@ -110,6 +112,11 @@ class Algorithm(AlgorithmInterface):
                 by ALF, e.g. "/path_to_experiment/train/algorithm/ckpt-100".
                 Therefore, an example value for ``checkpoint`` is
                 "alg._sub_alg1@/path_to_experiment/train/algorithm/ckpt-100".
+            checkpoint_preload_strict (bool): whether to strictly enforce that the keys
+                in ``checkpoint`` match the keys returned by this module's
+                ``torch.nn.Module.state_dict`` function. If ``strict=True``, will
+                keep lists of missing and unexpected keys; if ``strict=False``,
+                missing/unexpected keys will be omitted. (Default: ``True``)
             config (TrainerConfig): config for training. ``config`` only needs to
                 be provided to the algorithm which performs a training iteration
                 by itself.
@@ -192,6 +199,7 @@ class Algorithm(AlgorithmInterface):
                 self._gns_estimator = GradientNoiseScaleEstimator()
 
         self._checkpoint = checkpoint
+        self._checkpoint_preload_strict = checkpoint_preload_strict
         self._checkpoint_pre_loaded = False
 
     def __init_subclass__(cls, *args, **kwargs):
@@ -242,18 +250,20 @@ class Algorithm(AlgorithmInterface):
             stat_dict = extract_sub_state_dict_from_checkpoint(
                 checkpoint_prefix, checkpoint_path)
 
-            status = self.load_state_dict(stat_dict, strict=True)
-            # Currently, optimizers are not handled by this function
-            missing_keys = list(
-                filter(lambda k: k.find('_optimizers.') < 0,
-                       status.missing_keys))
-            assert not missing_keys and not status.unexpected_keys, (
-                "\033[1;31m Checkpoint mismatches with the model: \033[1;0m \n"
-                +
-                "\033[1;31m Missing-keys \033[1;0m (keys in model but not in checkpoint): {}\n"
-                .format(missing_keys) +
-                "\033[1;31m Unexpected-keys \033[1;0m (keys in checkpoint but not in model): {}"
-                .format(status.unexpected_keys))
+            status = self.load_state_dict(
+                stat_dict, strict=self._checkpoint_preload_strict)
+            if self._checkpoint_preload_strict:
+                # Currently, optimizers are not handled by this function
+                missing_keys = list(
+                    filter(lambda k: k.find('_optimizers.') < 0,
+                           status.missing_keys))
+                assert not missing_keys and not status.unexpected_keys, (
+                    "\033[1;31m Checkpoint mismatches with the model: \033[1;0m \n"
+                    +
+                    "\033[1;31m Missing-keys \033[1;0m (keys in model but not in checkpoint): {}\n"
+                    .format(missing_keys) +
+                    "\033[1;31m Unexpected-keys \033[1;0m (keys in checkpoint but not in model): {}"
+                    .format(status.unexpected_keys))
             self._checkpoint_pre_loaded = True
             common.info(
                 'in-algorithm checkpoint loaded: {}'.format(prefix_and_path))
