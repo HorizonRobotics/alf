@@ -167,6 +167,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
                  target_entropy=None,
+                 target_use_rollout_action=False,
                  prior_actor_ctor=None,
                  target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
@@ -255,6 +256,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 continuous action will have separate alphas and target entropies,
                 so this argument can be a 2-element list/tuple, where the first
                 is for discrete action and the second for continuous action.
+            target_use_rollout_action (bool): if True, rollout action will be used
+                for computing target critics.
             prior_actor_ctor (Callable): If provided, it will be called using
                 ``prior_actor_ctor(observation_spec, action_spec, debug_summaries=debug_summaries)``
                 to constructor a prior actor. The output of the prior actor is
@@ -398,6 +401,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if critic_networks:
             self._target_critic_networks = self._critic_networks.copy(
                 name='target_critic_networks')
+            self._target_use_rollout_action = target_use_rollout_action
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
@@ -943,9 +947,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
         actor_state, actor_loss = self._actor_train_step(
             observation, state.actor, action, critics, log_pi,
             action_distribution)
+        if self._target_use_rollout_action:
+            target_action = rollout_info.action
+        else:
+            target_action = action
         critic_state, critic_info = self._critic_train_step(
             observation, target_observation, state.critic, rollout_info,
-            action, action_distribution)
+            target_action, action_distribution)
         alpha_loss = self._alpha_train_step(log_pi)
 
         new_state = new_state._replace(action=action_state,
