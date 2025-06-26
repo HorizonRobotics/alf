@@ -203,6 +203,7 @@ def wrap_optimizer(cls):
         self._gradient_clipping = gradient_clipping
         self._grad_accumulation_steps = grad_accumulation_steps
         self._grad_counter = 0
+        self._grad_stepped = True
         self._clip_by_global_norm = clip_by_global_norm
         self._ignore_param_not_requiring_grad = ignore_param_not_requiring_grad
         self._parvi = parvi
@@ -220,6 +221,16 @@ def wrap_optimizer(cls):
         if name is None:
             self.name = NewClsName + "_" + str(NewCls.counter)
             NewCls.counter += 1
+
+    @common.add_method(NewCls)
+    def zero_grad(self, *args, **kwargs):
+        """Only zero the gradients if the last ``step()`` has taken effect.
+
+        In the case of grad accumulation, we should avoid zeroing the gradients
+        before accumulation is done.
+        """
+        if self._grad_stepped:
+            super(NewCls, self).zero_grad(*args, **kwargs)
 
     @common.add_method(NewCls)
     def _clone_params(self, capacity_ratio: float):
@@ -351,6 +362,7 @@ def wrap_optimizer(cls):
                         p.grad.mul_(1.0 / self._grad_accumulation_steps)
             else:
                 # Do nothing while the grad is still being accumulated
+                self._grad_stepped = False
                 return
 
         if self._lr_scheduler is not None:
@@ -419,6 +431,7 @@ def wrap_optimizer(cls):
                 alf.summary.scalar("capacity_ratio", capacity_ratio)
 
         self._first_stepping_done = True
+        self._grad_stepped = True
 
     @common.add_method(NewCls)
     def _parvi_step(self):
