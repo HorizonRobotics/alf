@@ -138,6 +138,10 @@ class ActorDistributionNetwork(ActorDistributionNetworkBase):
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
+                 use_residual_fc_block=False,
+                 num_residual_fc_blocks=1,
+                 residual_fc_block_hidden_size=None,
+                 residual_fc_block_use_output_ln=True,
                  activation=torch.relu_,
                  kernel_initializer=None,
                  use_fc_bn=False,
@@ -173,6 +177,14 @@ class ActorDistributionNetwork(ActorDistributionNetworkBase):
                 where ``padding`` is optional.
             fc_layer_params (tuple[int]): a tuple of integers representing hidden
                 FC layer sizes.
+            use_residual_fc_block (bool): whether to use residual block instead of
+                FC layers.
+            num_residual_fc_blocks (int): number of residual FC blocks, only valid
+                if use_residual_fc_block is True.
+            residual_fc_block_hidden_size (int): hidden size of residual FC blocks,
+                only valid if use_residual_fc_block is True.
+            residual_fc_block_use_output_ln (bool): whether to use layer norm for
+                the output of residual FC block, only valid if use_residual_fc_block.
             activation (nn.functional): activation used for hidden layers.
             kernel_initializer (Callable): initializer for all the layers
                 excluding the projection net. If none is provided a default
@@ -201,6 +213,10 @@ class ActorDistributionNetwork(ActorDistributionNetworkBase):
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
+            use_residual_fc_block=use_residual_fc_block,
+            num_residual_fc_blocks=num_residual_fc_blocks,
+            residual_fc_block_hidden_size=residual_fc_block_hidden_size,
+            residual_fc_block_use_output_ln=residual_fc_block_use_output_ln,
             activation=activation,
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,

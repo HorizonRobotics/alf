@@ -111,6 +111,10 @@ class CriticNetwork(EncodingNetwork):
                  action_fc_layer_params=None,
                  observation_action_combiner=None,
                  joint_fc_layer_params=None,
+                 joint_use_residual_fc_block=False,
+                 joint_num_residual_fc_blocks=1,
+                 joint_residual_fc_block_hidden_size=None,
+                 joint_residual_fc_block_use_output_ln=True,
                  activation=torch.relu_,
                  kernel_initializer=None,
                  use_fc_bn=False,
@@ -157,6 +161,14 @@ class CriticNetwork(EncodingNetwork):
             joint_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes FC layers after merging observations and
                 actions.
+            joint_use_residual_fc_block (bool): whether to use residual block instead 
+                of FC layers after merging observations and actions.
+            joint_num_residual_fc_blocks (int): number of joint residual FC blocks, 
+                only valid if joint_use_residual_fc_block is True.
+            joint_residual_fc_block_hidden_size (int): hidden size of residual FC 
+                blocks, only valid if joint_use_residual_fc_block is True.
+            joint_residual_fc_block_use_output_ln (bool): whether to use layer norm 
+                for the output of joint residual FC block.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
@@ -226,6 +238,11 @@ class CriticNetwork(EncodingNetwork):
             input_preprocessors=(obs_encoder, action_encoder),
             preprocessing_combiner=observation_action_combiner,
             fc_layer_params=joint_fc_layer_params,
+            use_residual_fc_block=joint_use_residual_fc_block,
+            num_residual_fc_blocks=joint_num_residual_fc_blocks,
+            residual_fc_block_hidden_size=joint_residual_fc_block_hidden_size,
+            residual_fc_block_use_output_ln=
+            joint_residual_fc_block_use_output_ln,
             activation=activation,
             kernel_initializer=kernel_initializer,
             use_fc_bn=use_fc_bn,

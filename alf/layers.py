@@ -2529,6 +2529,79 @@ def _conv_transpose_2d(in_channels,
         bias=bias)
 
 
+@alf.configurable
+class ResidualFCBlock(nn.Module):
+    r"""The Residual block with FC layers. 
+
+    This is the Residual Feedforward block used in the following paper, replacing
+    the MLP layers.
+
+    ::
+
+        Lee et al "SimBA: Simplicity Bias for Scaling up Parameters in Deep Reinforcement Learning", arXiv:2410.09754
+
+    The block is defined as,
+
+        :math:`x_{out} = x_{in} + 2-layer-MLP(LayerNorm(x_{in}))`
+
+    """
+
+    def __init__(self,
+                 input_size: int,
+                 output_size: int,
+                 hidden_size: Optional[int] = None,
+                 use_bias: Optional[bool] = True,
+                 use_output_ln: Optional[bool] = False,
+                 activation: Callable = torch.relu_,
+                 kernel_initializer: Callable[[Tensor],
+                                              None] = nn.init.kaiming_normal_,
+                 bias_init_value: float = 0.0):
+        """
+        Args:
+            input_size (int): input size
+            output_size (int): output size
+            hidden_sizes (int): size of the hidden layer.
+            use_bias (bool): whether to use bias for FC layers.
+            activation (Callable): activation for the hidden layer.
+            kernel_initializer (Callable): initializer for the FC layer kernel.
+            bias_init_value (float): a constant for the initial FC bias value.
+        """
+        super().__init__()
+        self._use_output_ln = use_output_ln
+        if hidden_size is None:
+            hidden_size = input_size
+        fc1 = FC(input_size,
+                 hidden_size,
+                 activation=activation,
+                 use_bias=use_bias,
+                 kernel_initializer=kernel_initializer,
+                 bias_init_value=bias_init_value)
+        fc2 = FC(hidden_size,
+                 output_size,
+                 use_bias=use_bias,
+                 kernel_initializer=kernel_initializer,
+                 bias_init_value=bias_init_value)
+        self._core_layers = nn.Sequential(fc1, fc2)
+        self._ln = nn.LayerNorm(input_size)
+        if use_output_ln:
+            self._out_ln = nn.LayerNorm(output_size)
+
+    def reset_parameters(self):
+        self._ln.reset_parameters()
+        for layer in self._core_layers:
+            layer.reset_parameters()
+        if self._use_output_ln:
+            self._out_ln.reset_parameters()
+
+    def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+        core_inputs = self._ln(inputs)
+        core = self._core_layers(core_inputs)
+        outputs = core + inputs
+        if self._use_output_ln:
+            outputs = self._out_ln(outputs)
+        return outputs
+
+
 @alf.configurable(whitelist=[
     'with_batch_normalization', 'bn_ctor', 'weight_opt_args', 'activation'
 ])
