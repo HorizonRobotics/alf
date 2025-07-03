@@ -619,6 +619,10 @@ class EncodingNetwork(_Sequential):
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
+                 use_residual_fc_block=False,
+                 num_residual_fc_blocks=1,
+                 residual_fc_block_hidden_size=None,
+                 residual_fc_block_use_output_ln=True,
                  activation=torch.relu_,
                  kernel_initializer=None,
                  use_fc_bn=False,
@@ -668,6 +672,14 @@ class EncodingNetwork(_Sequential):
                 where ``padding`` is optional.
             fc_layer_params (tuple[int]): a tuple of integers
                 representing FC layer sizes.
+            use_residual_fc_block (bool): whether to use residual block instead of
+                FC layers.
+            num_residual_fc_blocks (int): number of residual FC blocks, only valid
+                if use_residual_fc_block is True.
+            residual_fc_block_hidden_size (int): hidden size of residual FC blocks,
+                only valid if use_residual_fc_block is True.
+            residual_fc_block_use_output_ln (bool): whether to use layer norm for
+                the output of residual FC block, only valid if use_residual_fc_block.
             activation (nn.functional): activation used for all the layers but
                 the last layer.
             kernel_initializer (Callable): initializer for all the layers but
@@ -766,7 +778,7 @@ class EncodingNetwork(_Sequential):
                 f"The input shape {spec.shape} should be like (N, )"
                 "or (N, D, ).")
 
-        if fc_layer_params is None:
+        if fc_layer_params is None or use_residual_fc_block:
             fc_layer_params = []
         else:
             assert isinstance(fc_layer_params, tuple)
@@ -789,6 +801,25 @@ class EncodingNetwork(_Sequential):
                               use_ln=use_fc_ln,
                               kernel_initializer=kernel_initializer))
             input_size = size
+
+        if use_residual_fc_block:
+            if residual_fc_block_hidden_size is None:
+                residual_fc_block_hidden_size = input_size
+            nets.append(
+                fc_layer_ctor(input_size,
+                              residual_fc_block_hidden_size,
+                              activation=activation,
+                              use_bn=use_fc_bn,
+                              use_ln=use_fc_ln,
+                              kernel_initializer=kernel_initializer))
+            input_size = residual_fc_block_hidden_size
+            for _ in range(num_residual_fc_blocks):
+                nets.append(
+                    layers.ResidualFCBlock(
+                        input_size,
+                        residual_fc_block_hidden_size,
+                        use_output_ln=residual_fc_block_use_output_ln))
+                input_size = residual_fc_block_hidden_size
 
         if last_layer_size is not None or last_activation is not None:
             assert last_layer_size is not None and last_activation is not None, \
