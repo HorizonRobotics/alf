@@ -17,7 +17,7 @@ import torch
 
 import alf
 from alf.algorithms.agent import Agent
-from alf.algorithms.bafc_algorithm import BafcAlgorithm
+from alf.algorithms.bafc_algorithm_v0 import BafcAlgorithmV0
 from alf.examples.benchmarks.dm_control import dmc_conf
 from alf.optimizers import Adam
 
@@ -39,10 +39,10 @@ critic_network_cls = partial(
 
 alf.config('Agent',
            optimizer=optimizer,
-           rl_algorithm_cls=BafcAlgorithm)
+           rl_algorithm_cls=BafcAlgorithmV0)
 
 alf.config(
-    'BafcAlgorithm',
+    'BafcAlgorithmV0',
     actor_network_cls=actor_network_cls,
     critic_network_cls=critic_network_cls,
     num_actors=10,
