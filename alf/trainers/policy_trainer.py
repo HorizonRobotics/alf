@@ -1042,7 +1042,7 @@ def _step(algorithm,
                 recorder.clear_cache()
 
     elif render:
-        if env.batch_size > 1:
+        if env.batch_size > 1 and hasattr(env, "envs"):
             env.envs[0].render(mode='human')
         else:
             env.render(mode='human')
@@ -1147,6 +1147,7 @@ def play(root_dir,
     batch_size = env.batch_size
     recorder = None
     if record_file is not None:
+        # TODO: support for batched environments
         assert batch_size == 1, 'video recording is not supported for parallel play'
         # Note that ``VideoRecorder`` will import ``matplotlib`` which might have
         # some side effects on xserver (if its backend needs graphics).
@@ -1158,7 +1159,7 @@ def play(root_dir,
                                  append_blank_frames=append_blank_frames,
                                  path=record_file)
     elif render:
-        if batch_size > 1:
+        if batch_size > 1 and hasattr(env, "envs"):
             env.envs[0].render(mode='human')
         else:
             # pybullet_envs need to render() before reset() to enable mode='human'
