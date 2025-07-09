@@ -2145,6 +2145,18 @@ class Algorithm(AlgorithmInterface):
                                                      offline_valid_masks,
                                                      offline_batch_info)
 
+            # Weight the offline loss
+            offline_loss_weight = self._config.offline_loss_weight()
+            offline_loss_info = offline_loss_info._replace(
+                loss=offline_loss_info.loss *
+                self._config.offline_loss_weight())
+
+            # If the weight becomes 0, we'll switch from hybrid to online
+            # updates and release the offline buffer
+            if offline_loss_weight == 0:
+                self._has_offline = False
+                self._offline_replay_buffer = None
+
         if loss_info is not None:
             if self.is_rl():
                 valid_masks = (experience.step_type
