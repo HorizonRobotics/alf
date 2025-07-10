@@ -14,6 +14,7 @@
 
 import functools
 import inspect
+from loguru import logger
 import numpy as np
 import random
 import torch
@@ -174,6 +175,16 @@ def create_environment(env_name='CartPole-v0',
         AlfEnvironment:
 
     """
+    logger.info(f"Creating environment: {env_name}, "
+                f"num_parallel_environments: {num_parallel_environments}, "
+                f"batch_size_per_env: {batch_size_per_env}, "
+                f"nonparallel: {nonparallel}, "
+                f"for_evaluation: {for_evaluation}, "
+                f"eval_batch_size_per_env: {eval_batch_size_per_env}, "
+                f"num_spare_envs: {num_spare_envs}, "
+                f"torch_num_threads_per_env: {torch_num_threads_per_env}, "
+                f"parallel_environment_ctor: {parallel_environment_ctor}, "
+                f"seed: {seed}")
 
     # Some environment may take long time to load. So we use GPU before loading
     # environments so that other people knows that this GPU is being used.
@@ -190,6 +201,7 @@ def create_environment(env_name='CartPole-v0',
     # env_load_fn may be a functools.partial, so we need to get the wrapped
     # function to get its attributes
     batched = getattr(_get_wrapped_fn(env_load_fn), 'batched', False)
+    logger.info(f"env_load_fn: {env_load_fn}, batched: {batched}")
     no_thread_env = getattr(_get_wrapped_fn(env_load_fn), 'no_thread_env',
                             False)
 
@@ -222,8 +234,11 @@ def create_environment(env_name='CartPole-v0',
                                         env_load_fn)
 
     if batched and batch_size_per_env == num_parallel_environments:
+        logger.info(f"Creating batched {env_name} with batch size {num_parallel_environments}")
         alf_env = env_load_fn(env_name, batch_size=num_parallel_environments)
         if not alf_env.is_tensor_based:
+            logger.info(f"{alf_env} is not tensor based, wrapping it with "
+                        "BatchedTensorWrapper")
             alf_env = alf_wrappers.TensorWrapper(alf_env)
     elif nonparallel:
         # Each time we can only create one unwrapped env at most
@@ -232,11 +247,15 @@ def create_environment(env_name='CartPole-v0',
             # thread environment", and we will create it in the main thread.
             # BatchedTensorWrapper is applied to make sure the I/O is batched
             # torch tensor based.
+            logger.info(f"{env_name} disallows thread_env, wrapping it with "
+                        "BatchedTensorWrapper")
             alf_env = alf_wrappers.BatchedTensorWrapper(env_load_fn(env_name))
         else:
             # Create and step the env in a separate thread. env `step` and
             #   `reset` must run in the same thread which the env is created in
             #   for some simulation environments such as social_bot(gazebo)
+            logger.info(f"{env_name} allows thread_env, wrapping it with "
+                        "ThreadEnvironment")
             alf_env = thread_environment.ThreadEnvironment(lambda: env_load_fn(
                 env_name))
 
@@ -245,6 +264,9 @@ def create_environment(env_name='CartPole-v0',
         else:
             alf_env.seed(seed)
     else:
+        logger.info(
+            f"Creating {num_parallel_environments} parallel environments"
+            f" with batch size {batch_size_per_env}")
         if seed is None:
             seeds = list(
                 map(

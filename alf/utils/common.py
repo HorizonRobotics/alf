@@ -1821,6 +1821,8 @@ def save_video(frames: List[np.ndarray],
         fps (int): frames per second.
     """
     import cv2
+    if not isinstance(frames, list):
+        frames = [frames]
     if not frames:
         raise ValueError("The frame list is empty.")
 

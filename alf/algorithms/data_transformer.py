@@ -467,7 +467,7 @@ class ImageScaleTransformer(SimpleDataTransformer):
             assert isinstance(spec, alf.TensorSpec), (str(type(spec)) +
                                                       "is not a TensorSpec")
             assert ImageScaleTransformer._check_img_type(spec), (
-                "Image must have int dtype in [0, 255]!")
+                f"Image {spec} must have int dtype in [0, 255]!")
             return alf.BoundedTensorSpec(spec.shape,
                                          dtype=torch.float32,
                                          minimum=min,
