@@ -16,6 +16,7 @@ from absl import logging
 from typing import Callable
 import time
 import io
+import numpy as np
 import queue
 import random
 import threading
@@ -553,7 +554,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             time.sleep(0.01)
 
         steps = super()._train_iter_off_policy()
-        self._total_updates += self._config.num_updates_per_train_iter
+        self._total_updates += int(
+            np.ceil(self._config.num_updates_per_train_iter))
 
         with record_time("time/trainer_send_params_to_unroller"):
             if (self._total_updates %

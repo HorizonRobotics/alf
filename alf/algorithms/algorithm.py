@@ -1517,8 +1517,8 @@ class Algorithm(AlgorithmInterface):
                         "No mini_batch_length is specified for off-policy training"
                     )
                     experience, batch_info = self._replay_buffer.get_batch(
-                        batch_size=(mini_batch_size *
-                                    config.num_updates_per_train_iter),
+                        batch_size=int(mini_batch_size *
+                                       config.num_updates_per_train_iter),
                         batch_length=config.mini_batch_length)
                     num_updates = 1
             return experience, batch_info, num_updates, mini_batch_size
@@ -1562,8 +1562,8 @@ class Algorithm(AlgorithmInterface):
 
             with record_time("time/offline_replay"):
                 offline_experience, offline_batch_info = self._offline_replay_buffer.get_batch(
-                    batch_size=(mini_batch_size *
-                                config.num_updates_per_train_iter),
+                    batch_size=int(mini_batch_size *
+                                   config.num_updates_per_train_iter),
                     batch_length=config.mini_batch_length)
             # train hybrid
             with record_time("time/offline_train"):
@@ -1641,14 +1641,26 @@ class Algorithm(AlgorithmInterface):
             torch.cuda.empty_cache()
 
         indices = None
+        # In the case where ``num_updates<1``, we will skip some mini-batches (only
+        # applicable if ``mini_batch_size<batch_size``).
+        training_fraction = min(1, num_updates)
+        training_every_n_batches = int(1. / training_fraction)
+        num_updates = int(max(1, np.ceil(num_updates)))
+        batches = 0
         for u in range(num_updates):
             if mini_batch_size < batch_size:
                 indices = torch.randperm(batch_size,
                                          device=experience.step_type.device)
             for b in range(0, batch_size, mini_batch_size):
+                if (b % (training_every_n_batches * mini_batch_size)) != 0:
+                    continue
 
-                is_last_mini_batch = (u == num_updates - 1
-                                      and b + mini_batch_size >= batch_size)
+                batches += 1
+
+                is_last_mini_batch = (
+                    u == num_updates - 1
+                    and b + mini_batch_size * training_every_n_batches
+                    >= batch_size)
                 do_summary = alf.summary.should_record_summaries() and (
                     is_last_mini_batch or update_counter_every_mini_batch)
 
@@ -1674,7 +1686,7 @@ class Algorithm(AlgorithmInterface):
                     # These are no longer used, release them to reduce memory usage.
                     del exp, train_info, loss_info, params
 
-        train_steps = batch_size * mini_batch_length * num_updates
+        train_steps = mini_batch_length * batches * mini_batch_size
         return train_steps
 
     def _prepare_experience_data(self,
