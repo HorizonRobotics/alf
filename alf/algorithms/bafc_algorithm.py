@@ -33,7 +33,7 @@ from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 import alf.nest.utils as nest_utils
-from alf.networks import ActorFCNetwork, FuncCriticNetwork
+from alf.networks import ActorFCNetwork, FuncCriticTransformer, FuncCriticMemTransformer
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
@@ -43,7 +43,7 @@ from alf.networks.neural_graphs.actor_graph import ActorGraph
 from alf.networks.neural_graphs.graph_network import GraphNetwork
 
 BafcActionState = namedtuple(
-    "BafcActionState", ["actor_network", "critic"], default_value=())
+    "BafcActionState", ["actor_network"], default_value=())
 
 BafcCriticState = namedtuple("BafcCriticState", ["critic", "target_critic"])
 
@@ -55,7 +55,7 @@ BafcCriticInfo = namedtuple(
     "BafcCriticInfo", ["critic", "target_critic"], default_value=())
 
 BafcActorInfo = namedtuple(
-    "BafcActorInfo", ["action_loss", "param_loss"], default_value=())
+    "BafcActorInfo", ["eval_action_loss"], default_value=())
 
 BafcInfo = namedtuple(
     "BafcInfo", [
@@ -83,7 +83,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                  action_spec: BoundedTensorSpec,
                  reward_spec=TensorSpec(()),
                  actor_network_cls=ActorFCNetwork,
-                 critic_network_cls=FuncCriticNetwork,
+                 critic_network_cls=FuncCriticTransformer,
                  reward_weights=None,
                  calculate_priority=False,
                  num_actors=10,
@@ -91,10 +91,8 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                  use_bootstrap_actors=False,
                  bootstrap_mask_prob=0.8,
                  num_actor_eval_samples=256,
-                 actor_graph_node_dim=64,
-                 actor_graph_edge_dim=32,
-                 actor_encoding_dim=128,
-                 obs_action_encoding_dim=64,
+                 use_normalized_eval_samples=False,
+                 actor_eval_type='full',
                  actor_utd: Optional[int] = None,
                  critic_utd: Optional[int] = None,
                  env=None,
@@ -147,37 +145,32 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             input_tensor_spec=observation_spec,
             action_spec=action_spec,
             n_groups=num_actors)
-        actor_eval_samples = 2 * torch.rand(
-            num_actor_eval_samples, observation_spec.shape[0]) - 1
+        if use_normalized_eval_samples:
+            actor_eval_samples = 2 * torch.randn(
+                num_actor_eval_samples, observation_spec.shape[0])
+        else:
+            actor_eval_samples = 2 * torch.rand(
+                num_actor_eval_samples, observation_spec.shape[0]) - 1
 
-        # extract weight_param spec and bias_param spec from actor_networks
-        actor_weight_spec = nest.map_structure(
-            lambda tensor: TensorSpec.from_tensor(tensor, from_dim=1), 
-            actor_networks.weight_params)
-        actor_bias_spec = nest.map_structure(
-            lambda tensor: TensorSpec.from_tensor(tensor, from_dim=1), 
-            actor_networks.bias_params)
-        actor_layer_layout = [
-            actor_weight_spec[0].shape[1]] + [b.shape[0] for b in actor_bias_spec] 
+        # extract actor token length from actor_networks 
+        if actor_eval_type == 'full':
+            actor_token_length = observation_spec.shape[0] + sum( 
+                t.shape[1] for t in actor_networks.bias_params)
+        elif actor_eval_type == 'last_two':
+            actor_token_length = sum( 
+                t.shape[1] for t in actor_networks.bias_params[-2:])
+        else:
+            actor_token_length = action_spec.shape[0]
+        self._actor_eval_type = actor_eval_type
 
-        actor_graph = ActorGraph(layer_layout=actor_layer_layout,
-                                 d_node=actor_graph_node_dim,
-                                 d_edge=actor_graph_edge_dim,
-                                 num_eval_samples=num_actor_eval_samples)
-        graph_network = GraphNetwork(layer_layout=actor_layer_layout,
-                                     d_out=actor_encoding_dim, 
-                                     d_node=actor_graph_node_dim,
-                                     d_edge=actor_graph_edge_dim)
-
-        actor_spec = TensorSpec(shape=(actor_encoding_dim,))
+        actor_spec = TensorSpec(shape=(actor_token_length, num_actor_eval_samples))
         obs_action_spec = (observation_spec, action_spec)
         critic_network = critic_network_cls(
-            input_tensor_spec=(actor_spec, obs_action_spec), 
-            obs_action_encoding_dim=obs_action_encoding_dim)
+            input_tensor_spec=(obs_action_spec, actor_spec), 
+            obs_action_encoding_dim=num_actor_eval_samples)
 
         action_state_spec = BafcActionState(
-            actor_network=actor_networks.state_spec,
-            critic=critic_network.state_spec)
+            actor_network=actor_networks.state_spec)
         train_state_spec = BafcState(
             action=action_state_spec,
             actor=critic_network.state_spec,
@@ -191,7 +184,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             reward_spec=reward_spec,
             train_state_spec=train_state_spec,
             rollout_state_spec=train_state_spec,
-            predict_state_spec=BafcState(action=action_state_spec),
+            predict_state_spec=action_state_spec,
             reward_weights=reward_weights,
             env=env,
             config=config,
@@ -206,12 +199,9 @@ class BafcAlgorithm(OffPolicyAlgorithm):
 
         self._actor_networks = actor_networks
         self._actor_eval_samples = nn.Parameter(actor_eval_samples)
-        self._actor_graph = actor_graph
-        self._graph_network = graph_network
         self._critic_network = critic_network
         self._target_critic_network = critic_network.copy(
             name='target_critic_network')
-        self._target_critic_network.set_obs_action_batch_dominate(True)
         if use_target_actor:
             self._target_actor_networks = actor_networks.copy(
                 name='target_actor_network')
@@ -231,12 +221,6 @@ class BafcAlgorithm(OffPolicyAlgorithm):
 
         def _filter(x):
             return list(filter(lambda x: x is not None, x))
-
-        # models_list = [self._critic_network]
-        # target_models_list = [self._target_critic_network]
-        # if use_target_actor:
-        #     models_list.append(self._actor_networks)
-        #     target_models_list.append(self._target_actor_networks)
 
         def _create_target_updater(model_list, target_model_list,
                                    tau, period, use_ema):
@@ -286,14 +270,14 @@ class BafcAlgorithm(OffPolicyAlgorithm):
 
         return action, new_state
 
-    def predict_step(self, inputs: TimeStep, state: BafcState):
+    def predict_step(self, inputs: TimeStep, state: BafcActionState):
         action, action_state = self._predict_action(
             self._actor_networks,
             inputs.observation,
-            state=state.action)
+            state=state)
         return AlgStep(
             output=action,
-            state=state._replace(action=action_state),
+            state=action_state,
             info=BafcInfo(action=action))
 
     def rollout_step(self, inputs: TimeStep, state: BafcState):
@@ -321,10 +305,20 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             state=state._replace(action=action_state),
             info=BafcInfo(action=action, bootstrap_mask=self._bootstrap_mask))
 
-    def _encode_actor(self, params, eval_out):
-        inputs = (params, eval_out)
-        graph_inputs = self._actor_graph(inputs)
-        return self._graph_network(graph_inputs)
+    def _tokenize_actor_out(self, eval_out, batch_size):
+        # To make full actor eval_out an input sequence to the transformer, we
+        # set n_actor as the batch_size, \sum_d as the length of the sequence, 
+        # and num_eval_samples B as the dimension of embedding
+        if self._actor_eval_type == 'last':
+            # [B, n_actor, d] -> [n_actor, d, B]
+            eval_out_seq = eval_out.permute(1, 2, 0)
+        else:
+            # list of [B, n_actor, d] --> [n_actor, \sum_d, B]
+            eval_out_seq = torch.cat(eval_out, dim=-1).permute(1, 2, 0)
+        # sample [batch_size] indices from [n]
+        idx = torch.randint(low=0, high=eval_out_seq.shape[0], 
+                            size=(batch_size, ), device=eval_out_seq.device)
+        return eval_out_seq[idx], idx
 
     def _actor_train_step(self, observation, action, mask, state):
         """Compute the full off-policy policy gradient from the functional critic,
@@ -337,24 +331,30 @@ class BafcAlgorithm(OffPolicyAlgorithm):
 
         3. the gradient w.r.t. actor parameters.
         """
-        actor_params = (self._actor_networks.weight_params, 
-                        self._actor_networks.bias_params) 
         eval_action = self._actor_networks(
-            self._actor_eval_samples, full_neurons=True)[0]
-        actor_encoding = self._encode_actor(actor_params, eval_action)
-        # [B * n_actor, d]
-        critic_observation = observation.repeat_interleave(
-            self._num_actors, dim=0)
+            self._actor_eval_samples, full_neurons=self._actor_eval_type != 'last')[0]
+        if self._actor_eval_type == 'last_two':
+            eval_action = eval_action[-2:]
+        batch_size = observation.shape[0]
+        actor_tokens, idx = self._tokenize_actor_out(eval_action, batch_size) 
+        rows = torch.arange(batch_size)
+        action = action[rows, idx]
         q_value, critic_state = self._critic_network(
-            (actor_encoding, (critic_observation, action)), state) 
+            ((observation, action), actor_tokens), state) 
 
         # This sum() will reduce all dims so q_value can be any rank
         dqda = nest_utils.grad(action, q_value.sum(), retain_graph=True)
+        ## eval_action gradient v1:
+        # dqde = nest_utils.grad(actor_tokens, q_value.sum())
+        ## eval_action gradient v2:
         # need to exclude the input actor_eval_samples, since they don't requires_grad
         # for actor TrainMode
-        eval_action_in_graph = eval_action[1:]
-        dqde = nest_utils.grad(eval_action_in_graph, 
-                               q_value.sum(), retain_graph=True)
+        if self._actor_eval_type == 'full':
+            eval_action_in_graph = eval_action[1:]
+        else:
+            eval_action_in_graph = eval_action
+        dqde = nest_utils.grad(eval_action_in_graph, q_value.sum(), 
+                               retain_graph=self._actor_eval_type != 'last')
 
         def action_loss_fn(dqda, a_in):
             if self._dqda_clipping:
@@ -366,13 +366,15 @@ class BafcAlgorithm(OffPolicyAlgorithm):
 
         # 1. loss corresponding to input action
         action_loss = nest.map_structure(action_loss_fn, dqda, action)
-        action_loss = action_loss.reshape(
-            -1, self._num_actors)
         if self._use_bootstrap_actors:
+            mask = mask[rows, idx]
             action_loss = action_loss * mask / self._bootstrap_mask_prob
-        action_loss = action_loss.sum(-1)
 
-        # 2. loss corresponding to input eval_action
+        # 2. loss corresponding to input eval_action 
+        ## eval_action gradient v1:
+        # eval_action_loss = nest.map_structure(action_loss_fn, dqde, actor_tokens)
+
+        ## eval_action gradient v2:
         eval_action_loss = nest.map_structure(
             action_loss_fn, dqde, eval_action_in_graph)
         # ALF workaround: reduce to scalar_loss and repeat to [T*B]
@@ -380,18 +382,9 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         eval_action_loss = math_ops.add_n(eval_action_loss).mean().repeat(
             action_loss.shape[0])
 
-        # 3. loss corresponding to input actor_params
-        dqdw = nest_utils.grad(actor_params, q_value.sum(), retain_graph=True)
-        param_loss = nest.map_structure(
-            lambda x, y: torch.mean(x * y), dqdw, actor_params)
-        # ALF workaround: reduce to scalar_loss and repeat
-        param_loss = math_ops.add_n(nest.flatten(param_loss)).repeat(
-            action_loss.shape[0])
-
         actor_info = LossInfo(
-            loss=action_loss,
-            extra=BafcActorInfo(action_loss=eval_action_loss, 
-                                param_loss=param_loss))
+            loss=action_loss + eval_action_loss,
+            extra=BafcActorInfo(eval_action_loss=eval_action_loss)) 
         return critic_state, actor_info
 
     def _critic_train_step(self, observation, state: BafcCriticState, 
@@ -400,18 +393,23 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             actor_params = (self._target_actor_networks.weight_params, 
                             self._target_actor_networks.bias_params) 
             eval_action = self._target_actor_networks(
-                self._actor_eval_samples, full_neurons=True)[0]
+                self._actor_eval_samples, 
+                full_neurons=self._actor_eval_type != 'last')[0]
         else:
             actor_params = (self._actor_networks.weight_params, 
                             self._actor_networks.bias_params) 
             eval_action = self._actor_networks(
-                self._actor_eval_samples, full_neurons=True)[0]
+                self._actor_eval_samples, 
+                full_neurons=self._actor_eval_type != 'last')[0]
+        if self._actor_eval_type == 'last_two':
+            eval_action = eval_action[-2:]
 
-        actor_encoding = self._encode_actor(actor_params, eval_action)
+        batch_size = observation.shape[0]
+        actor_tokens, idx = self._tokenize_actor_out(eval_action, batch_size) 
+
+        # [T*B]
         critics, critic_state = self._critic_network(
-            (actor_encoding, (observation, rollout_info.action)), state.critic)
-        # [T*B, n_actor]
-        critics = critics.reshape(-1, self._num_actors)
+            ((observation, rollout_info.action), actor_tokens), state.critic)
 
         if not torch.isfinite(critics).all():
             # check for any NaN/Inf
@@ -419,18 +417,17 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             logging.warning(f'critics contain {n_bad} non-finite values.')
 
         with torch.no_grad():
-            target_observation = observation.repeat_interleave(
-                self._num_actors, dim=0)
+            rows = torch.arange(batch_size)
+            action = action[rows, idx]
             target_critics, target_critic_state = self._target_critic_network(
-                (actor_encoding, (target_observation, action)), state.target_critic)
+                ((observation, action), actor_tokens), state.target_critic)
 
         if not torch.isfinite(target_critics).all():
             # check for any NaN/Inf
             n_bad = int((~torch.isfinite(target_critics)).sum().item())
             logging.warning(f'target_critics contain {n_bad} non-finite values.')
 
-        # [T*B, n_actor]
-        target_critics = target_critics.reshape(-1, self._num_actors)
+        # [T*B]
         target_critics = target_critics.detach()
 
         state = BafcCriticState(
@@ -443,14 +440,12 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         if self._train_mode == TrainMode.actor:
             if self._actor_update_counter % self._actor_utd == 0:
                 self._train_mode = TrainMode.critic
-                self._critic_network.set_obs_action_batch_dominate(False)
                 for p in self._actor_networks.parameters():
                     p.requires_grad_(False)
                 self._actor_eval_samples.requires_grad_(True)
         elif self._train_mode == TrainMode.critic:
             if self._critic_update_counter % self._critic_utd == 0:
                 self._train_mode = TrainMode.actor
-                self._critic_network.set_obs_action_batch_dominate(True)
                 for p in self._actor_networks.parameters():
                     p.requires_grad_(True)
                 self._actor_eval_samples.requires_grad_(False)
@@ -467,7 +462,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
             action, action_state = self._predict_action(
                 self._actor_networks, inputs.observation, 
                 state=state.action, train=True)
-            action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
+            # action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
             actor_state, actor_info = self._actor_train_step(
                 inputs.observation, action, 
                 rollout_info.bootstrap_mask, state.actor)
@@ -483,7 +478,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 action, action_state = self._predict_action(
                     self._actor_networks, inputs.observation, 
                     state=state.action, train=True)
-                action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
+                # action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
                 actor_state, actor_info = self._actor_train_step(
                     inputs.observation, action, 
                     rollout_info.bootstrap_mask, state.actor)
@@ -500,7 +495,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
                 # [B, n_actor, d_a]
                 action, action_state = self._predict_action(
                     actor_net, inputs.observation, state=state.action, train=True)
-                action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
+                # action = action.reshape(-1, action.shape[-1])  # [B*n_actor, d_a]
                 critic_state, critic_info = self._critic_train_step(
                     inputs.observation, state.critic, rollout_info, action)
                 actor_info = LossInfo(extra=BafcActorInfo())
@@ -526,23 +521,22 @@ class BafcAlgorithm(OffPolicyAlgorithm):
     def calc_loss(self, info: BafcInfo):
         assert not self._is_eval
         actor_loss = info.actor
-        eval_action_loss = actor_loss.extra.action_loss
-        param_loss = actor_loss.extra.param_loss
+
+        ## eval_action gradient v2:
+        eval_action_loss = actor_loss.extra.eval_action_loss
         if isinstance(eval_action_loss, torch.Tensor):
             eval_action_loss = eval_action_loss.mean()
-        if isinstance(param_loss, torch.Tensor):
-            param_loss = param_loss.mean()
+
         if self._train_mode == TrainMode.actor:
             critic_loss = LossInfo()
         else:
             critic_loss = self._calc_critic_loss(info)
 
         loss = math_ops.add_ignore_empty(actor_loss.loss, critic_loss.loss)
-        scalar_loss = math_ops.add_ignore_empty(eval_action_loss, param_loss)
 
         return LossInfo(
             loss=loss,
-            scalar_loss=scalar_loss,
+            scalar_loss=eval_action_loss,
             extra=BafcLossInfo(
                 actor=actor_loss.extra, critic=critic_loss.extra))
 
@@ -550,7 +544,7 @@ class BafcAlgorithm(OffPolicyAlgorithm):
         with alf.summary.record_if(lambda: self._do_critic_summary):
             critic_info = info.critic
             critic_losses = []
-            # [T, B, n_actor]
+            # [T, B]
             critic_loss = self._critic_loss(
                 info=info,
                 value=critic_info.critic,
