@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 import torch
 import torch.nn as nn
 
@@ -382,3 +383,173 @@ class SocialAttentionNetwork(PreprocessorNetwork):
         v, _ = self._simple_attention(query=query, key=key, value=value)
         out = v.reshape(B, -1)
         return out, state
+
+
+class PositionalEncoding(nn.Module):
+    """
+    Implements the sinusoidal positional encoding from "Attention is All You Need".
+    Adds positional information to token embeddings.
+    """
+
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Create constant 'pe' matrix with values dependent on
+        # pos and i
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)  # shape (1, max_len, d_model)
+
+        # register_buffer ensures 'pe' is not a model parameter, but is saved with the model
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: Tensor of shape (batch_size, seq_len, d_model)
+        Returns:
+            Tensor of same shape with positional encodings added.
+        """
+        x = x + self.pe[:, : x.size(1), :]
+        return self.dropout(x)
+
+
+@alf.configurable
+class TransformerEncoder(PreprocessorNetwork):
+    """A BERT-like transformer encoder.
+
+    The following is the pseudocode for the computation:
+
+    .. code-block:: python
+
+        for i in range(num_prememory_layers):
+            core, inputs = T_i([core, inputs], [core, inputs])
+        for j in range(num_memory_layers):
+            new_core, inputs = TM_j([memory_j, core, inputs], [core, inputs])
+            memory_j.write(core)
+            core = new_core
+        return core, new_memory_state
+
+    where T_i denotes the ``TransformerBlock``  for the i-th prememory layers
+    and TM_j denotes the ``TransformerBlock`` for the j-th memory layers. memory_j
+    is an ``FIFOMemory`` object (not to be confused with the ``memory`` argument
+    of ``TransformerBlock.forward() function``)
+
+    The core embedding serves the same purpose of [CLS] in the BERT model in [1],
+    which is to generate a fixed dimensional representation for downstream tasks.
+    Different from BERT, which only has one [CLS] embedding, we allow the option
+    of having multiple core embeddings. In addition to generating a fixed dimensional
+    representation, the core embedding is also used to update the memory.
+
+    [1]. Devlin et al. BERT: Pre-training of Deep Bidirectional Transformers for
+         Language Understanding
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 num_layers,
+                 num_attention_heads,
+                 d_ff=None,
+                 dropout=0.1,
+                 batch_first=True,
+                 norm_first=False,
+                 core_size=1,
+                 return_core_only=True,
+                 input_preprocessors=None,
+                 name="TransformerNetwork"):
+        """
+        Args:
+            input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
+                the input. If ``input_tensor_spec`` is not nested, it should
+                represent a rank-2 tensor of shape ``[input_size, d_model]``, where
+                ``input_size`` is the length of the input sequence, and ``d_model``
+                is the dimension of embedding.
+            num_prememory_layers (int): number of TransformerBlock calculation
+                without using memory
+            num_attention_heads (int): number of attention heads for each
+                ``TransformerBlock``
+            d_ff (int): the size of the hidden layer of the feedforward network
+                in each ``TransformerBlock``. If None, ``TransformerBlock`` will
+                calculate it as ``4*d_model``.
+            core_size (int): size of core (i.e. number of embeddings of core)
+            input_preprocessors (nested Network|nn.Module): a nest of
+                stateless preprocessor networks, each of which will be applied to the
+                corresponding input. If not None, then it must have the same
+                structure with ``input_tensor_spec``. If any element is None, then
+                it will be treated as math_ops.identity. This arg is helpful if
+                you want to have separate preprocessings for different inputs by
+                configuring a gin file without changing the code. For example,
+                embedding a discrete input before concatenating it to another
+                continuous vector. The output_spec of each input preprocessor i
+                should be [input_size_i, d_model]. The result of all the preprocessors
+                will be concatenated as a Tensor of shape ``[batch_size, input_size, d_model]``,
+                where ``input_size = sum_i input_size_i``.
+        """
+        preprocessing_combiner = None
+        if input_preprocessors is not None:
+            preprocessing_combiner = NestConcat(dim=-2)
+        super().__init__(
+            input_tensor_spec,
+            input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
+            name=name)
+
+        assert self._processed_input_tensor_spec.ndim == 2
+
+        input_length, d_model = self._processed_input_tensor_spec.shape
+        if d_ff is None:
+            d_ff = 4 * d_model
+        self._core_size = core_size
+        # self._state_spec = [mem.state_spec for mem in self._memories]
+        self._num_layers = num_layers
+
+        # Positional encoding
+        self._pos_encoder = PositionalEncoding(d_model, dropout, input_length)
+
+        # Transformer encoder layers
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=num_attention_heads,
+            dim_feedforward=d_ff,
+            dropout=dropout,
+            batch_first=batch_first,
+            norm_first=norm_first,
+            activation="gelu")
+
+        self._transformer = nn.TransformerEncoder(encoder_layer, num_layers)
+        self._norm = nn.LayerNorm(d_model)
+        self._return_core_only = return_core_only
+
+    # @property
+    # def state_spec(self):
+    #     return self._state_spec
+
+    def forward(self, inputs, state=()):
+        """
+        Args:
+            inputs (nested Tensor): consistent with ``input_tensor_spec`` provided
+                at ``__init__()``
+            state (nested Tensor): states
+        Returns:
+            - Tensor: shape is [B, core_size * d_model] if ``return_core_only``,
+                    and [B, core_size + input_size, d_model] if not ``return_core_only``,
+                    where ``input_size`` is the number of embeddings from the
+                    (processed) input.
+            - nested Tensor: network states.
+        """
+        z, state = super().forward(inputs, state)
+        batch_size = z.shape[0]
+        query = self._pos_encoder(z)
+        output = self._transformer(query)
+
+        if self._return_core_only:
+            return output[:, :self._core_size, :].reshape(batch_size,
+                                                          -1), state
+        else:
+            return output, state
