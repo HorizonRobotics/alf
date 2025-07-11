@@ -19,13 +19,16 @@ import math
 import torch
 
 import alf
+import alf.layers as layers
 import alf.utils.math_ops as math_ops
 import alf.nest as nest
 from alf.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec
 
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork, ParallelEncodingNetwork
+from .network import Network
 from .preprocessors import CosineEmbeddingPreprocessor
+from .transformer_networks import TransformerEncoder, TransformerNetwork
 from alf.networks.neural_graphs.relational_transformer import RelationalTransformer
 
 
@@ -51,38 +54,6 @@ def _check_action_specs_for_critic_networks(
                                                      action_spec)
 
     nest.map_structure(_check_individual, action_spec, action_input_processors)
-
-
-# def CrossBatchConcat(tensors, second_batch_dominate: bool = False):
-#     assert len(tensors) == 2, "Only support 2 tensors."
-#     if isinstance(tensor1, TensorSpec):
-#         tensors = nest.map_structure(
-#             lambda spec: spec.zeros(outer_dims=(1, )), tensors)
-#         second_batch_dominate = False
-#
-#     tensor1, tensor2 = tensors 
-#     batch1, dim1 = tensor1.shape
-#     batch2, dim2 = tensor2.shape
-#
-#     if second_batch_dominate:
-#         assert batch2 % batch1 == 0, (
-#             "shape[0] of tensor2 has to be multiples of shape[0] of tensor1 "
-#             "if second_batch_dominate is True.")
-#         num_repeat1 = int(batch2 / batch1)
-#
-#         # repeat the entirety of tensor1 num_repeat1 times -> [batch2, dim1]
-#         tensor1_repeated = tensor1.repeat(num_repeat1, 1)
-#
-#         tensor2_repeated = tensor2
-#     else:
-#         # repeat the entirety of tensor1 batch2 times -> [batch1 * batch2, dim1]
-#         tensor1_repeated = tensor1.repeat(num_repeat1, 1)
-#
-#         # repeat each row of tensor2 batch1 times -> [batch1 * batch2, dim2]
-#         tensor2_repeated = tensor2.repeat_interleave(batch1, dim=0)
-#
-#     # concatenate along the last dim -> [batch1 * batch2 or batch2, dim1 + dim2]
-#     return torch.cat([tensor1_repeated, tensor2_repeated], dim=1)
 
 
 @alf.configurable
@@ -383,6 +354,161 @@ class FuncCriticNetwork(EncodingNetwork):
 
     def set_obs_action_batch_dominate(self, flag: bool):
         self._obs_action_batch_dominate = flag
+
+
+@alf.configurable
+class FuncCriticMemTransformer(TransformerNetwork):
+    """Creates an instance of ``FuncCriticNetwork`` for estimating action-value of
+
+    The network take a tuple of (actor_tokens, (observation, action)) as input to 
+    computes the action-value for the given an observation under input actor.
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 output_tensor_spec=TensorSpec(()),
+                 obs_action_encoding_dim=64,
+                 observation_input_processors=None,
+                 observation_input_processors_ctor=None,
+                 observation_preprocessing_combiner=None,
+                 observation_conv_layer_params=None,
+                 observation_fc_layer_params=None,
+                 action_input_processors=None,
+                 action_input_processors_ctor=None,
+                 action_preprocessing_combiner=None,
+                 action_fc_layer_params=None,
+                 observation_action_combiner=None,
+                 obs_action_joint_fc_layer_params=None,
+                 num_transformer_layers=4,
+                 num_attention_heads=1,
+                 d_ff=None,
+                 transformer_dropout=0.0,
+                 use_core_embedding=False,
+                 memory_size=0,
+                 num_memory_layers=0,
+                 centralized_memory=True,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 use_fc_bn=False,
+                 use_fc_ln=False,
+                 name="FuncCriticTransformer"):
+
+        assert input_tensor_spec[1].shape[-1] == obs_action_encoding_dim, (
+            "actor tokens and obs_action token should have same embedding dim.")
+
+        obs_action_encoder = CriticNetwork(
+            input_tensor_spec[0],
+            output_tensor_spec=TensorSpec(shape=(1, obs_action_encoding_dim)),
+            observation_input_processors=observation_input_processors,
+            observation_input_processors_ctor=observation_input_processors_ctor,
+            observation_preprocessing_combiner=observation_preprocessing_combiner,
+            observation_fc_layer_params=observation_fc_layer_params,
+            action_input_processors=action_input_processors,
+            action_input_processors_ctor=action_input_processors_ctor,
+            action_preprocessing_combiner=action_preprocessing_combiner,
+            action_fc_layer_params=action_fc_layer_params,
+            observation_action_combiner=observation_action_combiner,
+            joint_fc_layer_params=obs_action_joint_fc_layer_params,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
+            last_layer_activation=activation,
+            last_use_fc_bn=use_fc_bn,
+            last_use_fc_ln=use_fc_ln,
+            name=name + ".obs_action_encoder")
+
+        super().__init__(
+            input_tensor_spec=input_tensor_spec,
+            num_prememory_layers=num_transformer_layers,
+            num_attention_heads=num_attention_heads,
+            d_ff=4 * obs_action_encoding_dim if d_ff is None else d_ff,
+            core_size=1,
+            return_core_only=True,
+            input_preprocessors=(obs_action_encoder, None),
+            name=name)
+
+        self._last_fc = layers.FC(obs_action_encoding_dim, output_tensor_spec.numel)
+
+    def forward(self, inputs, state=()):
+        embedding, state = super().forward(inputs, state)
+        return self._last_fc(embedding), state
+
+
+@alf.configurable
+class FuncCriticTransformer(TransformerEncoder):
+    """Creates an instance of ``FuncCriticNetwork`` for estimating action-value of
+
+    The network take a tuple of (actor_tokens, (observation, action)) as input to 
+    computes the action-value for the given an observation under input actor.
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 output_tensor_spec=TensorSpec(()),
+                 obs_action_encoding_dim=64,
+                 observation_input_processors=None,
+                 observation_input_processors_ctor=None,
+                 observation_preprocessing_combiner=None,
+                 observation_conv_layer_params=None,
+                 observation_fc_layer_params=None,
+                 action_input_processors=None,
+                 action_input_processors_ctor=None,
+                 action_preprocessing_combiner=None,
+                 action_fc_layer_params=None,
+                 observation_action_combiner=None,
+                 obs_action_joint_fc_layer_params=None,
+                 num_transformer_layers=4,
+                 num_attention_heads=1,
+                 d_ff=None,
+                 transformer_dropout=0.0,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 use_fc_bn=False,
+                 use_fc_ln=False,
+                 name="FuncCriticTransformer"):
+
+        assert input_tensor_spec[1].shape[-1] == obs_action_encoding_dim, (
+            "actor tokens and obs_action token should have same embedding dim.")
+
+        obs_action_encoder = CriticNetwork(
+            input_tensor_spec[0],
+            output_tensor_spec=TensorSpec(shape=(1, obs_action_encoding_dim)),
+            observation_input_processors=observation_input_processors,
+            observation_input_processors_ctor=observation_input_processors_ctor,
+            observation_preprocessing_combiner=observation_preprocessing_combiner,
+            observation_fc_layer_params=observation_fc_layer_params,
+            action_input_processors=action_input_processors,
+            action_input_processors_ctor=action_input_processors_ctor,
+            action_preprocessing_combiner=action_preprocessing_combiner,
+            action_fc_layer_params=action_fc_layer_params,
+            observation_action_combiner=observation_action_combiner,
+            joint_fc_layer_params=obs_action_joint_fc_layer_params,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            use_fc_bn=use_fc_bn,
+            use_fc_ln=use_fc_ln,
+            last_layer_activation=activation,
+            last_use_fc_bn=use_fc_bn,
+            last_use_fc_ln=use_fc_ln,
+            name=name + ".obs_action_encoder")
+
+        super().__init__(
+            input_tensor_spec=input_tensor_spec,
+            num_layers=num_transformer_layers,
+            num_attention_heads=num_attention_heads,
+            d_ff=4 * obs_action_encoding_dim if d_ff is None else d_ff,
+            dropout=transformer_dropout,
+            core_size=1,
+            return_core_only=True,
+            input_preprocessors=(obs_action_encoder, None),
+            name=name)
+
+        self._last_fc = layers.FC(obs_action_encoding_dim, output_tensor_spec.numel)
+
+    def forward(self, inputs, state=()):
+        embedding, state = super().forward(inputs, state)
+        return self._last_fc(embedding), state
 
 
 @alf.configurable
