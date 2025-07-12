@@ -390,14 +390,10 @@ class BafcAlgorithm(OffPolicyAlgorithm):
     def _critic_train_step(self, observation, state: BafcCriticState, 
                            rollout_info: BafcInfo, action): 
         if self._critic_update_counter % 2 == 1 and self._use_target_actor:
-            actor_params = (self._target_actor_networks.weight_params, 
-                            self._target_actor_networks.bias_params) 
             eval_action = self._target_actor_networks(
                 self._actor_eval_samples, 
                 full_neurons=self._actor_eval_type != 'last')[0]
         else:
-            actor_params = (self._actor_networks.weight_params, 
-                            self._actor_networks.bias_params) 
             eval_action = self._actor_networks(
                 self._actor_eval_samples, 
                 full_neurons=self._actor_eval_type != 'last')[0]
