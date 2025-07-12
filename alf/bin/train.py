@@ -65,6 +65,8 @@ from alf.utils import common
 from alf.utils.per_process_context import PerProcessContext
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
+from alf.algorithms.distributed_off_policy_algorithm import (
+    DistributedTrainer, DistributedUnroller)
 
 
 def _define_flags():
@@ -190,8 +192,6 @@ def _train(root_dir, local_rank=-1, rank=0, world_size=1):
     if trainer_conf.ml_type == 'rl':
         ddp_rank = rank if world_size > 1 else -1
         if FLAGS.as_remote_trainer or FLAGS.as_remote_unroller:
-            from alf.algorithms.distributed_off_policy_algorithm import (
-                DistributedTrainer, DistributedUnroller)
             if FLAGS.as_remote_trainer:
                 alg_wrapper_ctor = DistributedTrainer
             else:
