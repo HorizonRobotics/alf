@@ -461,6 +461,7 @@ class TransformerEncoder(PreprocessorNetwork):
                  norm_first=False,
                  core_size=1,
                  return_core_only=True,
+                 core_embedding_dim=None,
                  input_preprocessors=None,
                  name="TransformerNetwork"):
         """
@@ -478,6 +479,9 @@ class TransformerEncoder(PreprocessorNetwork):
                 in each ``TransformerBlock``. If None, ``TransformerBlock`` will
                 calculate it as ``4*d_model``.
             core_size (int): size of core (i.e. number of embeddings of core)
+            return_core_only (bool): if True, will only return the core embedding
+            core_embedding_dim (int): dimension of the output embedding of the core,
+                if not None, an extra FC layer is used to project the core embedding.
             input_preprocessors (nested Network|nn.Module): a nest of
                 stateless preprocessor networks, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
@@ -525,10 +529,10 @@ class TransformerEncoder(PreprocessorNetwork):
         self._transformer = nn.TransformerEncoder(encoder_layer, num_layers)
         self._norm = nn.LayerNorm(d_model)
         self._return_core_only = return_core_only
-
-    # @property
-    # def state_spec(self):
-    #     return self._state_spec
+        if return_core_only and core_embedding_dim is not None:
+            self._core_fc = layers.FC(core_size * d_model, core_embedding_dim)
+        else:
+            self._core_fc = None
 
     def forward(self, inputs, state=()):
         """
@@ -547,9 +551,13 @@ class TransformerEncoder(PreprocessorNetwork):
         batch_size = z.shape[0]
         query = self._pos_encoder(z)
         output = self._transformer(query)
+        output = self._norm(output)
 
         if self._return_core_only:
-            return output[:, :self._core_size, :].reshape(batch_size,
-                                                          -1), state
+            core_embedding = output[:, :self._core_size, :].reshape(
+                batch_size, -1)
+            if self._core_fc is not None:
+                core_embedding = self._core_fc(core_embedding)
+            return core_embedding, state
         else:
             return output, state
