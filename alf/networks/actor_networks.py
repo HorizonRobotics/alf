@@ -286,7 +286,9 @@ class ActorFCNetwork(Network):
                  fc_layer_params=None,
                  n_groups=None,
                  use_bias=True,
+                 use_ln=False,
                  activation=torch.relu_,
+                 squashing_func=torch.tanh,
                  kernel_initializer=None,
                  last_kernel_initializer=None,
                  name="ActorFCNetwork"):
@@ -300,6 +302,8 @@ class ActorFCNetwork(Network):
             n_groups (int): number of parallel groups.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            squashing_func: the activation function used to squashing
+                the output to the range :math:`(-1, 1)`. Default to ``tanh``.
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a ``variance_scaling_initializer``
                 with uniform distribution will be used.
@@ -334,6 +338,7 @@ class ActorFCNetwork(Network):
                     n=n_groups,
                     activation=activation,
                     use_bias=use_bias,
+                    use_ln=use_ln,
                     kernel_initializer=kernel_initializer))
             input_size = size
 
@@ -341,18 +346,28 @@ class ActorFCNetwork(Network):
             last_kernel_initializer = functools.partial(
                 torch.nn.init.uniform_, a=-0.003, b=0.003)
 
-        self._fc_layers.append(
-            layers.ParallelFC(
-                input_size,
-                action_spec.shape[0],
-                n=n_groups,
-                activation=math_ops.identity,
-                use_bias=use_bias,
-                kernel_initializer=last_kernel_initializer))
+        self._squashing_func = squashing_func
+        self._action_layer = layers.ParallelFC(
+            input_size,
+            action_spec.shape[0],
+            n=n_groups,
+            use_bias=use_bias,
+            kernel_initializer=last_kernel_initializer)
+
+        # self._fc_layers.append(
+        #     layers.ParallelFC(
+        #         input_size,
+        #         action_spec.shape[0],
+        #         n=n_groups,
+        #         activation=math_ops.identity,
+        #         use_bias=use_bias,
+        #         kernel_initializer=last_kernel_initializer))
 
         self._output_spec = action_spec
-        self._weight_params = [m.weight for m in self._fc_layers]
-        self._bias_params = [m.bias for m in self._fc_layers]
+        self._weight_params = [m.weight for m in self._fc_layers] + [
+            self._action_layer.weight]
+        self._bias_params = [m.bias for m in self._fc_layers] + [
+            self._action_layer.bias]
         self._network_kwargs = {
             "input_tensor_spec": input_tensor_spec,
             "action_spec": action_spec,
@@ -394,21 +409,36 @@ class ActorFCNetwork(Network):
             state: not used, just keeps the interface same with other networks.
         """
         x = inputs
-        if not full_neurons:
-            for fc_l in self._fc_layers:
-                x = fc_l(x, id=id)
-            return x, state
-        else:
-            neurons = []
-            if len(self._fc_layers) > 0:
-                x = self._fc_layers[0](x, store_inputs=True)
-                neurons.append(self._fc_layers[0].inputs)
-                neurons.append(x)
-                if len(self._fc_layers) > 1:
-                    for fc_l in self._fc_layers[1:]:
-                        x = fc_l(x)
-                        neurons.append(x)
-            else:
+        neurons = []
+        for fc_l in self._fc_layers:
+            x = fc_l(x, id=id)
+            if full_neurons:
                 neurons.append(x)
 
+        pre_activation = self._action_layer(x, id=id)
+        action = self._squashing_func(pre_activation)
+        action = spec_utils.scale_to_spec(action, self._output_spec)
+
+        if full_neurons:
+            neurons.append(action)
             return neurons, state
+        return action, state
+
+        # if not full_neurons:
+        #     for fc_l in self._fc_layers:
+        #         x = fc_l(x, id=id)
+        #     return x, state
+        # else:
+        #     neurons = []
+        #     if len(self._fc_layers) > 0:
+        #         x = self._fc_layers[0](x, store_inputs=True)
+        #         neurons.append(self._fc_layers[0].inputs)
+        #         neurons.append(x)
+        #         if len(self._fc_layers) > 1:
+        #             for fc_l in self._fc_layers[1:]:
+        #                 x = fc_l(x)
+        #                 neurons.append(x)
+        #     else:
+        #         neurons.append(x)
+        #
+        #     return neurons, state
