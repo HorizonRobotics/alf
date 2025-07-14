@@ -26,6 +26,15 @@ joint_hidden_layers = (256, 256)
 # actor_hidden_layers = (32, 32)
 # joint_hidden_layers = (32, 32)
 optimizer = Adam(lr=5e-4)
+use_obs_normalizer = True
+obs_normalizer_clipping = True
+
+if use_obs_normalizer:
+    data_transformer_ctor = ObservationNormalizer
+else:
+    data_transformer_ctor = None
+if obs_normalizer_clipping:
+    alf.config('ObservationNormalizer', clipping=1.)
 
 actor_network_cls = partial(
     alf.networks.ActorFCNetwork,
@@ -80,6 +89,7 @@ alf.config(
 alf.config(
     'TrainerConfig',
     algorithm_ctor=Agent,
+    data_transformer_ctor=data_transformer_ctor,
     enable_amp=False,
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
