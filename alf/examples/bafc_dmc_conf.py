@@ -17,17 +17,18 @@ import torch
 
 import alf
 from alf.algorithms.agent import Agent
-from alf.algorithms.bafc_algorithm import BafcAlgorithm
+from alf.algorithms.bafc_algorithm_v1 import BafcAlgorithm
 from alf.algorithms.data_transformer import ObservationNormalizer
 from alf.examples.benchmarks.dm_control import dmc_conf
 from alf.optimizers import Adam
 
 actor_hidden_layers = (256, 256)
+joint_hidden_layers = (256, 256)
 # actor_hidden_layers = (32, 32)
+# joint_hidden_layers = (32, 32)
 optimizer = Adam(lr=5e-4)
 use_obs_normalizer = True
 obs_normalizer_clipping = False
-critic_use_memory = False
 
 if use_obs_normalizer:
     data_transformer_ctor = ObservationNormalizer
@@ -40,22 +41,11 @@ actor_network_cls = partial(
     alf.networks.ActorFCNetwork,
     fc_layer_params=actor_hidden_layers)
 
-if critic_use_memory:
-    critic_network_cls = partial(
-        alf.networks.FuncCriticMemTransformer,
-        obs_action_joint_fc_layer_params=dmc_conf.hidden_layers,
-        num_attention_heads=1,
-        num_transformer_layers=4,
-        num_memory_layers=0,
-        memory_size=256,
-        use_fc_ln=True)  # turning on critic layernorm is crucial for high utd
-else:
-    critic_network_cls = partial(
-        alf.networks.FuncCriticTransformer,
-        obs_action_joint_fc_layer_params=dmc_conf.hidden_layers,
-        num_attention_heads=1,
-        num_transformer_layers=4,
-        use_fc_ln=True)  # turning on critic layernorm is crucial for high utd
+critic_network_cls = partial(
+    alf.networks.FuncCriticNetwork,
+    obs_action_joint_fc_layer_params=dmc_conf.hidden_layers,
+    actor_obs_action_joint_fc_layer_params=joint_hidden_layers,
+    use_fc_ln=True)  # turning on critic layernorm is crucial for high utd
 
 alf.config('Agent',
            optimizer=optimizer,
@@ -74,6 +64,8 @@ alf.config(
     eval_samples_init_method='normal',
     eval_samples_clipping=obs_normalizer_clipping,
     actor_eval_type='last',
+    actor_encoding_dim=256,
+    obs_action_encoding_dim=128,
     actor_utd=1,
     critic_utd=5,
     target_critic_tau=0.005,
@@ -82,6 +74,12 @@ alf.config(
     target_actor_tau=0.05,
     target_actor_period=1,
     target_actor_use_ema=False)
+
+alf.config(
+    'TransformerEncoder',
+    num_layers=4,
+    num_attention_heads=1,
+    dropout=0.0)
 
 alf.config(
     'TrainerConfig',
