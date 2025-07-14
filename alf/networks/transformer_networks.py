@@ -527,10 +527,11 @@ class TransformerEncoder(PreprocessorNetwork):
             activation="gelu")
 
         self._transformer = nn.TransformerEncoder(encoder_layer, num_layers)
-        self._norm = nn.LayerNorm(d_model)
+        # self._norm = nn.LayerNorm(d_model)
         self._return_core_only = return_core_only
         if return_core_only and core_embedding_dim is not None:
-            self._core_fc = layers.FC(core_size * d_model, core_embedding_dim)
+            self._core_fc = layers.FC(core_size * d_model, core_embedding_dim,
+                                      use_ln=True)
         else:
             self._core_fc = None
 
@@ -551,7 +552,7 @@ class TransformerEncoder(PreprocessorNetwork):
         batch_size = z.shape[0]
         query = self._pos_encoder(z)
         output = self._transformer(query)
-        output = self._norm(output)
+        # output = self._norm(output)
 
         if self._return_core_only:
             core_embedding = output[:, :self._core_size, :].reshape(
