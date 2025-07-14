@@ -69,7 +69,7 @@ BafcLossInfo = namedtuple(
 
 
 @alf.configurable
-class BafcAlgorithmV1(OffPolicyAlgorithm):
+class BafcAlgorithm(OffPolicyAlgorithm):
     r"""Boostrapped Actor and Functional Critic algorithm, 
 
     ::

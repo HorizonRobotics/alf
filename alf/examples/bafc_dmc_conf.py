@@ -17,7 +17,7 @@ import torch
 
 import alf
 from alf.algorithms.agent import Agent
-from alf.algorithms.bafc_algorithm_v1 import BafcAlgorithm
+from alf.algorithms.bafc_algorithm import BafcAlgorithm
 from alf.algorithms.data_transformer import ObservationNormalizer
 from alf.examples.benchmarks.dm_control import dmc_conf
 from alf.optimizers import Adam
@@ -59,8 +59,8 @@ alf.config(
     use_target_actor=False,
     use_bootstrap_actors=True,
     bootstrap_mask_prob=0.8,
-    num_actor_eval_samples=512,
-    # num_actor_eval_samples=64,
+    # num_actor_eval_samples=512,
+    num_actor_eval_samples=64,
     eval_samples_init_method='normal',
     eval_samples_clipping=obs_normalizer_clipping,
     actor_eval_type='last',

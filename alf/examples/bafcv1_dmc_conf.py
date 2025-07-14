@@ -17,7 +17,7 @@ import torch
 
 import alf
 from alf.algorithms.agent import Agent
-from alf.algorithms.bafc_algorithm import BafcAlgorithmV1
+from alf.algorithms.bafc_algorithm_v1 import BafcAlgorithmV1
 from alf.algorithms.data_transformer import ObservationNormalizer
 from alf.examples.benchmarks.dm_control import dmc_conf
 from alf.optimizers import Adam
