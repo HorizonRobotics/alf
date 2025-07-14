@@ -26,12 +26,15 @@ actor_hidden_layers = (256, 256)
 # actor_hidden_layers = (32, 32)
 optimizer = Adam(lr=5e-4)
 use_obs_normalizer = True
-critic_use_memory = True
+obs_normalizer_clipping = False
+critic_use_memory = False
 
 if use_obs_normalizer:
     data_transformer_ctor = ObservationNormalizer
 else:
     data_transformer_ctor = None
+if obs_normalizer_clipping:
+    alf.config('ObservationNormalizer', clipping=1.)
 
 actor_network_cls = partial(
     alf.networks.ActorFCNetwork,
@@ -68,7 +71,8 @@ alf.config(
     bootstrap_mask_prob=0.8,
     num_actor_eval_samples=512,
     # num_actor_eval_samples=64,
-    use_normalized_eval_samples=use_obs_normalizer,
+    eval_samples_init_method='normal',
+    eval_samples_clipping=obs_normalizer_clipping,
     actor_eval_type='last',
     actor_utd=1,
     critic_utd=5,
