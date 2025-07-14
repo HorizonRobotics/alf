@@ -94,7 +94,8 @@ class BafcAlgorithmV1(OffPolicyAlgorithm):
                  use_bootstrap_actors=False,
                  bootstrap_mask_prob=0.8,
                  num_actor_eval_samples=256,
-                 use_normalized_eval_samples=False,
+                 eval_samples_init_method='normal',
+                 eval_samples_clipping=False,
                  actor_eval_type='full',
                  actor_encoder_cls=TransformerEncoder,
                  actor_encoding_dim=128,
@@ -123,6 +124,8 @@ class BafcAlgorithmV1(OffPolicyAlgorithm):
         """
         assert actor_eval_type in ['full', 'except_input', 'last_two', 'last'], (
             r"{actor_eval_type} in not supported.")
+        assert eval_samples_init_method in ['normal', 'uniform'], (
+            r"init method {eval_samples_init_method} is not supported.")
         if actor_utd is None and critic_utd is None:
             self._train_mode = TrainMode.standard
         else:
@@ -153,9 +156,11 @@ class BafcAlgorithmV1(OffPolicyAlgorithm):
             input_tensor_spec=observation_spec,
             action_spec=action_spec,
             n_groups=num_actors)
-        if use_normalized_eval_samples:
+        if eval_samples_init_method == 'normal':
             actor_eval_samples = 2 * torch.randn(
                 num_actor_eval_samples, observation_spec.shape[0])
+            if eval_samples_clipping:
+                actor_eval_samples.clip_(min=-1.0, max=1.0)
         else:
             actor_eval_samples = 2 * torch.rand(
                 num_actor_eval_samples, observation_spec.shape[0]) - 1
@@ -179,6 +184,8 @@ class BafcAlgorithmV1(OffPolicyAlgorithm):
             actor_token_spec, core_embedding_dim=actor_encoding_dim)
 
         # functional critic
+        if actor_encoding_dim is None:
+            actor_encoding_dim = num_actor_eval_samples
         actor_spec = TensorSpec(shape=(actor_encoding_dim,))
         obs_action_spec = (observation_spec, action_spec)
         critic_network = critic_network_cls(
@@ -363,6 +370,13 @@ class BafcAlgorithmV1(OffPolicyAlgorithm):
             eval_action = eval_action[-2:]
 
         actor_tokens, _ = self._tokenize_actor_out(eval_action) 
+
+        # # check for any NaN/Inf
+        # if not torch.isfinite(actor_tokens).all():
+        #     n_bad = int((~torch.isfinite(actor_tokens)).sum().item())
+        #     logging.warning(f"shape {actor_tokens.shape} actor_tokens")
+        #     logging.warning(f"contain {n_bad} non-finite values.")
+
         actor_encoding = self._actor_encoder(actor_tokens)[0]
         # [B * n_actor, d]
         critic_observation = observation.repeat_interleave(
@@ -432,21 +446,11 @@ class BafcAlgorithmV1(OffPolicyAlgorithm):
         # [T*B, n_actor]
         critics = critics.reshape(-1, self._num_actors)
 
-        if not torch.isfinite(critics).all():
-            # check for any NaN/Inf
-            n_bad = int((~torch.isfinite(critics)).sum().item())
-            logging.warning(f'critics contain {n_bad} non-finite values.')
-
         with torch.no_grad():
             target_observation = observation.repeat_interleave(
                 self._num_actors, dim=0)
             target_critics, target_critic_state = self._target_critic_network(
                 (actor_encoding, (target_observation, action)), state.target_critic)
-
-        if not torch.isfinite(target_critics).all():
-            # check for any NaN/Inf
-            n_bad = int((~torch.isfinite(target_critics)).sum().item())
-            logging.warning(f'target_critics contain {n_bad} non-finite values.')
 
         # [T*B, n_actor]
         target_critics = target_critics.reshape(-1, self._num_actors)

@@ -22,17 +22,20 @@ from alf.algorithms.data_transformer import ObservationNormalizer
 from alf.examples.benchmarks.dm_control import dmc_conf
 from alf.optimizers import Adam
 
-actor_hidden_layers = (256, 128)
+actor_hidden_layers = (256, 256)
 joint_hidden_layers = (256, 256)
 # actor_hidden_layers = (32, 32)
 # joint_hidden_layers = (32, 32)
 optimizer = Adam(lr=5e-4)
 use_obs_normalizer = True
+obs_normalizer_clipping = False
 
 if use_obs_normalizer:
     data_transformer_ctor = ObservationNormalizer
 else:
     data_transformer_ctor = None
+if obs_normalizer_clipping:
+    alf.config('ObservationNormalizer', clipping=1.)
 
 actor_network_cls = partial(
     alf.networks.ActorFCNetwork,
@@ -58,12 +61,13 @@ alf.config(
     bootstrap_mask_prob=0.8,
     num_actor_eval_samples=512,
     # num_actor_eval_samples=64,
-    use_normalized_eval_samples=use_obs_normalizer,
-    actor_eval_type='full',
+    eval_samples_init_method='normal',
+    eval_samples_clipping=obs_normalizer_clipping,
+    actor_eval_type='last',
     actor_encoding_dim=256,
     obs_action_encoding_dim=128,
     actor_utd=1,
-    critic_utd=2,
+    critic_utd=5,
     target_critic_tau=0.005,
     target_critic_period=1,
     target_critic_use_ema=False,
@@ -80,6 +84,7 @@ alf.config(
 alf.config(
     'TrainerConfig',
     algorithm_ctor=Agent,
+    data_transformer_ctor=data_transformer_ctor,
     enable_amp=False,
     whole_replay_buffer_training=False,
     clear_replay_buffer=False,
