@@ -1119,8 +1119,7 @@ def play(root_dir,
             ignored_parameter_prefixes=ignored_parameter_prefixes,
             including_optimizer=False,
             including_replay_buffer=False,
-            including_data_transformers=True,
-            strict=True)
+            including_data_transformers=True)
     except FileNotFoundError as e:
         if checkpoint_step == 'best':
             recovered_global_step = checkpointer.load(
@@ -1128,8 +1127,7 @@ def play(root_dir,
                 ignored_parameter_prefixes=ignored_parameter_prefixes,
                 including_optimizer=False,
                 including_replay_buffer=False,
-                including_data_transformers=True,
-                strict=True)
+                including_data_transformers=True)
         else:
             raise e
     # The behavior of some algorithms is based by scheduler using training
