@@ -1640,12 +1640,15 @@ class Algorithm(AlgorithmInterface):
         if self._config.empty_cache:
             torch.cuda.empty_cache()
 
+        grad_step = 0
         indices = None
         for u in range(num_updates):
             if mini_batch_size < batch_size:
                 indices = torch.randperm(batch_size,
                                          device=experience.step_type.device)
             for b in range(0, batch_size, mini_batch_size):
+                alf.summary.set_grad_step_counter(grad_step)
+                grad_step += 1
 
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)

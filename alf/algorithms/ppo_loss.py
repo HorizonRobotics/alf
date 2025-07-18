@@ -135,6 +135,15 @@ class PPOLoss(ActorCriticLoss):
             log_prob_clipping=self._log_prob_clipping,
             check_numerics=self._check_numerics,
             debug_summaries=self._debug_summaries)
+        if alf.summary.get_grad_step_counter() == 0:
+            # For the first gradient step in one iteration, the importance ratios
+            # should be 1. Summarize them so that we can notice something is wrong
+            # if they are not 1.
+            with alf.summary.record_if(lambda: True), scope:
+                alf.summary.histogram('importance_ratio0', importance_ratio)
+                alf.summary.scalar('importance_ratio0_mean',
+                                   importance_ratio.mean())
+
         # Pessimistically choose the maximum objective value for clipped and
         # unclipped importance ratios.
         pg_objective = -importance_ratio * advantages
@@ -143,9 +152,12 @@ class PPOLoss(ActorCriticLoss):
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with scope:
-                alf.summary.histogram('pg_objective', pg_objective)
-                alf.summary.histogram('pg_objective_clipped',
-                                      pg_objective_clipped)
+                alf.summary.scalar('pg_objective', pg_objective.mean())
+                alf.summary.scalar('pg_objective_clipped',
+                                   pg_objective_clipped.mean())
+                alf.summary.scalar('objective_clip_fraction',
+                                   (pg_objective_clipped
+                                    > pg_objective).float().mean())
 
         if self._check_numerics:
             assert torch.all(torch.isfinite(policy_gradient_loss))

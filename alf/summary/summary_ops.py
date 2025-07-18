@@ -336,6 +336,39 @@ def set_global_counter(counter):
     update_progress("global_counter", counter)
 
 
+_grad_step_counter = 0
+
+
+def get_grad_step_counter():
+    """Get which gradient step we are at in the current global step.
+
+    For many algorithms, each global step (iteration) may have multiple gradient
+    steps. Typically, only the last gradient step will be recorded in summary.
+    This function return the current gradient step counter. If an algorithm needs
+    to record summaries at a different gradient step, it can use
+    `with record_if(lambda: alf.summary.get_grad_step_counter() == n):`
+    to record summaries at gradient step `n`.
+
+    Returns:
+        int: the current gradient step counter. The first gradient step in a
+            global step is 0, the second is 1, etc.
+    """
+    return _grad_step_counter
+
+
+def set_grad_step_counter(counter):
+    """Set the current gradient step counter.
+
+    This function is used by ALF framework to set the gradient step counter
+    before running the gradient step.
+
+    Args:
+        counter (int): the gradient step counter to set
+    """
+    global _grad_step_counter
+    _grad_step_counter = counter
+
+
 class record_if(object):
     """Context manager to set summary recording on or off according to `cond`."""
 
