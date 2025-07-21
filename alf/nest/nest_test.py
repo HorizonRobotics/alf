@@ -225,6 +225,55 @@ class TestMapStructureUpTo(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(out, ab_tuple(a=6, b=15))
 
 
+class TestMapStructureUpToWithPath(alf.test.TestCase):
+
+    def test_basic_functionality(self):
+        shallow_nest = ['a', ['b', 'c']]
+        deep1 = ['v0', ['v1', 'v2']]
+        deep2 = ['u0', ['u1', 'u2']]
+        called = []
+
+        def func(path, v1, v2):
+            called.append((path, v1, v2))
+            return f"{path}:{v1}+{v2}"
+
+        out = nest.py_map_structure_up_to_with_path(shallow_nest, func, deep1,
+                                                    deep2)
+
+        self.assertEqual(out, ["0:v0+u0", ["1.0:v1+u1", "1.1:v2+u2"]])
+        self.assertEqual(called, [("0", "v0", "u0"), ("1.0", "v1", "u1"),
+                                  ("1.1", "v2", "u2")])
+
+    def test_up_to_functionality(self):
+        shallow_nest = {"a": None, "b": {"c": None}}
+        deep1 = {"a": 1, "b": {"c": [5.0, 10.0]}}
+        deep2 = {"a": 10, "b": {"c": [2.0, 20.0]}}
+        called = []
+
+        def func(path, v1, v2):
+            called.append((path, v1, v2))
+            return v1 + v2
+
+        out = nest.py_map_structure_up_to_with_path(shallow_nest, func, deep1,
+                                                    deep2)
+
+        self.assertEqual(out, {"a": 11, "b": {"c": [5.0, 10.0, 2.0, 20.0]}})
+        self.assertEqual(called, [("a", 1, 10),
+                                  ("b.c", [5.0, 10.0], [2.0, 20.0])])
+
+    def test_structure_mismatch_raises(self):
+        shallow_nest = {"a": {"b": None}}
+        deep1 = {"a": {"b": 1}}
+        deep2 = {"b": 2}
+
+        def dummy_func(path, v1, v2):
+            return None
+
+        with self.assertRaises(AssertionError):
+            nest.py_map_structure_up_to_with_path(shallow_nest, dummy_func,
+                                                  deep1, deep2)
+
+
 class TestPackSequenceAs(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters(nest.py_pack_sequence_as, cnest.pack_sequence_as)

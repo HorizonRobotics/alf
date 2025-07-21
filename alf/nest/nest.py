@@ -533,6 +533,54 @@ def py_map_structure_up_to(shallow_nest, func, *nests):
             format(shallow_nest, nests))
 
 
+def py_map_structure_up_to_with_path(shallow_nest, func, *nests):
+    """
+    Like py_map_structure_up_to, but passes the symbolic path string to func.
+
+    Args:
+        shallow_nest: shallow structure that defines how far to traverse.
+        func: callable with signature `func(path, *nests)`.
+        *nests: nested structures to apply `func` to.
+
+    Returns:
+        A nested structure with the same shape as `shallow_nest`.
+    """
+    assert nests, "There should be at least one input nest!"
+
+    def _map(shallow, path, *current_nests):
+        if not is_nested(shallow):
+            return func(path, *current_nests)
+        for nest in current_nests:
+            assert_same_type(shallow, nest)
+            assert_same_length(shallow, nest)
+        zipped = [shallow] + list(current_nests)
+        if isinstance(shallow, list) or is_unnamedtuple(shallow):
+            ret = [
+                _map(sub[0], path + ("." if path else "") + str(idx), *sub[1:])
+                for idx, sub in enumerate(zip(*zipped))
+            ]
+            ret = type(shallow)(ret)
+        else:
+            ret = {}
+            for fields_and_values in zip(
+                    *[extract_fields_from_nest(n) for n in zipped]):
+                field = fields_and_values[0][0]
+                values = [fv[1] for fv in fields_and_values]
+                ret[field] = _map(values[0],
+                                  path + ("." if path else "") + field,
+                                  *values[1:])
+            ret = type(shallow)(**ret)
+        return ret
+
+    try:
+        return _map(shallow_nest, "", *nests)
+    except AssertionError as e:
+        logging.error(str(e))
+        raise AssertionError(
+            "map_structure_up_to_with_path() failed for shallow_nest {} and nests {}"
+            .format(shallow_nest, nests))
+
+
 def fast_map_structure_flatten(func, structure, *flat_structure):
     """Applies func to entries of ``flat_structure`` and returns a packed
     structure according to ``structure``."""
