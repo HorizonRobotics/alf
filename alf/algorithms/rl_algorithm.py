@@ -31,7 +31,7 @@ from alf.data_structures import (AlgStep, Experience, make_experience,
                                  BasicRLInfo)
 from alf.utils import common, dist_utils, summary_utils
 from alf.utils.summary_utils import record_time
-from alf.utils.distributed import data_distributed_when
+from alf.utils.distributed import data_distributed_when, make_ddp_performer
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
@@ -203,7 +203,7 @@ class RLAlgorithm(Algorithm):
                              debug_summaries=debug_summaries,
                              name=name)
         self._is_eval = is_eval
-
+        self._first_unroll = True
         self._env = env
         self._observation_spec = observation_spec
         self._action_spec = action_spec
@@ -779,6 +779,19 @@ class RLAlgorithm(Algorithm):
 
         return steps
 
+    def _unroll(self, unroll_length: int):
+        if self._first_unroll:
+            self._first_unroll = False
+            if self._ddp_activated_rank != -1:
+                # Even though we don't update parameters during unroll, we still need to
+                # wrap self.unroll in DDP so that the parameters are synchronized across
+                # all workers before the unroll starts. Otherwise, the parameters across
+                # the workers are different for the first unroll.
+                performer = make_ddp_performer(self, self.unroll.__func__)
+                return performer(unroll_length)
+
+        return self.unroll(unroll_length)
+
     def _unroll_iter_off_policy(self):
         """Perform an unroll before the next off-policy training iteration.
 
@@ -822,7 +835,7 @@ class RLAlgorithm(Algorithm):
                     # need to remember whether summary has been written between
                     # two unrolls.
                     with self._ensure_rollout_summary:
-                        experience = self.unroll(unroll_length)
+                        experience = self._unroll(unroll_length)
                         if experience:
                             self.summarize_rollout(experience)
                             self.summarize_metrics()
