@@ -1196,7 +1196,10 @@ def play(root_dir,
 
     # Sync the progress for all environments in case parallel_play > 1
     env.sync_progress()
-    while episodes < num_episodes:
+    num_env_steps = 0
+    max_env_steps = alf.get_config_value('TrainerConfig.num_env_steps')
+    while (episodes < num_episodes and (max_env_steps <= 0 or
+                                        num_env_steps < max_env_steps)):
         # For parallel play, we cannot naively pick the first finished `num_episodes`
         # episodes to estimate the average return (or other statistics) as it can be
         # biased. Instead, we stick to using the first episodes_per_env episodes
@@ -1226,6 +1229,7 @@ def play(root_dir,
         time_step.step_type[invalid] = StepType.FIRST
         started = time_step.step_type != StepType.FIRST
         episode_length += started
+        num_env_steps += started.sum().item()
         episode_reward += started * time_step.reward.sum()
 
         for i in range(batch_size):
