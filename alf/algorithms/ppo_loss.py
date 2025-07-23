@@ -138,11 +138,18 @@ class PPOLoss(ActorCriticLoss):
         if alf.summary.get_grad_step_counter() == 0:
             # For the first gradient step in one iteration, the importance ratios
             # should be 1. Summarize them so that we can notice something is wrong
-            # if they are not 1.
-            with alf.summary.record_if(lambda: True), scope:
-                alf.summary.histogram('importance_ratio0', importance_ratio)
-                alf.summary.scalar('importance_ratio0_mean',
-                                   importance_ratio.mean())
+            # if they are not 1. Note that due to floating point precision,
+            # importance_ratio0 may not be exactly 1, but it should be very close
+            # to 1.
+            global_step = alf.summary.get_global_counter()
+            summary_interval = alf.get_config_value(
+                'TrainerConfig.summary_interval')
+            if global_step < summary_interval or global_step % summary_interval == 0:
+                with alf.summary.record_if(lambda: True), scope:
+                    alf.summary.histogram('importance_ratio0_minus1',
+                                          importance_ratio - 1)
+                    alf.summary.scalar('importance_ratio0_minus1_abs',
+                                       (importance_ratio - 1).abs().mean())
 
         # Pessimistically choose the maximum objective value for clipped and
         # unclipped importance ratios.
