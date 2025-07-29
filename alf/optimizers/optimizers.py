@@ -490,6 +490,10 @@ def wrap_optimizer(cls):
             if (not self._ignore_param_not_requiring_grad or p.requires_grad)
         ]
 
+        if len(param_group['params']) == 0:
+            # If no params are in this group, ignore adding
+            return
+
         lr_scheduler = param_group.get('lr_scheduler', None)
         if isinstance(lr_scheduler, Callable):
             self._lr_schedulers.append(lr_scheduler)
