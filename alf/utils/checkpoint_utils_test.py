@@ -366,68 +366,38 @@ class TestWithCycle(alf.test.TestCase):
                     '_sub_alg2._optimizers.0',
                     {
                         'state': {},
-                        'param_groups': [
-                            {
-                                'lr': 0.2,
-                                'betas': (0.9, 0.999),
-                                'capturable': False,
-                                'differentiable': False,
-                                'eps': 1e-08,
-                                'foreach': None,
-                                'fused': None,
-                                'weight_decay': 0,
-                                'amsgrad': False,
-                                'maximize': False,
-                                'params': []
-                            },
-                            {
-                                'lr': 0.2,
-                                'betas': (0.9, 0.999),
-                                'capturable': False,
-                                'differentiable': False,
-                                'eps': 1e-08,
-                                'foreach': None,
-                                'fused': None,
-                                'weight_decay': 0,
-                                'amsgrad': False,
-                                'maximize': False,
-                                'params': [0]  # order index instead of id
-                            }
-                        ]
+                        'param_groups': [{
+                            'lr': 0.2,
+                            'betas': (0.9, 0.999),
+                            'capturable': False,
+                            'differentiable': False,
+                            'eps': 1e-08,
+                            'foreach': None,
+                            'fused': None,
+                            'weight_decay': 0,
+                            'amsgrad': False,
+                            'maximize': False,
+                            'params': [0]  # order index instead of id
+                        }]
                     }),
                 ('_param_list.0', torch.tensor([0.])),
                 (
                     '_optimizers.0',
                     {
                         'state': {},
-                        'param_groups': [
-                            {
-                                'lr': 0.1,
-                                'betas': (0.9, 0.999),
-                                'capturable': False,
-                                'differentiable': False,
-                                'eps': 1e-08,
-                                'foreach': None,
-                                'fused': None,
-                                'weight_decay': 0,
-                                'amsgrad': False,
-                                'maximize': False,
-                                'params': []
-                            },
-                            {
-                                'lr': 0.1,
-                                'betas': (0.9, 0.999),
-                                'capturable': False,
-                                'differentiable': False,
-                                'eps': 1e-08,
-                                'foreach': None,
-                                'fused': None,
-                                'weight_decay': 0,
-                                'amsgrad': False,
-                                'maximize': False,
-                                'params': [0, 1]  # order indices instead of id
-                            }
-                        ]
+                        'param_groups': [{
+                            'lr': 0.1,
+                            'betas': (0.9, 0.999),
+                            'capturable': False,
+                            'differentiable': False,
+                            'eps': 1e-08,
+                            'foreach': None,
+                            'fused': None,
+                            'weight_decay': 0,
+                            'amsgrad': False,
+                            'maximize': False,
+                            'params': [0, 1]  # order indices instead of id
+                        }]
                     })
             ])
 
