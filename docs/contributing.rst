@@ -11,10 +11,10 @@ Workflow
 
 .. code-block:: bash
 
-    pip install pre-commit==1.17.0
-    pip install cpplint==1.4.4
+    pip install pre-commit==4.2.0
+    pip install cpplint==2.0.1
     pip install pydocstyle==4.0.0
-    pip install pylint==2.3.1
+    pip install pylint==3.3.6
     pip install yapf==0.43.0
     sudo apt install clang-format
 
