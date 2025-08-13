@@ -108,9 +108,8 @@ def _define_flags():
 FLAGS = flags.FLAGS
 
 
+@common.mark_eval
 def play():
-    alf.utils.common.set_exe_mode(alf.utils.common.EXE_MODE_EVAL)
-
     if torch.cuda.is_available():
         alf.set_default_device("cuda")
 
