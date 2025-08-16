@@ -766,7 +766,7 @@ class RLAlgorithm(Algorithm):
         with record_time("time/train"):
             if self._config.mask_out_loss_for_last_step:
                 valid_masks = (experience.step_type
-                            != StepType.LAST).to(torch.float32)
+                               != StepType.LAST).to(torch.float32)
             else:
                 valid_masks = None
             loss_info, params = self.update_with_gradient(
