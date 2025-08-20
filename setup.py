@@ -26,7 +26,7 @@ setup(
         'clang-format==17.0.6',
         'cnest@git+https://github.com/HorizonRobotics/cnest.git',
         'cpplint==1.6.1',  # linters etc. needs to be consistent with the CI docker:
-                           # .ci-cd/Dockerfile_py3.11_torch2.2.cpu
+        # .ci-cd/Dockerfile_py3.11_torch2.2.cpu
         'fasteners==0.19',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym==0.15.4',
