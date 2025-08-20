@@ -25,7 +25,8 @@ setup(
         'box2d-py==2.3.8',  # used by Box2D-based environments (e.g. BipedalWalker, LunarLander)
         'clang-format==17.0.6',
         'cnest@git+https://github.com/HorizonRobotics/cnest.git',
-        'cpplint==2.0.1',
+        'cpplint==1.6.1',  # linters etc. needs to be consistent with the CI docker:
+                           # .ci-cd/Dockerfile_py3.11_torch2.2.cpu
         'fasteners==0.19',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym==0.15.4',
@@ -36,12 +37,13 @@ setup(
         'opencv-python==4.11.0.86',
         'pathos==0.3.3',
         'pillow>=8',
-        'pre-commit==4.2.0',
+        'pre-commit==3.6.2',
         'protobuf==6.30.2',
         'psutil==7.0.0',
         'pybind11==2.13.6',
         'pybullet==2.5.0',
-        'pylint==3.3.6',
+        'pydocstyle==6.3.0',
+        'pylint==2.17.7',
         'pyglet==1.3.2',  # higher version breaks classic control rendering
         'rectangle-packer==2.0.4',
         'tensorboard==2.19.0',
@@ -49,7 +51,8 @@ setup(
         'torch==2.6.0',
         'torchtext==0.18.0',
         'torchvision==0.21.0',
-        'wheel'
+        'wheel',
+        'yapf==0.43.0',
     ],  # And any other dependencies alf needs
     cmdclass={'build_ext': build_ext},
     extras_require={

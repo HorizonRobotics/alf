@@ -64,6 +64,8 @@ RUN wget http://www.atarimania.com/roms/Atari-2600-VCS-ROM-Collection.zip -O /tm
     && rm /tmp/roms.zip && rm -rf /tmp/ROMS
 
 # install code style tools
+# if any of the following are updated, we need to update
+# setup.py and alf/docs/contributing.rst as well.
 RUN pip3 install  pre-commit==3.6.2 \
     cpplint==1.6.1 \
     clang-format==17.0.6 \
