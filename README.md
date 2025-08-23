@@ -3,7 +3,7 @@
     <img src="docs/images/logo.png" width = "500" alt="ALF-logo"/>
 </p>
 
-![CI](https://github.com/HorizonRobotics/alf/workflows/CI/badge.svg?branch=pytorch)
+[![CI](https://github.com/HorizonRobotics/alf/actions/workflows/test.yml/badge.svg?branch=pytorch)](https://github.com/HorizonRobotics/alf/actions/workflows/test.yml)
 
 Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing on the flexibility and easiness of implementing complex algorithms involving many different components. ALF is built on [PyTorch](https://pytorch.org/). The development of [previous version](https://github.com/HorizonRobotics/alf/tree/tensorflow) based on [Tensorflow 2.1](https://www.tensorflow.org/) has stopped as of Feb 2020.
 
