@@ -1061,6 +1061,7 @@ def play(root_dir,
          algorithm,
          checkpoint_step="best",
          num_episodes=10,
+         num_steps=None,
          sleep_time_per_step=0.01,
          record_file=None,
          last_step_repeats=0,
@@ -1088,6 +1089,7 @@ def play(root_dir,
             checkpoint_step is 'best', the checkpoint with suffix 'best' will
             be loaded if it can be found, otherwise the latest one will be loaded.
         num_episodes (int): number of episodes to play
+        num_steps (int): if provided, play for exactly this many steps instead of full episodes
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
@@ -1173,6 +1175,7 @@ def play(root_dir,
     episode_reward = torch.zeros(batch_size)
     episode_length = torch.zeros(batch_size, dtype=torch.int32)
     episodes = 0
+    total_steps = 0
     metrics = [
         alf.metrics.NumberOfEpisodes(),
         alf.metrics.AverageReturnMetric(buffer_size=num_episodes,
@@ -1194,7 +1197,13 @@ def play(root_dir,
 
     # Sync the progress for all environments in case parallel_play > 1
     env.sync_progress()
-    while episodes < num_episodes:
+    # Determine termination condition
+    if num_steps is not None:
+        termination_condition = lambda: total_steps < num_steps
+    else:
+        termination_condition = lambda: episodes < num_episodes
+
+    while termination_condition():
         # For parallel play, we cannot naively pick the first finished `num_episodes`
         # episodes to estimate the average return (or other statistics) as it can be
         # biased. Instead, we stick to using the first episodes_per_env episodes
@@ -1225,6 +1234,10 @@ def play(root_dir,
         started = time_step.step_type != StepType.FIRST
         episode_length += started
         episode_reward += started * time_step.reward.sum()
+
+        # Increment step counter for step-based termination
+        if num_steps is not None:
+            total_steps += started.sum().item()
 
         for i in range(batch_size):
             if time_step.step_type[i] == StepType.LAST:

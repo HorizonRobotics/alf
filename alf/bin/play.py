@@ -63,6 +63,8 @@ def _define_flags():
         'could throw this error: _scatter_add kernel does not have a '
         'deterministic implementation.')
     flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
+    flags.DEFINE_integer('num_steps', None,
+                         "If provided, play for exactly this many steps instead of full episodes")
     flags.DEFINE_integer(
         'last_step_repeats', 0,
         "If >0, will repeat such number of times for the last "
@@ -180,6 +182,7 @@ def play():
             algorithm,
             checkpoint_step=FLAGS.checkpoint_step,
             num_episodes=FLAGS.num_episodes,
+            num_steps=FLAGS.num_steps,
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
             append_blank_frames=FLAGS.append_blank_frames,
