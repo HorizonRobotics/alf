@@ -1493,7 +1493,8 @@ class Algorithm(AlgorithmInterface):
 
             if self._replay_buffer.num_environments * self._replay_buffer.max_length < config.initial_collect_steps:
                 common.warning_once(
-                    f"The replay buffer is too small to store the initial_collect_steps "
+                    f"The replay buffer is too small {self._replay_buffer.max_length}"
+                    f" * num_env {self._replay_buffer.num_environments} to store the "
                     f"({config.initial_collect_steps}) samples. With this training will never start. "
                     f"If this was not intended, please increase the replay buffer length or reduce "
                     f"the initial_collect_steps.")

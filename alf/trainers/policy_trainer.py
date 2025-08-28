@@ -1023,7 +1023,8 @@ def _step(algorithm,
     policy_step = algorithm.predict_step(transformed_time_step, policy_state)
 
     if recorder and selective_criteria_func is None:
-        recorder.capture_frame(policy_step.info, time_step.is_last())
+        recorder.capture_frame(policy_step.info,
+                               torch.all(time_step.is_last()))
 
     elif recorder and selective_criteria_func is not None:
         env_frame = recorder.capture_env_frame()
@@ -1149,7 +1150,8 @@ def play(root_dir,
     recorder = None
     if record_file is not None:
         # TODO: support for batched environments
-        assert batch_size == 1, 'video recording is not supported for parallel play'
+        assert batch_size == 1 or env.batched, \
+            'video recording is not supported for parallel play'
         # Note that ``VideoRecorder`` will import ``matplotlib`` which might have
         # some side effects on xserver (if its backend needs graphics).
         # This is incompatible with RLBench parallel envs >1 (or other
