@@ -1089,7 +1089,8 @@ def play(root_dir,
             checkpoint_step is 'best', the checkpoint with suffix 'best' will
             be loaded if it can be found, otherwise the latest one will be loaded.
         num_episodes (int): number of episodes to play
-        num_steps (int): if provided, play for exactly this many steps instead of full episodes
+        num_steps (int): if provided, play for exactly this many steps.
+            Will override num_episodes.
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
