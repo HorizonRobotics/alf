@@ -14,7 +14,7 @@
 
 import functools
 import inspect
-from loguru import logger
+from absl import logging as logger
 import numpy as np
 import random
 import torch
