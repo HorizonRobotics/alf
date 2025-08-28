@@ -234,7 +234,9 @@ def create_environment(env_name='CartPole-v0',
                                         env_load_fn)
 
     if batched and batch_size_per_env == num_parallel_environments:
-        logger.info(f"Creating batched {env_name} with batch size {num_parallel_environments}")
+        logger.info(
+            f"Creating batched {env_name} with batch size {num_parallel_environments}"
+        )
         alf_env = env_load_fn(env_name, batch_size=num_parallel_environments)
         if not alf_env.is_tensor_based:
             logger.info(f"{alf_env} is not tensor based, wrapping it with "
