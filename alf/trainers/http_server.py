@@ -20,6 +20,7 @@ import pprint
 import socketserver
 from typing import Callable
 import urllib.parse
+import base64
 
 ROUTES = {}  # Dictionary to store endpoint-to-handler mapping
 HELP_TEXT = {}  # Dictionary to store help text for each endpoint
@@ -186,5 +187,46 @@ def home_handler(request):
     request.send_text(pprint.pformat(HELP_TEXT))
 
 
+def render_handler(request):
+    """Handle /render endpoint by getting environment render image."""
+    try:
+        import alf
+        env = alf.get_env()
+        image = env.render()
+
+        if image is None:
+            request.send_html("<html><body><h1>No image available</h1></body></html>")
+            return
+
+        if isinstance(image, np.ndarray):
+            if len(image.shape) == 3 and image.shape[2] == 3:
+                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            else:
+                image_rgb = image
+
+            _, buffer = cv2.imencode(".jpg", image_rgb)
+            image_base64 = base64.b64encode(buffer).decode('utf-8')
+
+            html = f'''
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Environment Render</title>
+            </head>
+            <body>
+                <h1>Environment Render</h1>
+                <img src="data:image/jpeg;base64,{image_base64}" alt="Environment Render" style="max-width: 100%; height: auto;">
+            </body>
+            </html>
+            '''
+            request.send_html(html)
+        else:
+            request.send_html("<html><body><h1>Invalid image format</h1></body></html>")
+    except Exception as e:
+        error_html = f"<html><body><h1>Error rendering environment</h1><p>{str(e)}</p></body></html>"
+        request.send_html(error_html, 500)
+
+
 # Registering endpoints
 register_endpoint("/", home_handler)
+register_endpoint("/render", render_handler, "Get environment render image")
