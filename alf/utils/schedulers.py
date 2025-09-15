@@ -343,6 +343,25 @@ class CyclicalScheduler(Scheduler):
             "This scheduler is cyclical and does not have a final value.")
 
 
+@alf.configurable
+class CustomScheduler(Scheduler):
+
+    def __init__(self, progress_type: str, func: Callable[[float], float]):
+        """
+        Args:
+            progress_type: one of "percent", "iterations", "env_steps"
+            func: a callable function that takes a single argument
+                which is the current progress and returns the scheduled value.
+        """
+        super().__init__(progress_type)
+        assert callable(func)
+        self._func = func
+
+    def __call__(self):
+        progress = self.progress()
+        return self._func(progress)
+
+
 ValueOrScheduler = Union[Number, Scheduler]
 
 
