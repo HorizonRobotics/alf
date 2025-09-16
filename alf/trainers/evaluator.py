@@ -14,6 +14,7 @@
 
 from absl import logging
 from absl import flags
+import ctypes
 import math
 import torch.multiprocessing as mp
 import os
@@ -39,6 +40,30 @@ from collections import namedtuple
 EvalJob = namedtuple("EvalJob",
                      ["type", "global_counter", "step_metrics", "state_dict"],
                      defaults=[None] * 4)
+
+
+def _allow_child_to_ptrace(child_pid: int) -> None:
+    """
+    In the *parent* process: allow a given child to ptrace us.
+    This relaxes Yama's ptrace restriction for this specific relationship.
+
+    Requires: kernel.yama.ptrace_scope <= 1 (default on many distros).
+    The value of kernel.yama.ptrace_scope can be checked with:
+        cat /proc/sys/kernel/yama/ptrace_scope
+    """
+    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+
+    # prctl constants from <linux/prctl.h>:
+    PR_SET_PTRACER = 0x59616D61
+
+    def _check(ret, what):
+        if ret != 0:
+            err = ctypes.get_errno()
+            raise OSError(err, f"{what} failed: {os.strerror(err)}")
+
+    # Whitelist the specific child PID
+    _check(libc.prctl(PR_SET_PTRACER, ctypes.c_ulong(int(child_pid)), 0, 0, 0),
+           "PR_SET_PTRACER")
 
 
 class Evaluator(object):
@@ -75,6 +100,9 @@ class Evaluator(object):
                                              conf_file, pre_configs, num_envs,
                                              config.root_dir, seed))
             self._worker.start()
+
+            # Need this to avoid "pidfd_getfd: Operation not permitted"
+            _allow_child_to_ptrace(self._worker.pid)
         else:
             self._env = create_environment(for_evaluation=True,
                                            num_parallel_environments=num_envs,
