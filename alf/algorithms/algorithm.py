@@ -29,7 +29,7 @@ import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
-from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep
+from alf.data_structures import AlgStep, Experience, LossInfo, StepType, TimeStep
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.optimizers.utils import GradientNoiseScaleEstimator
 from alf.utils.checkpoint_utils import (is_checkpoint_enabled,
@@ -423,6 +423,14 @@ class Algorithm(AlgorithmInterface):
         self._observers.append(lambda exp: self._replay_buffer.add_batch(
             exp, exp.env_id))
 
+    def preprocess_experience_for_replay(self, exp: Experience) -> Experience:
+        """Preprocess experience before storing to replay buffer.
+
+        This is overridden, for example, by the DistributedUnroller to store the
+        task-generator reward, instead of the env reward, to the replay buffer.
+        """
+        return exp
+
     def observe_for_replay(self, exp):
         r"""Record an experience in a replay buffer.
 
@@ -431,6 +439,7 @@ class Algorithm(AlgorithmInterface):
                 :math:`[B, \ldots]`, where :math:`B` is the batch size of the
                 batched environment.
         """
+        exp = self.preprocess_experience_for_replay(exp)
         exp = common.prune_exp_replay_state(exp, self._use_rollout_state,
                                             self.rollout_state_spec,
                                             self.train_state_spec)
