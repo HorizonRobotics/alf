@@ -21,10 +21,11 @@ import torch
 import torch.nn as nn
 
 import alf
+from alf.trainers.evaluator import _allow_child_to_ptrace
 import alf.utils.common as common
 
 
-class WraningOnceTest(alf.test.TestCase):
+class WarningOnceTest(alf.test.TestCase):
 
     def setUp(self):
         logging.use_absl_handler()
@@ -113,11 +114,11 @@ def _test_tensor_sharing():
         # CUDA tensor is always shared
         assert m.z.is_shared()
 
-    start_method = mp.get_start_method()
-    mp.set_start_method('spawn', force=True)
+    ctx = mp.get_context('spawn')
     # Change ``m`` in the child process
-    process = mp.Process(target=_test_worker, args=(m, ))
+    process = ctx.Process(target=_test_worker, args=(m, ))
     process.start()
+    _allow_child_to_ptrace(process.pid)
     process.join()
 
     # numpy array should not be modified
@@ -129,8 +130,6 @@ def _test_tensor_sharing():
     assert m.x.is_shared() and torch.all(m.x == torch.ones([2]).cpu()), (
         "Your pytorch version has a different behavior of sharing CPU tensors "
         "between processes. Please report the version to the ALF team.")
-
-    mp.set_start_method(start_method, force=True)
 
 
 class TensorSharingTest(alf.test.TestCase):

@@ -218,8 +218,8 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
     conflicts with the training code.
 
     Args:
-        replay_buffer: an instance of ``RelayBuffer`` to store the received
-            experience data. It must have the flag ``allow_multiprocess=True``.
+        replay_buffer: an instance of ``ReplayBuffer`` to store the received
+            experience data.  It must allow multi-processing.
         new_unroller_ips_and_ports: a queue to store the ip and port of
             new unrollers.
         worker_id: the id of the worker; used by each unroller to route the
@@ -506,17 +506,22 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                                                       self._use_rollout_state,
                                                       self.rollout_state_spec,
                                                       self.train_state_spec)
-        self._set_replay_buffer(exp)
 
-        mp.set_start_method('spawn', force=True)
+        # enable multi_processing in replay_buffer here, because we need to
+        # receive data in a subprocess and process the data in the main process.
+        ctx = mp.get_context('spawn')
+        self._set_replay_buffer(exp, mp_context=ctx)
+        assert self._replay_buffer._allow_multiprocess, (
+            "The replay buffer must allow multi-processing.")
+
         # start the data receiver subprocess
         # Need to create the subprocess with 'spawn' so that we can pass a Module
         # object to subprocess with tensors in shared memory.
-        process = mp.Process(target=receive_experience_data,
-                             args=(self._replay_buffer,
-                                   self._new_unroller_ips_and_ports,
-                                   self._ddp_rank),
-                             daemon=True)
+        process = ctx.Process(target=receive_experience_data,
+                              args=(self._replay_buffer,
+                                    self._new_unroller_ips_and_ports,
+                                    self._ddp_rank),
+                              daemon=True)
         process.start()
         _allow_child_to_ptrace(process.pid)
 

@@ -63,7 +63,7 @@ class ReplayBuffer(RingBuffer):
                  recent_data_ratio=0.,
                  with_replacement=False,
                  device="cpu",
-                 allow_multiprocess=False,
+                 mp_context=None,
                  keep_episodic_info=None,
                  record_episodic_return=False,
                  default_return=-1000.,
@@ -95,7 +95,11 @@ class ReplayBuffer(RingBuffer):
                 poissible for ``get_batch()``. If True, a batch may contains
                 duplicated samples.
             device (string): "cpu" or "cuda" where tensors are created.
-            allow_multiprocess (bool): whether multiprocessing is supported.
+            mp_context (multiprocessing context): the context to be used to
+                create locks and queues in the buffer. If None, no
+                multiprocessing features will be enabled.  If you use multiple
+                processes to read or write the buffer, make sure this is set
+                correctly to avoid race conditions.
             keep_episodic_info (bool): index episode start and ending positions.
                 If None, its value will be set to True if ``num_earliest_frames_ignored``>0
             record_episodic_return (bool): If True, computes and stores episodic return for
@@ -123,7 +127,7 @@ class ReplayBuffer(RingBuffer):
                          num_environments,
                          max_length=max_length,
                          device=device,
-                         allow_multiprocess=allow_multiprocess,
+                         mp_context=mp_context,
                          name=name)
         self._num_earliest_frames_ignored = num_earliest_frames_ignored
         if num_earliest_frames_ignored > 0:

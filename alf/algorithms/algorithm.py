@@ -389,13 +389,16 @@ class Algorithm(AlgorithmInterface):
         self._replay_buffer_max_length = max_length
         self._prioritized_sampling = prioritized_sampling
 
-    def _set_replay_buffer(self, sample_exp):
+    def _set_replay_buffer(self, sample_exp, mp_context=None):
         """Initialize the replay buffer for the very first time given a
         sample experience which is used to infer the specs for the buffer
         initialization.
 
         Args:
             sample_exp (nested Tensor):
+            mp_context (multiprocessing context): the context to be used to
+                create locks and queues in the replay buffer. If None, the
+                default context will be used.
         """
         if (self._replay_buffer_num_envs is None
                 or self._replay_buffer_max_length is None
@@ -419,6 +422,7 @@ class Algorithm(AlgorithmInterface):
             max_length=self._replay_buffer_max_length,
             prioritized_sampling=self._prioritized_sampling,
             num_earliest_frames_ignored=self._num_earliest_frames_ignored,
+            mp_context=mp_context,
             name=f'{self._name}_replay_buffer')
         self._observers.append(lambda exp: self._replay_buffer.add_batch(
             exp, exp.env_id))

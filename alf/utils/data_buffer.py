@@ -14,7 +14,7 @@
 """Classes for storing data for sampling."""
 
 import functools
-from multiprocessing import Event, RLock
+from multiprocessing import Event
 import time
 
 import torch
@@ -83,7 +83,7 @@ class RingBuffer(nn.Module):
                  num_environments,
                  max_length=1024,
                  device="cpu",
-                 allow_multiprocess=False,
+                 mp_context=None,
                  name="RingBuffer"):
         """
         Args:
@@ -93,8 +93,11 @@ class RingBuffer(nn.Module):
             max_length (int): The maximum number of items that can be stored
                 for a single environment.
             device (str): A torch device to place the Variables and ops.
-            allow_multiprocess (bool): if ``True``, allows multiple processes
-                to write and read the buffer asynchronously.
+            mp_context (multiprocessing context): the context to be used to
+                create locks and queues in the buffer.  If None, no
+                multiprocessing features will be enabled.  If you use multiple
+                processes to read or write the buffer, make sure this is set
+                correctly to avoid race conditions.
             name (str): name of the replay buffer.
         """
         super().__init__()
@@ -102,22 +105,28 @@ class RingBuffer(nn.Module):
         self._max_length = max_length
         self._num_envs = num_environments
         self._device = device
-        self._allow_multiprocess = allow_multiprocess
         self._data_spec = data_spec
-        # allows outside to stop enqueue and dequeue processes from waiting
-        self._stop = Event()
-        if allow_multiprocess:
-            self._lock = RLock()  # re-entrant lock
+
+        # TODO(hobot): Check, when the replay_buffer is being accessed by
+        # multiple processes, the replay_buffer allows multi-processing.
+        if mp_context is not None:
+            self._allow_multiprocess = True
+            self._lock = mp_context.RLock()  # re-entrant lock
             # notify a finished dequeue event, so blocked enqueues may start
-            self._dequeued = Event()
+            self._dequeued = mp_context.Event()
             self._dequeued.set()
             # notify a finished enqueue event, so blocked dequeues may start
-            self._enqueued = Event()
+            self._enqueued = mp_context.Event()
             self._enqueued.clear()
+            # allows outside to stop enqueue and dequeue processes from waiting
+            self._stop = mp_context.Event()
         else:
+            self._allow_multiprocess = False
             self._lock = None
             self._dequeued = None
             self._enqueued = None
+            # allows outside to stop enqueue and dequeue processes from waiting
+            self._stop = Event()
 
         buffer_id = [0]
         self._env_ids = torch.arange(self._num_envs, device=device)
@@ -149,7 +158,7 @@ class RingBuffer(nn.Module):
             self._buffer = alf.nest.py_map_structure_with_path(
                 _create_buffer, data_spec)
 
-        if allow_multiprocess:
+        if self._allow_multiprocess:
             self.share_memory()
 
     @property
