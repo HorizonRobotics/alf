@@ -100,6 +100,8 @@ def add_method(cls):
 def allow_child_to_ptrace(child_pid: int) -> None:
     """In the *parent* process: allow a given child to ptrace us.
 
+    This avoids the "pidfd_getfd: Operation not permitted" run time errors.
+
     This relaxes Yama's ptrace restriction for this specific relationship.
 
     Requires: ``kernel.yama.ptrace_scope <= 1`` (default on many distros).
