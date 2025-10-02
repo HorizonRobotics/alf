@@ -328,11 +328,12 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         (False, True),
         (True, False),
     ])
-    def test_replay_buffer(self, allow_multiprocess, with_replacement):
+    def test_replay_buffer(self, use_mp_context, with_replacement):
+        mp_ctx = mp.get_context('spawn') if use_mp_context else None
         replay_buffer = ReplayBuffer(data_spec=self.data_spec,
                                      num_environments=self.num_envs,
                                      max_length=self.max_length,
-                                     allow_multiprocess=allow_multiprocess)
+                                     mp_context=mp_ctx)
 
         batch1 = get_exp_batch([0, 4, 7], self.dim, t=0, x=0.1)
         replay_buffer.add_batch(batch1, batch1.env_id)
@@ -702,17 +703,17 @@ class ReplayBufferSharingTest(parameterized.TestCase, alf.test.TestCase):
     def test_spawned_process_sharing(self, start_method):
         spec = alf.TensorSpec((10, ), dtype=torch.uint8)
 
+        ctx = mp.get_context(start_method)
+        buffer_ctx = ctx if start_method == 'spawn' else None
         buffer = ReplayBuffer(data_spec=spec,
                               num_environments=1,
                               max_length=10,
-                              device='cpu')
+                              device='cpu',
+                              mp_context=buffer_ctx)
 
-        original_start_method = mp.get_start_method()
-        mp.set_start_method(start_method, force=True)
-        p = mp.Process(target=_write_to_buffer, args=(buffer, ))
+        p = ctx.Process(target=_write_to_buffer, args=(buffer, ))
         p.start()
         p.join()
-        mp.set_start_method(original_start_method, force=True)
 
         if start_method == 'spawn':
             # The buffer in the main process is also changed

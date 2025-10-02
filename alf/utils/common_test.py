@@ -21,7 +21,6 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.trainers.evaluator import _allow_child_to_ptrace
 import alf.utils.common as common
 
 
@@ -97,6 +96,13 @@ def _test_worker(m_):
         m_.z[:] = 1.
 
 
+def _launch_worker_with_ctx(ctx, module):
+    """Launch a child process to mutate ``module`` using the provided context."""
+    process = ctx.Process(target=_test_worker, args=(module, ))
+    process.start()
+    process.join()
+
+
 def _test_tensor_sharing():
     """This function is for testing whether tensors are automatically moved
     to shared memory, even when ``Module.share_memory()`` or ``Tensor.share_memory_()``
@@ -116,26 +122,40 @@ def _test_tensor_sharing():
 
     ctx = mp.get_context('spawn')
     # Change ``m`` in the child process
-    process = ctx.Process(target=_test_worker, args=(m, ))
-    process.start()
-    _allow_child_to_ptrace(process.pid)
-    process.join()
+    _launch_worker_with_ctx(ctx, m)
 
     # numpy array should not be modified
     assert np.all(m.y == np.zeros([2]))
     # cuda tensor should be modified
     if torch.cuda.is_available():
         assert torch.all(m.z.cpu() == torch.ones([2]).cpu())
-    # check that ``m``'s tensor also been modified in the parent process
-    assert m.x.is_shared() and torch.all(m.x == torch.ones([2]).cpu()), (
-        "Your pytorch version has a different behavior of sharing CPU tensors "
-        "between processes. Please report the version to the ALF team.")
+    # check whether ``m``'s tensor has been modified in the parent process
+    auto_shared = m.x.is_shared() and torch.all(m.x == torch.ones([2]).cpu())
+    if auto_shared:
+        return True
+
+    logging.fatal(
+        "CPU tensors are not automatically shared between processes on this "
+        "PyTorch build. Need to fall back to explicit share_memory checks.")
+
+    # Explicitly share the module and verify the behaviour still works.
+    m_explicit = _TestModule()
+    m_explicit.share_memory()
+    _launch_worker_with_ctx(ctx, m_explicit)
+    assert torch.all(m_explicit.x == torch.ones([2]).cpu()), (
+        "Explicit share_memory() failed to propagate tensor updates between "
+        "processes.")
+    return False
 
 
 class TensorSharingTest(alf.test.TestCase):
 
     def test_tensor_sharing(self):
-        _test_tensor_sharing()
+        auto_shared = _test_tensor_sharing()
+        if not auto_shared:
+            self.skipTest(
+                "Automatic CPU tensor sharing is disabled on this PyTorch "
+                f"version ({torch.__version__}).")
 
 
 if __name__ == '__main__':

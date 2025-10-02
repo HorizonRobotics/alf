@@ -58,9 +58,9 @@ def atomic(func):
 class RingBuffer(nn.Module):
     """Batched Ring Buffer.
 
-    Multiprocessing safe, optionally via: ``allow_multiprocess`` flag, blocking
-    modes to ``enqueue`` and ``dequeue``, a stop event to terminate blocked
-    processes, and putting buffer into shared memory.
+    Multiprocessing safe, optionally via providing ``mp_context`` to enable
+    blocking modes to ``enqueue`` and ``dequeue``, a stop event to terminate
+    blocked processes, and putting buffer into shared memory.
 
     This is the underlying implementation of ``ReplayBuffer`` and ``Queue``.
 
@@ -221,7 +221,7 @@ class RingBuffer(nn.Module):
         """
         if blocking:
             assert self._allow_multiprocess, (
-                "Set allow_multiprocess to enable blocking mode.")
+                "Pass a multiprocessing context to enable blocking mode.")
             env_ids = self.check_convert_env_ids(env_ids)
             while not self._stop.is_set():
                 with self._lock:
@@ -333,7 +333,7 @@ class RingBuffer(nn.Module):
         assert n <= self._max_length
         if blocking:
             assert self._allow_multiprocess, [
-                "Set allow_multiprocess", "to enable blocking mode."
+                "Pass a multiprocessing context to enable blocking mode."
             ]
             env_ids = self.check_convert_env_ids(env_ids)
             while not self._stop.is_set():
@@ -487,7 +487,6 @@ class DataBuffer(RingBuffer):
                          num_environments=1,
                          max_length=capacity,
                          device=device,
-                         allow_multiprocess=False,
                          name=name)
         self._capacity = torch.as_tensor(self._max_length,
                                          dtype=torch.int64,

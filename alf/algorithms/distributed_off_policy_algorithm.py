@@ -33,7 +33,7 @@ from alf.algorithms.config import TrainerConfig
 from alf.environments.alf_environment import AlfEnvironment
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.data_structures import Experience, make_experience, StepType
-from alf.trainers.evaluator import _allow_child_to_ptrace
+from alf.utils.common import allow_child_to_ptrace
 from alf.utils.per_process_context import PerProcessContext
 from alf.utils import dist_utils
 from alf.utils.summary_utils import record_time
@@ -523,7 +523,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                                     self._ddp_rank),
                               daemon=True)
         process.start()
-        _allow_child_to_ptrace(process.pid)
+        allow_child_to_ptrace(process.pid)
 
     def utd(self):
         total_exps = int(self._replay_buffer.get_current_position().sum())
@@ -713,7 +713,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
                                    self._params_socket_rank),
                              daemon=True)
         process.start()
-        _allow_child_to_ptrace(process.pid)
+        allow_child_to_ptrace(process.pid)
 
     def observe_for_replay(self, exp: Experience):
         """Send experience data to the trainer.

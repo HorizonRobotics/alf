@@ -17,6 +17,8 @@ from absl import flags
 from absl import logging
 import contextlib
 import copy
+import ctypes
+import ctypes.util
 from fasteners.process_lock import InterProcessLock
 from filelock import FileLock
 from functools import wraps
@@ -93,6 +95,31 @@ def add_method(cls):
         return func
 
     return decorator
+
+
+def allow_child_to_ptrace(child_pid: int) -> None:
+    """In the *parent* process: allow a given child to ptrace us.
+
+    This relaxes Yama's ptrace restriction for this specific relationship.
+
+    Requires: ``kernel.yama.ptrace_scope <= 1`` (default on many distros).
+    The value of ``kernel.yama.ptrace_scope`` can be checked with::
+
+        cat /proc/sys/kernel/yama/ptrace_scope
+    """
+
+    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+
+    # prctl constants from <linux/prctl.h>
+    PR_SET_PTRACER = 0x59616D61
+
+    def _check(ret, what):
+        if ret != 0:
+            err = ctypes.get_errno()
+            raise OSError(err, f"{what} failed: {os.strerror(err)}")
+
+    _check(libc.prctl(PR_SET_PTRACER, ctypes.c_ulong(int(child_pid)), 0, 0, 0),
+           "PR_SET_PTRACER")
 
 
 def as_list(x):

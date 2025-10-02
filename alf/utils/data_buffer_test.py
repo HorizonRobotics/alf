@@ -64,6 +64,25 @@ def get_batch(env_ids, dim, t, x):
                     reward=r)
 
 
+def _enqueue_after_delay(ring_buffer, batch, delay=0.04):
+    alf.set_default_device("cpu")
+    sleep(delay)
+    ring_buffer.enqueue(batch, batch.env_id)
+
+
+def _dequeue_after_delay(ring_buffer):
+    # cpu tensor on subprocess. Otherwise, spawn method is needed.
+    alf.set_default_device("cpu")
+    sleep(0.04)
+    ring_buffer.dequeue()  # 6(deleted), 7, 8, 9
+    sleep(0.04)  # 10, 7, 8, 9
+    ring_buffer.dequeue()  # 10, 7(deleted), 8, 9
+
+
+def _blocking_dequeue(ring_buffer):
+    ring_buffer.dequeue(blocking=True)
+
+
 class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
     dim = 20
     max_length = 4
@@ -86,15 +105,16 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         ('test_sync', False),
         ('test_async', True),
     ])
-    def test_ring_buffer(self, allow_multiprocess):
+    def test_ring_buffer(self, use_mp_context):
+        mp_ctx = mp.get_context('spawn') if use_mp_context else None
         ring_buffer = RingBuffer(data_spec=self.data_spec,
                                  num_environments=self.num_envs,
                                  max_length=self.max_length,
-                                 allow_multiprocess=allow_multiprocess)
+                                 mp_context=mp_ctx)
 
         batch1 = get_batch([1, 2, 3, 5, 6], self.dim, t=1, x=0.4)
-        if not allow_multiprocess:
-            # enqueue: blocking mode only available under allow_multiprocess
+        if not use_mp_context:
+            # enqueue: blocking mode only available when multiprocessing is enabled
             self.assertRaises(AssertionError,
                               ring_buffer.enqueue,
                               batch1,
@@ -107,8 +127,8 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
             # test that the created batch has gradients
             self.assertTrue(batch1.x.requires_grad)
             ring_buffer.enqueue(batch1, batch1.env_id)
-        if not allow_multiprocess:
-            # dequeue: blocking mode only available under allow_multiprocess
+        if not use_mp_context:
+            # dequeue: blocking mode only available when multiprocessing is enabled
             self.assertRaises(AssertionError,
                               ring_buffer.dequeue,
                               env_ids=batch1.env_id,
@@ -159,17 +179,13 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         ring_buffer.remove_up_to(3)
         self.assertEqual(ring_buffer._current_size, torch.tensor([0] * 8))
 
-        if allow_multiprocess:
+        if use_mp_context:
             # Test block on dequeue without enough data
-            def delayed_enqueue(ring_buffer, batch):
-                alf.set_default_device("cpu")
-                sleep(0.04)
-                ring_buffer.enqueue(batch, batch.env_id)
-
-            p = mp.Process(target=delayed_enqueue,
-                           args=(ring_buffer,
-                                 alf.nest.map_structure(
-                                     lambda x: x.cpu(), batch1)))
+            batch1_cpu = alf.nest.map_structure(
+                lambda tensor: tensor.detach().cpu()
+                if isinstance(tensor, torch.Tensor) else tensor, batch1)
+            p = mp_ctx.Process(target=_enqueue_after_delay,
+                               args=(ring_buffer, batch1_cpu))
             p.start()
             batch = ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True)
             self.assertEqual(batch.step_type, torch.tensor([[9]] * 5))
@@ -180,15 +196,8 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                 batch2 = get_batch(range(0, 8), self.dim, t=t, x=0.4)
                 ring_buffer.enqueue(batch2)
 
-            def delayed_dequeue():
-                # cpu tensor on subprocess.  Otherwise, spawn method is needed.
-                alf.set_default_device("cpu")
-                sleep(0.04)
-                ring_buffer.dequeue()  # 6(deleted), 7, 8, 9
-                sleep(0.04)  # 10, 7, 8, 9
-                ring_buffer.dequeue()  # 10, 7(deleted), 8, 9
-
-            p = mp.Process(target=delayed_dequeue)
+            p = mp_ctx.Process(target=_dequeue_after_delay,
+                               args=(ring_buffer, ))
             p.start()
             batch2 = get_batch(range(0, 8), self.dim, t=10, x=0.4)
             ring_buffer.enqueue(batch2, blocking=True)
@@ -196,10 +205,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(ring_buffer._current_size[0], torch.tensor(3))
 
             # Test stop queue event
-            def blocking_dequeue(ring_buffer):
-                ring_buffer.dequeue(blocking=True)
-
-            p = mp.Process(target=blocking_dequeue, args=(ring_buffer, ))
+            p = mp_ctx.Process(target=_blocking_dequeue, args=(ring_buffer, ))
             ring_buffer.clear()
             p.start()
             sleep(0.02)  # for subprocess to enter while loop
