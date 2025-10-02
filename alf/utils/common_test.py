@@ -100,6 +100,7 @@ def _launch_worker_with_ctx(ctx, module):
     """Launch a child process to mutate ``module`` using the provided context."""
     process = ctx.Process(target=_test_worker, args=(module, ))
     process.start()
+    common.allow_child_to_ptrace(process.pid)
     process.join()
 
 
