@@ -52,7 +52,7 @@ repos:
         files: \.(c|cc|cxx|cpp|cu|h|hpp|hxx|proto|py)$
         exclude: (?!.*third_party)^.*$ | (?!.*book)^.*$
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.3.0
+    rev: v2.4.0
     hooks:
       - id: codespell
-        args: [ "--skip", "*.hook", "--ignore-words-list", "ans,nd,Bu,astroid,hart" ]
+        args: [ "--skip", "*.hook", "--ignore-words-list", "ans,nd,Bu,astroid,hart", "--ignore-multiline-regex", "codespell:ignore-begin.*codespell:ignore-end" ]
