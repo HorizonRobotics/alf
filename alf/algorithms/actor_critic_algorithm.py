@@ -29,7 +29,7 @@ ActorCriticState = namedtuple("ActorCriticState", ["actor", "value"],
 
 ActorCriticInfo = namedtuple("ActorCriticInfo", [
     "step_type", "discount", "reward", "action", "log_prob",
-    "action_distribution", "value", "reward_weights"
+    "action_distribution", "value", "reward_weights", "entropy"
 ],
                              default_value=())
 
