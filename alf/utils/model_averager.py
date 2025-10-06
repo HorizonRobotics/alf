@@ -12,18 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from numbers import Number
 import torch
+from typing import SupportsFloat
 from torch.optim.swa_utils import AveragedModel as _AveragedModel
-from typing import Union
 
 from alf.utils.schedulers import Scheduler
 
 
-def ema_avg_fn(averaged_model_parameter,
-               model_parameter,
-               num_averaged,
-               ema_rate: Union[Number, Scheduler],
+def ema_avg_fn(averaged_model_parameter: torch.Tensor,
+               model_parameter: torch.Tensor,
+               num_averaged: int,
+               ema_rate: SupportsFloat | Scheduler,
                starting_average_after=0,
                begin_with_simple_average=True):
     """Exponential moving average of model parameters.
@@ -45,7 +44,7 @@ def ema_avg_fn(averaged_model_parameter,
     """
     if num_averaged <= starting_average_after:
         return model_parameter
-    if not isinstance(ema_rate, Number):
+    if not isinstance(ema_rate, SupportsFloat):
         assert isinstance(
             ema_rate, Scheduler), ("ema_rate must be a number or a Scheduler")
         ema_rate = ema_rate()

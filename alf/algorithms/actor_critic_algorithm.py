@@ -14,6 +14,7 @@
 """Actor critic algorithm."""
 
 import torch
+from typing import Callable, List
 
 import alf
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
@@ -50,6 +51,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  config: TrainerConfig = None,
                  loss=None,
                  loss_class=ActorCriticLoss,
+                 actor_avg_fns: List[Callable] = [],
+                 predict_ema_id: int = -1,
                  optimizer=None,
                  checkpoint=None,
                  debug_summaries=False,
@@ -93,6 +96,16 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 None, a default loss of class loss_class will be used.
             loss_class (type): the class of the loss. The signature of its
                 constructor: ``loss_class(debug_summaries)``
+            actor_avg_fns: a list of functions for doing model averaging for
+                the trajectory predictor. Each function will be responsible for
+                performing one model averaging. The function must take in the
+                current value of the `AveragedModel` parameter, the
+                current value of `model` parameter, and the number of models
+                already averaged. See alf.utils/model_averager.ema_avg_fn for an example.
+            predict_ema_id: the index of the actor average model to be used
+                for prediction. -1 means the original actor network is used.
+                0 means the first averaged model in actor_avg_fns is used,
+                and so on
             optimizer (torch.optim.Optimizer): The optimizer for training
             checkpoint (None|str): a string in the format of "prefix@path",
                 where the "prefix" is the multi-step path to the contents in the
@@ -158,13 +171,31 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         self._register_load_state_dict_pre_hook(_deployment_hook)
 
+        self._actor_emas = torch.nn.ModuleList()
+        self._predict_ema_id = predict_ema_id
+        for actor_avg_fn in actor_avg_fns:
+            self._actor_emas.append(
+                alf.utils.model_averager.AveragedModel(self._actor_network,
+                                                       avg_fn=actor_avg_fn))
+
+    def after_update(self, root_inputs: TimeStep, info: ActorCriticInfo):
+        for actor_ema in self._actor_emas:
+            actor_ema.update_parameters(self._actor_network)
+
+    def _trainable_attributes_to_ignore(self):
+        return ['_actor_emas']
+
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
     def predict_step(self, inputs: TimeStep, state: ActorCriticState):
         """Predict for one step."""
-        action_dist, actor_state = self._actor_network(inputs.observation,
-                                                       state=state.actor)
+        if self._predict_ema_id == -1:
+            predict_model = self._actor_network
+        else:
+            predict_model = self._actor_emas[self._predict_ema_id]
+        action_dist, actor_state = predict_model(inputs.observation,
+                                                 state=state.actor)
 
         action = dist_utils.epsilon_greedy_sample(action_dist,
                                                   self._epsilon_greedy)
