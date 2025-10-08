@@ -60,6 +60,7 @@ MuzeroInfo = namedtuple(
 
 @alf.configurable
 class MuzeroRepresentationImpl(OffPolicyAlgorithm):
+    # codespell:ignore-begin
     """MuZero-style Representation Learner.
 
     MuZero is described in the paper:
@@ -84,6 +85,8 @@ class MuzeroRepresentationImpl(OffPolicyAlgorithm):
     `Online and Offline Reinforcement Learning by Planning with a Learned Model <https://arxiv.org/abs/2104.06294>`_.
 
     """
+
+    # codespell:ignore-end
 
     def __init__(
             self,

@@ -227,6 +227,7 @@ MCTSInfo = namedtuple(
 
 @alf.configurable
 class MCTSAlgorithm(OffPolicyAlgorithm):
+    # codespell:ignore-begin
     r"""Monte-Carlo Tree Search algorithm.
 
     The code largely follows the pseudocode of
@@ -299,6 +300,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
       the paths so that The k' children (may contains duplicates) being selected to
       extend these k' paths are most promising according to the UCB scores.
     """
+
+    # codespell:ignore-end
 
     def __init__(
         self,

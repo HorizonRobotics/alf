@@ -266,7 +266,7 @@ def is_rendering_enabled():
 def _rendering_wrapper(rendering_func):
     """A wrapper function to gate the rendering function based on if rendering
     is enabled, and if yes generate a scoped rendering identifier before
-    calling the rendering function. It re-uses the scope stack in ``alf.summary.summary_ops.py``.
+    calling the rendering function. It reuses the scope stack in ``alf.summary.summary_ops.py``.
     """
 
     @functools.wraps(rendering_func)

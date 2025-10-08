@@ -506,7 +506,7 @@ class Agent(RLAlgorithm):
 
     def summarize_rollout(self, experience):
         """First call ``RLAlgorithm.summarize_rollout()`` to summarize basic
-        rollout statisics. If the rl algorithm has overridden this function,
+        rollout statistics. If the rl algorithm has overridden this function,
         then also call its customized version.
         """
         super(Agent, self).summarize_rollout(experience)

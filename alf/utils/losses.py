@@ -129,7 +129,7 @@ def iqn_huber_loss(value: torch.Tensor,
             is between this and the target.
         target: the time-major tensor for return, this is used as the target
             for computing the loss.
-        next_delta_tau: the sampled increments of the probability for the input 
+        next_delta_tau: the sampled increments of the probability for the input
             of the quantile function of the target critics.
         fixed_tau: the fixed increments of probability, for non iqn style
             quantile regression.
@@ -166,7 +166,7 @@ def iqn_huber_loss(value: torch.Tensor,
     error = loss_fn(diff)
     if iqn_tau:
         if diff.ndim - tau_hat.ndim > 1:
-            # For multidimentional reward:
+            # For multidimensional reward:
             # diff is of shape [T or T-1, B, reward_dim, n_quantiles, n_quantiles]
             # while tau_hat and next_delta_tau have shape [T or T-1, B, n_quantiles]
             tau_hat = tau_hat.unsqueeze(-2)
