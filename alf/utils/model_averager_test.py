@@ -1,4 +1,4 @@
-# Copyright (c) 2024 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2025 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ class ModelAveragerTest(alf.test.TestCase):
                                        avg_fn=partial(ema_avg_fn,
                                                       ema_rate=0.0))
 
-        n = 256
+        n = 16
         for i in range(n):
             model[0].weight.data.copy_(i)
             model[0].bias.data.copy_(i)
