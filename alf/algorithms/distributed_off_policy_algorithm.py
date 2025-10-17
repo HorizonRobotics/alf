@@ -589,7 +589,7 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
     def __init__(self,
                  core_alg_ctor: Callable,
                  *args,
-                 episode_length: int = 200,
+                 episode_length: int = 0,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
                  unroller_only: bool = False,

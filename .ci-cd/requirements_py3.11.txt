@@ -1,5 +1,6 @@
 absl-py==2.1.0
 atari_py==0.2.9
+bitsandbytes==0.45.5
 fasteners==0.19
 gym==0.15.4
 pyglet==1.3.2
