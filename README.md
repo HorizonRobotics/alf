@@ -77,7 +77,6 @@ sudo apt install swig               # required to build box2d-py
 ```
 git clone https://github.com/HorizonRobotics/alf
 cd alf
-pip install -e .
 ```
 
 #### Using uv (no manual venv needed)
@@ -122,6 +121,11 @@ pip install -e .
    ```
 
 Everything stays local to the repository; no system-wide packages or pre-existing virtualenv are required.
+
+#### Alternatively, for manual pip install, w/o uv:
+```bash
+pip install -e .
+```
 
 #### For Nix Users
 
