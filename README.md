@@ -69,6 +69,7 @@ We also require the following packages:
 sudo apt install libboost-all-dev   # required by ALF for fast parallel environments.
 sudo apt install ninja-build        # required to build modules via torch.utils.cpp_extension
 sudo apt install swig               # required to build box2d-py
+sudo apt install xvfb               # for running headless training jobs locally
 ```
 
 #### Python environment
