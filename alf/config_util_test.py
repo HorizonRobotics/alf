@@ -342,6 +342,11 @@ class ConfigTest(alf.test.TestCase):
         test_partial = partial(TestPositionalArgs, y=0)
         test_partial()
 
+    def test_define_config(self):
+        val = alf.define_config("foobar", 3)
+        new_val = alf.define_config("foobar", 4)
+        self.assertEqual(val, new_val)
+
 
 if __name__ == '__main__':
     alf.test.main()

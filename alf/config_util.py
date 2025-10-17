@@ -21,7 +21,6 @@ from inspect import Parameter
 import os
 import pprint
 import runpy
-import shutil
 
 __all__ = [
     'config',
@@ -994,6 +993,9 @@ def define_config(name, default_value):
 
     Its value can be retrieved by ``get_config_value("_CONFIG._USER.{name}")``.
 
+    If the configurable has already been defined, subsequent define_config calls
+    will the same name will be ignored and the already set default value will be returned.
+
     Args:
         name (str): name of the configurable value
         default_value (Any): default value
@@ -1002,8 +1004,15 @@ def define_config(name, default_value):
     """
     node = _Config()
     node.set_default_value(default_value)
-    _add_to_conf_tree(['_CONFIG'], '_USER', name, node)
-    _DEFINED_CONFIGS.append('_CONFIG._USER.' + name)
+    try:
+        _add_to_conf_tree(['_CONFIG'], '_USER', name, node)
+        _DEFINED_CONFIGS.append('_CONFIG._USER.' + name)
+    except ValueError:
+        already_set_default_value = get_config_value("_CONFIG._USER." + name)
+        logging.warning(
+            f"Config {name} has already been configured. Provided value {default_value} will be ignored "
+            f"in favor of {already_set_default_value}")
+
     return get_config_value("_CONFIG._USER." + name)
 
 
