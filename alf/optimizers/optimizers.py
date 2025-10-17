@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import numpy as np
 import torch
 from typing import Callable, Dict, List, Union
+import bitsandbytes as bnb
 
 import alf
 from alf.utils import common
 from alf.utils import tensor_utils
-from alf.utils.schedulers import as_scheduler, ConstantScheduler, Scheduler
+from alf.utils.schedulers import as_scheduler, Scheduler
 from . import adam_tf, adamw, nero_plus
 from .utils import get_opt_arg
 
@@ -587,3 +587,9 @@ AdamTF = alf.repr_wrapper(
 
 NeroPlus = alf.repr_wrapper(
     alf.configurable('NeroPlus')(wrap_optimizer(nero_plus.NeroPlus)))
+
+Adam8bit = alf.repr_wrapper(
+    alf.configurable('Adam8bit')(wrap_optimizer(bnb.optim.Adam8bit)))
+
+AdamW8bit = alf.repr_wrapper(
+    alf.configurable('AdamW8bit')(wrap_optimizer(bnb.optim.AdamW8bit)))

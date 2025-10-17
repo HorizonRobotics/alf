@@ -17,6 +17,8 @@ from .optimizers import Adam
 from .optimizers import AdamW
 from .optimizers import SGD
 from .optimizers import NeroPlus
+from .optimizers import Adam8bit
+from .optimizers import AdamW8bit
 
 from typing import Any
 

@@ -22,6 +22,7 @@ setup(
     install_requires=[
         'absl-py==2.2.2',
         'atari_py==0.2.9',
+        'bitsandbytes==0.45.5',
         'box2d-py==2.3.8',  # used by Box2D-based environments (e.g. BipedalWalker, LunarLander)
         'clang-format==17.0.6',
         'cnest@git+https://github.com/HorizonRobotics/cnest.git',
