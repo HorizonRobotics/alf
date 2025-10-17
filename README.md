@@ -80,6 +80,49 @@ cd alf
 pip install -e .
 ```
 
+#### Using uv (no manual venv needed)
+[uv](https://docs.astral.sh/uv/) can manage an isolated environment for ALF without creating a virtualenv yourself. A typical workflow looks like this:
+
+1. Install uv (once per machine):
+   ```bash
+   curl -Ls https://astral.sh/uv/install.sh | sh
+   ```
+   Restart your shell or source the profile snippet the installer prints.
+
+2. Bootstrap the project environment (creates `.venv/` and `uv.lock` automatically):
+   ```bash
+   uv sync
+   ```
+
+3. Launch Python inside that environment:
+   ```bash
+   uv run python
+   ```
+   Any command prefixed with `uv run` uses the synced environment, e.g. `uv run python -m alf.bin.train --conf=...`.
+
+4. Add or update packages:
+   ```bash
+   uv add some-package
+   uv add pandas==2.2.3
+   ```
+   uv records the changes in `pyproject.toml` and regenerates `uv.lock`.
+
+5. Remove packages when they are no longer needed:
+   ```bash
+   uv remove some-package
+   ```
+
+6. To refresh dependencies after editing `pyproject.toml` by hand, rerun `uv sync`.
+
+7. Commit dependency changes (keep `pyproject.toml` and `uv.lock` in version control):
+   ```bash
+   git add pyproject.toml uv.lock
+   git commit -m "Update dependencies"
+   git push origin <your-branch>
+   ```
+
+Everything stays local to the repository; no system-wide packages or pre-existing virtualenv are required.
+
 #### For Nix Users
 
 There is a built-in Nix-based development environment defined in [flake.nix](./flake.nix). To activate it, run
