@@ -14,3 +14,10 @@ something like StateInfo, which is like "whatever"), but then you must look at t
 
 aim to make report both concise (because there will be a lot to cover, need to save reading time) but informative (for the purpose of 
 e.g. refactoring those interfaces, or introducing new abstractions into this library) 
+
+
+file got too verbose. let's shorten INTERFACES.md, to preserve only crucial info for high-level thinking aobut concurrent RL abstraction,
+  e.g.:\
+  - no need to explain predict_step of Algorithm, if it just calls rollout_step\
+  - no need to mention some technical args like `config` or `debug_summaries`, if they don't affect the relevant logic or constrain the
+  architecture\
