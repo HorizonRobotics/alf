@@ -254,17 +254,3 @@ alf/
 ├── config_util.py       # Core config system implementation
 └── tensor_specs.py      # Tensor specification utilities
 ```
-
-## Dependencies and System Requirements
-
-- Python 3.10-3.12
-- PyTorch 2.6.0 with CUDA support
-- Ubuntu 22.04 or 24.04 (tested platforms)
-- System packages: `libboost-all-dev`, `ninja-build`, `swig`
-- Python dev files: `python3.X-dev`
-
-## Legacy Gin Configuration
-
-Older examples use `.gin` files with Gin-config syntax. These are being phased out in favor of Python-based configs (`*_conf.py`). When working with legacy code:
-- Must launch ALF from same directory as gin file
-- Use `--gin_file` and `--gin_param` flags instead of `--conf` and `--conf_param`
