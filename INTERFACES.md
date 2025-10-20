@@ -506,3 +506,283 @@ def calc_loss(self, info):
 | `predict_state_spec` | RNN state for deployment |
 
 **Invariant:** `train_state_spec ⊆ rollout_state_spec`
+
+---
+
+## Coding Practices and Helper Functions
+
+### Nested Structures
+
+**What are nested structures?**
+
+A "nest" or "nested structure" is ALF's fundamental data organization pattern. It can be:
+- A `Tensor` (leaf)
+- A `list` or unnamed `tuple` of nests
+- A `dict` of nests
+- A `namedtuple` of nests
+
+**Type annotation:**
+```python
+from alf.nest import NestedTensor
+state: NestedTensor  # Can be Tensor, list, tuple, dict, or namedtuple
+```
+
+---
+
+### Core nest Functions
+
+**Location:** `alf/nest/nest.py`
+
+#### map_structure
+```python
+alf.nest.map_structure(func, *nests)
+```
+
+Apply function to corresponding elements across nests.
+
+**Example:**
+```python
+state = {'a': torch.tensor([1, 2]), 'b': torch.tensor([3, 4])}
+doubled = alf.nest.map_structure(lambda x: x * 2, state)
+# Result: {'a': tensor([2, 4]), 'b': tensor([6, 8])}
+
+# Multiple nests:
+sum_state = alf.nest.map_structure(lambda x, y: x + y, state1, state2)
+```
+
+**Key use case for concurrent RL:** Slicing batches
+```python
+# Route batch element i to algorithm i % K
+sliced_time_step = alf.nest.map_structure(
+    lambda x: x[batch_indices], time_step)
+```
+
+---
+
+#### flatten & pack_sequence_as
+```python
+flat_list = alf.nest.flatten(nest)
+reconstructed = alf.nest.pack_sequence_as(nest, flat_list)
+```
+
+Convert nest to flat list and back.
+
+**Example:**
+```python
+state = {'a': torch.tensor([1]), 'b': torch.tensor([2])}
+flat = alf.nest.flatten(state)  # [tensor([1]), tensor([2])]
+reconstructed = alf.nest.pack_sequence_as(state, flat)  # {'a': tensor([1]), 'b': tensor([2])}
+```
+
+---
+
+#### get_field & transform_nest
+```python
+value = alf.nest.get_field(nest, 'a.b.c')  # Navigate nested paths
+new_nest = alf.nest.transform_nest(nest, 'a.b', lambda x: x * 2)
+```
+
+Navigate and modify nested structures by path.
+
+**Example:**
+```python
+info = dict(actor=dict(loss=0.5, entropy=0.1), critic=dict(loss=1.0))
+
+actor_loss = alf.nest.get_field(info, 'actor.loss')  # 0.5
+
+# Update nested field
+info = alf.nest.transform_nest(info, 'actor.loss', lambda x: x * 0.5)
+# Result: {'actor': {'loss': 0.25, 'entropy': 0.1}, 'critic': {'loss': 1.0}}
+```
+
+**Why this matters:** Much cleaner than `info._replace(actor=info.actor._replace(loss=...))` for namedtuples.
+
+---
+
+### Batch Operations on Nests
+
+#### conditional_update
+```python
+alf.utils.conditional_ops.conditional_update(target, cond, func, *args, **kwargs)
+```
+
+**Location:** `alf/utils/conditional_ops.py`
+
+Selectively apply function to batch elements where condition is True.
+
+**How it works:**
+1. Slice inputs where `cond=True` (gather operation)
+2. Call `func` only on sliced inputs (efficient!)
+3. Scatter results back to full batch shape
+4. Elements where `cond=False` retain `target` values
+
+**Example:**
+```python
+# Only generate new actions for environments that just started
+switch_action = time_step.is_first()  # [B] bool
+
+new_state = conditional_update(
+    target=old_state,
+    cond=switch_action,
+    func=self._algorithm.rollout_step,
+    time_step=time_step,
+    state=old_state
+)
+# Only environments with switch_action=True get new actions computed
+```
+
+**Performance:** If only 2 out of 32 environments need updates, only 2 forward passes are done.
+
+---
+
+#### select_from_mask
+```python
+selected = alf.utils.conditional_ops.select_from_mask(data, mask)
+```
+
+Extract batch elements where mask is True.
+
+**Example:**
+```python
+mask = torch.tensor([True, False, True, False])
+data = {'obs': torch.randn(4, 10), 'action': torch.randn(4, 2)}
+selected = select_from_mask(data, mask)
+# Result: {'obs': shape [2, 10], 'action': shape [2, 2]}
+```
+
+---
+
+### Nest Combiners
+
+**Location:** `alf/nest/utils.py`
+
+Helper classes for combining nested structures (useful for network inputs).
+
+#### NestConcat
+```python
+combiner = alf.nest.utils.NestConcat(dim=-1)
+combined = combiner({'obs': tensor1, 'goal': tensor2})
+# Concatenates all tensors along last dimension
+```
+
+#### NestSum
+```python
+combiner = alf.nest.utils.NestSum(average=True)
+combined = combiner([tensor1, tensor2, tensor3])
+# Averages all tensors element-wise
+```
+
+#### stack_nests
+```python
+stacked = alf.nest.utils.stack_nests([nest1, nest2, nest3], dim=0)
+# Stacks list of nests along new dimension -> shape [3, original_shape...]
+```
+
+**Use case:** Converting list of timesteps into temporal batch `[T, B, ...]`.
+
+---
+
+### Common Patterns in ALF
+
+#### Pattern 1: State Management
+```python
+class MyAlgorithmState(NamedTuple):
+    rnn_state: NestedTensor
+    step_counter: torch.Tensor
+    last_action: torch.Tensor
+
+# Access
+current_count = state.step_counter
+
+# Update specific field
+new_state = state._replace(step_counter=state.step_counter + 1)
+
+# Or with nest.transform_nest
+new_state = alf.nest.transform_nest(state, 'step_counter', lambda x: x + 1)
+```
+
+---
+
+#### Pattern 2: Routing Batch Elements
+```python
+def rollout_step(self, time_step, state):
+    for i, alg in enumerate(self._algorithms):
+        # Find which batch elements go to this algorithm
+        mask = (torch.arange(B) % K == i)  # [B] bool
+
+        # Slice
+        sliced_time_step = alf.nest.map_structure(
+            lambda x: x[mask], time_step)
+
+        # Process
+        alg_step = alg.rollout_step(sliced_time_step, state[i])
+
+        # Scatter back (manual indexing or use advanced indexing)
+        outputs[mask] = alg_step.output
+```
+
+---
+
+#### Pattern 3: Loss Aggregation with add_ignore_empty
+```python
+from alf.utils.math_ops import add_ignore_empty
+
+# Accumulate losses that may be empty ()
+total_loss = ()
+for alg in self._algorithms:
+    loss_info = alg.calc_loss(info[alg.name])
+    total_loss = add_ignore_empty(total_loss, loss_info.loss)
+
+return LossInfo(loss=total_loss)
+```
+
+**Why needed:** Some algorithms may return `()` (empty tuple) for loss, and `() + tensor` would fail.
+
+---
+
+#### Pattern 4: Temporal Batching
+```python
+# Collect unroll_length steps
+experiences = []
+for t in range(unroll_length):
+    policy_step = rollout_step(time_step, state)
+    experiences.append(make_experience(time_step, policy_step))
+
+# Stack into [T, B, ...]
+batched_exp = alf.nest.utils.stack_nests(experiences, dim=0)
+```
+
+---
+
+### Key Helper Functions
+
+#### get_nest_batch_size
+```python
+batch_size = alf.nest.get_nest_batch_size(nested)
+# Returns size of dim 0, assuming all leaves have same batch size
+```
+
+#### convert_device
+```python
+cuda_nest = alf.nest.utils.convert_device(nest, device='cuda')
+```
+
+#### zeros_like
+```python
+zero_state = alf.nest.utils.zeros_like(state)
+# Creates nested structure of zeros with same shapes
+```
+
+---
+
+### Design Philosophy
+
+1. **Nests are first-class citizens:** Most ALF functions accept/return nested structures, not just tensors.
+
+2. **Structural invariants:** Functions like `map_structure` require all nests to have **same structure** (verified automatically).
+
+3. **Composability:** Combine `map_structure`, `flatten`, `pack_sequence_as` to build complex transformations.
+
+4. **Performance:** `conditional_update` and masking avoid unnecessary computation for sparse operations.
+
+5. **Type safety:** Use `NestedTensor` type annotation for clarity, though Python doesn't enforce it at runtime.
