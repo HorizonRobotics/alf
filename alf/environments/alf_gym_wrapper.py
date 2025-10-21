@@ -18,15 +18,16 @@ Adapted from TF-Agents Environment API as seen in:
 """
 
 import collections
+import numbers
+
 import gym
 import gym.spaces
-import numbers
 import numpy as np
 
 import alf.data_structures as ds
-from alf.environments.alf_environment import AlfEnvironment
 import alf.nest as nest
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec, torch_dtype_to_str
+from alf.environments.alf_environment import AlfEnvironment
+from alf.tensor_specs import BoundedTensorSpec, TensorSpec, torch_dtype_to_str
 
 
 def tensor_spec_from_gym_space(space,

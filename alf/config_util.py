@@ -13,34 +13,35 @@
 # limitations under the License.
 """Alf configuration utilities."""
 
-from absl import logging
 import functools
-import gin
 import inspect
-from inspect import Parameter
 import os
 import pprint
 import runpy
 import shutil
+from inspect import Parameter
+
+import gin
+from absl import logging
 
 __all__ = [
-    'config',
-    'config1',
-    'configurable',
-    'define_config',
-    'get_all_config_names',
-    'get_config_value',
-    'get_handled_pre_configs',
-    'get_inoperative_configs',
-    'get_operative_configs',
-    'import_config',
-    'load_config',
-    'override_sole_config',
-    'pre_config',
-    'reset_configs',
-    'validate_pre_configs',
-    'repr_wrapper',
-    'save_config',
+    "config",
+    "config1",
+    "configurable",
+    "define_config",
+    "get_all_config_names",
+    "get_config_value",
+    "get_handled_pre_configs",
+    "get_inoperative_configs",
+    "get_operative_configs",
+    "import_config",
+    "load_config",
+    "override_sole_config",
+    "pre_config",
+    "reset_configs",
+    "validate_pre_configs",
+    "repr_wrapper",
+    "save_config",
 ]
 
 
@@ -56,12 +57,14 @@ def GET_ALF_SOLE_CONFIG():
 
 
 @logging.skip_log_prefix
-def config(prefix_or_dict,
-           mutable=True,
-           raise_if_used=True,
-           sole_init=False,
-           override_sole_init=False,
-           **kwargs):
+def config(
+    prefix_or_dict,
+    mutable=True,
+    raise_if_used=True,
+    sole_init=False,
+    override_sole_init=False,
+    **kwargs,
+):
     """Set the values for the configs with given name as suffix.
 
     Example:
@@ -127,24 +130,26 @@ def config(prefix_or_dict,
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
-        assert len(kwargs) > 0, ("**kwargs should be provided when "
-                                 "'prefix_or_dict' is a str")
+        assert len(kwargs) > 0, (
+            "**kwargs should be provided when " "'prefix_or_dict' is a str"
+        )
         prefix = prefix_or_dict
-        configs = dict([(prefix + '.' + k, v) for k, v in kwargs.items()])
+        configs = dict([(prefix + "." + k, v) for k, v in kwargs.items()])
     elif isinstance(prefix_or_dict, dict):
-        assert len(kwargs) == 0, ("**kwargs should not be provided when "
-                                  "'prefix_or_dict' is a dict")
+        assert len(kwargs) == 0, (
+            "**kwargs should not be provided when " "'prefix_or_dict' is a dict"
+        )
         configs = prefix_or_dict
     else:
-        raise ValueError("Unsupported type for 'prefix_or_dict': %s" %
-                         type(prefix_or_dict))
+        raise ValueError(
+            "Unsupported type for 'prefix_or_dict': %s" % type(prefix_or_dict)
+        )
 
     # If ALF_SOLE_CONFIG is set to 1, sole_init is always True.
     sole_init = sole_init or GET_ALF_SOLE_CONFIG()
 
     for key, value in configs.items():
-        config1(key, value, mutable, raise_if_used, sole_init,
-                override_sole_init)
+        config1(key, value, mutable, raise_if_used, sole_init, override_sole_init)
 
 
 def override_sole_config(prefix_or_dict, **kwargs):
@@ -181,9 +186,11 @@ def get_operative_configs():
     Returns:
         list[tuple[config_name, Any]]
     """
-    configs = [(name, config.get_effective_value())
-               for name, config in _get_all_leaves(_CONF_TREE)
-               if config.is_used()]
+    configs = [
+        (name, config.get_effective_value())
+        for name, config in _get_all_leaves(_CONF_TREE)
+        if config.is_used()
+    ]
     return sorted(configs, key=lambda x: x[0])
 
 
@@ -196,9 +203,11 @@ def get_inoperative_configs():
     Returns:
         list[tuple[config_name, Any]]
     """
-    configs = [(name, config.get_value())
-               for name, config in _get_all_leaves(_CONF_TREE)
-               if config.is_configured() and not config.is_used()]
+    configs = [
+        (name, config.get_value())
+        for name, config in _get_all_leaves(_CONF_TREE)
+        if config.is_configured() and not config.is_used()
+    ]
     return sorted(configs, key=lambda x: x[0])
 
 
@@ -212,8 +221,7 @@ def _get_all_leaves(conf_dict):
         if not isinstance(v, dict):
             leaves.append((k, v))
         else:
-            leaves.extend([(name + '.' + k, node)
-                           for name, node in _get_all_leaves(v)])
+            leaves.extend([(name + "." + k, node) for name, node in _get_all_leaves(v)])
     return leaves
 
 
@@ -314,7 +322,7 @@ def reset_configs():
 def _remove_config_node(config_name):
     """Remove the _Config object corresponding to config_name."""
     node = _CONF_TREE
-    path = config_name.split('.')
+    path = config_name.split(".")
     tree_name_pairs = []
     for name in reversed(path):
         tree = node
@@ -323,8 +331,7 @@ def _remove_config_node(config_name):
         node = tree[name]
         tree_name_pairs.append((tree, name))
 
-    assert isinstance(
-        node, _Config), "config_name is not a full path: %s" % config_name
+    assert isinstance(node, _Config), "config_name is not a full path: %s" % config_name
     del tree[name]
     tree_name_pairs.pop()
     for tree, name in reversed(tree_name_pairs):
@@ -337,7 +344,7 @@ def _remove_config_node(config_name):
 def _get_config_node(config_name):
     """Get the _Config object corresponding to config_name."""
     tree = _CONF_TREE
-    path = config_name.split('.')
+    path = config_name.split(".")
     for name in reversed(path):
         if not isinstance(tree, dict) or name not in tree:
             raise ValueError("Cannot find config name %s" % config_name)
@@ -348,9 +355,10 @@ def _get_config_node(config_name):
         if len(leaves) > 1:
             # only show at most 3 ambiguous choices
             leaves = leaves[:3]
-            names = [name + '.' + config_name for name, node in leaves]
-            raise ValueError("config name '%s' is ambiguous. There are %s" %
-                             (config_name, names))
+            names = [name + "." + config_name for name, node in leaves]
+            raise ValueError(
+                "config name '%s' is ambiguous. There are %s" % (config_name, names)
+            )
 
         assert len(leaves) == 1
         config_node = leaves[0][1]
@@ -361,13 +369,15 @@ def _get_config_node(config_name):
 
 
 @logging.skip_log_prefix
-def config1(config_name,
-            value,
-            mutable=True,
-            raise_if_used=True,
-            sole_init=False,
-            override_sole_init=False,
-            override_all=False):
+def config1(
+    config_name,
+    value,
+    mutable=True,
+    raise_if_used=True,
+    sole_init=False,
+    override_sole_init=False,
+    override_all=False,
+):
     """Set one configurable value.
 
     Args:
@@ -402,21 +412,22 @@ def config1(config_name,
     if raise_if_used and config_node.is_used():
         raise ValueError(
             "Config '%s' has already been used. You should config "
-            "its value before using it." % config_name)
+            "its value before using it." % config_name
+        )
 
     if override_all:
         if config_node.get_sole_init():
             logging.warning(
                 "The value of config '%s' (%s) is protected by sole_init. "
                 "It is now being overridden by the overide_all flag to a new value %s. "
-                "Use at your own risk." %
-                (config_name, config_node.get_value(), value))
+                "Use at your own risk." % (config_name, config_node.get_value(), value)
+            )
         if not config_node.is_mutable():
             logging.warning(
                 "The value of config '%s' (%s) is immutable. "
                 "It is now being overridden by the overide_all flag to a new value %s. "
-                "Use at your own risk." %
-                (config_name, config_node.get_value(), value))
+                "Use at your own risk." % (config_name, config_node.get_value(), value)
+            )
         config_node.set_value(value)
         return
     elif override_sole_init:
@@ -424,32 +435,37 @@ def config1(config_name,
             if not config_node.is_mutable():
                 logging.warning(
                     "The value of config '%s' (%s) is immutable. "
-                    "Override flag with new value %s is ignored. " %
-                    (config_name, config_node.get_value(), value))
+                    "Override flag with new value %s is ignored. "
+                    % (config_name, config_node.get_value(), value)
+                )
                 return
             elif config_node.get_sole_init():
                 logging.warning(
                     "The value of config '%s' (%s) is protected by sole_init. "
                     "It is now being overridden by the override flag to a new value %s. "
-                    "Use at your own risk." %
-                    (config_name, config_node.get_value(), value))
+                    "Use at your own risk."
+                    % (config_name, config_node.get_value(), value)
+                )
     elif config_node.is_configured():
         if config_node.get_sole_init():
             raise RuntimeError(
                 "Config '%s' is protected by sole_init and cannot be reconfigured. "
                 "If you wish to set this config value, do so the location of the "
-                "previous call." % config_name)
+                "previous call." % config_name
+            )
 
         if config_node.is_mutable():
             logging.warning(
                 "The value of config '%s' has been configured to %s. It is "
-                "replaced by the new value %s" %
-                (config_name, config_node.get_value(), value))
+                "replaced by the new value %s"
+                % (config_name, config_node.get_value(), value)
+            )
         else:
             logging.warning(
                 "The config '%s' has been configured to an immutable value "
-                "of %s. The new value %s will be ignored" %
-                (config_name, config_node.get_value(), value))
+                "of %s. The new value %s will be ignored"
+                % (config_name, config_node.get_value(), value)
+            )
             config_node.set_sole_init(sole_init)
             return
 
@@ -486,7 +502,7 @@ def _handle_pre_configs(path, node):
 
     def _handle1(item):
         name, value = item
-        parts = name.split('.')
+        parts = name.split(".")
         if len(parts) > len(path):
             return True
         for i in range(-len(parts), 0):
@@ -505,13 +521,15 @@ def validate_pre_configs():
     """Validate that all the configs set through ``pre_config()`` are correctly bound."""
 
     if _PRE_CONFIGS:
-        raise ValueError((
-            "A pre-config '%s' was not handled, either because its config name "
-            +
-            "was not found, or there was some error when calling pre_config()")
-                         % _PRE_CONFIGS[0][0])
+        raise ValueError(
+            (
+                "A pre-config '%s' was not handled, either because its config name "
+                + "was not found, or there was some error when calling pre_config()"
+            )
+            % _PRE_CONFIGS[0][0]
+        )
 
-    for (config_name, _) in _HANDLED_PRE_CONFIGS:
+    for config_name, _ in _HANDLED_PRE_CONFIGS:
         _get_config_node(config_name)
 
 
@@ -535,8 +553,8 @@ def get_config_value(config_name):
     config_node = _get_config_node(config_name)
     if not config_node.is_configured() and not config_node.has_default_value():
         raise ValueError(
-            "Config '%s' is not configured nor has a default value." %
-            config_name)
+            "Config '%s' is not configured nor has a default value." % config_name
+        )
 
     config_node.set_used()
     return config_node.get_effective_value()
@@ -554,12 +572,16 @@ def _make_config(signature, whitelist, blacklist):
     """
     configs = {}
     for name, param in signature.parameters.items():
-        if param.kind in (inspect.Parameter.VAR_POSITIONAL,
-                          inspect.Parameter.VAR_KEYWORD):
+        if param.kind in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        ):
             continue
-        if ((not blacklist and not whitelist)
-                or (whitelist and name in whitelist)
-                or (blacklist and name not in blacklist)):
+        if (
+            (not blacklist and not whitelist)
+            or (whitelist and name in whitelist)
+            or (blacklist and name not in blacklist)
+        ):
             config = _Config()
             configs[name] = config
             if param.default is not inspect.Parameter.empty:
@@ -579,28 +601,33 @@ def _add_to_conf_tree(module_path, func_name, arg_name, node):
     """
 
     tree = _CONF_TREE
-    path = module_path + func_name.split('.') + [arg_name]
+    path = module_path + func_name.split(".") + [arg_name]
     names = []
     for name in reversed(path[1:]):
         if not isinstance(tree, dict):
-            raise ValueError("'%s' conflicts with existing config name '%s'" %
-                             ('.'.join(path), '.'.join(names)))
+            raise ValueError(
+                "'%s' conflicts with existing config name '%s'"
+                % (".".join(path), ".".join(names))
+            )
         if name not in tree:
             tree[name] = {}
         tree = tree[name]
         names.insert(0, name)
 
     if not isinstance(tree, dict):
-        raise ValueError("'%s' conflicts with existing config name '%s'" %
-                         ('.'.join(path), '.'.join(names)))
+        raise ValueError(
+            "'%s' conflicts with existing config name '%s'"
+            % (".".join(path), ".".join(names))
+        )
     if path[0] in tree:
         if isinstance(tree[path[0]], dict):
             leaves = _get_all_leaves(tree)
             raise ValueError(
-                "'%s' conflicts with existing config name '%s'" %
-                ('.'.join(path), '.'.join([leaves[0][0]] + names)))
+                "'%s' conflicts with existing config name '%s'"
+                % (".".join(path), ".".join([leaves[0][0]] + names))
+            )
         else:
-            raise ValueError("'%s' has already been defined." % '.'.join(path))
+            raise ValueError("'%s' has already been defined." % ".".join(path))
 
     tree[path[0]] = node
 
@@ -613,9 +640,9 @@ def _find_class_construction_fn(cls):
     Adapted from gin-config/gin/config.py
     """
     for base in type.mro(cls):
-        if '__init__' in base.__dict__:
+        if "__init__" in base.__dict__:
             return base.__init__
-        if '__new__' in base.__dict__:
+        if "__new__" in base.__dict__:
             return base.__new__
 
 
@@ -626,14 +653,13 @@ def _ensure_wrappability(fn):
     """
     # Handle "builtin_function_or_method", "wrapped_descriptor", and
     # "method-wrapper" types.
-    unwrappable_types = (type(sum), type(object.__init__),
-                         type(object.__call__))
+    unwrappable_types = (type(sum), type(object.__init__), type(object.__call__))
     if isinstance(fn, unwrappable_types):
         # pylint: disable=unnecessary-lambda
         wrappable_fn = lambda *args, **kwargs: fn(*args, **kwargs)
         wrappable_fn.__name__ = fn.__name__
         wrappable_fn.__doc__ = fn.__doc__
-        wrappable_fn.__module__ = ''  # These types have no __module__, sigh.
+        wrappable_fn.__module__ = ""  # These types have no __module__, sigh.
         wrappable_fn.__wrapped__ = fn
         return wrappable_fn
 
@@ -677,15 +703,16 @@ def _make_wrapper(fn, configs, signature, has_self, config_only_args):
                 continue
             elif i < num_positional_args:
                 set_positional_args.append(name)
-            elif param.kind in (Parameter.VAR_POSITIONAL,
-                                Parameter.VAR_KEYWORD):
+            elif param.kind in (Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD):
                 continue
             elif param.kind == Parameter.POSITIONAL_ONLY:
                 if config.is_configured():
                     unspecified_positional_args.append(config.get_value())
                     config.set_used()
             elif name not in kwargs and param.kind in (
-                    Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY):
+                Parameter.POSITIONAL_OR_KEYWORD,
+                Parameter.KEYWORD_ONLY,
+            ):
                 if config.is_configured():
                     unspecified_kw_args[name] = config.get_value()
                 config.set_used()
@@ -697,8 +724,7 @@ def _make_wrapper(fn, configs, signature, has_self, config_only_args):
                     f"Most likely partial() was used to change this value, which is not allowed."
                 )
 
-        return fn(*args, *unspecified_positional_args, **kwargs,
-                  **unspecified_kw_args)
+        return fn(*args, *unspecified_positional_args, **kwargs, **unspecified_kw_args)
 
     return _wrapper
 
@@ -729,10 +755,10 @@ def _decorate(fn_or_cls, name, whitelist, blacklist, config_only_args):
 
     orig_name = name
 
-    if name is None or '.' not in name:
-        module_path = fn_or_cls.__module__.split('.')
+    if name is None or "." not in name:
+        module_path = fn_or_cls.__module__.split(".")
     else:
-        parts = name.split('.')
+        parts = name.split(".")
         module_path = parts[:-1]
         name = parts[-1]
 
@@ -746,27 +772,31 @@ def _decorate(fn_or_cls, name, whitelist, blacklist, config_only_args):
         # cannot use _make_wrapper() directly on fn_or_cls. This is because
         # _make_wrapper() returns a function. But we want to return a class.
         construction_fn = _find_class_construction_fn(fn_or_cls)
-        has_self = construction_fn.__name__ != '__new__'
-        decorated_fn = _make_wrapper(_ensure_wrappability(construction_fn),
-                                     configs, signature, has_self,
-                                     config_only_args)
-        if construction_fn.__name__ == '__new__':
+        has_self = construction_fn.__name__ != "__new__"
+        decorated_fn = _make_wrapper(
+            _ensure_wrappability(construction_fn),
+            configs,
+            signature,
+            has_self,
+            config_only_args,
+        )
+        if construction_fn.__name__ == "__new__":
             decorated_fn = staticmethod(decorated_fn)
         setattr(fn_or_cls, construction_fn.__name__, decorated_fn)
     else:
-        fn_or_cls = _make_wrapper(fn_or_cls,
-                                  configs,
-                                  signature,
-                                  has_self=0,
-                                  config_only_args=config_only_args)
+        fn_or_cls = _make_wrapper(
+            fn_or_cls, configs, signature, has_self=0, config_only_args=config_only_args
+        )
 
-    if fn_or_cls.__module__ != '<run_path>' and os.environ.get(
-            'ALF_USE_GIN', "1") == "1":
+    if (
+        fn_or_cls.__module__ != "<run_path>"
+        and os.environ.get("ALF_USE_GIN", "1") == "1"
+    ):
         # If a file is executed using runpy.run_path(), the module name is
         # '<run_path>', which is not an acceptable name by gin.
-        return gin.configurable(orig_name,
-                                whitelist=whitelist,
-                                blacklist=blacklist)(fn_or_cls)
+        return gin.configurable(orig_name, whitelist=whitelist, blacklist=blacklist)(
+            fn_or_cls
+        )
     else:
         return fn_or_cls
 
@@ -797,17 +827,19 @@ def repr_wrapper(cls):
     assert inspect.isclass(cls)
     signature = inspect.signature(cls)
     construction_fn = _find_class_construction_fn(cls)
-    has_self = construction_fn.__name__ != '__new__'
+    has_self = construction_fn.__name__ != "__new__"
     fn = _ensure_wrappability(construction_fn)
     defaults = {}
     for name, param in signature.parameters.items():
-        if param.kind in (inspect.Parameter.VAR_POSITIONAL,
-                          inspect.Parameter.VAR_KEYWORD):
+        if param.kind in (
+            inspect.Parameter.VAR_POSITIONAL,
+            inspect.Parameter.VAR_KEYWORD,
+        ):
             continue
         if param.default is not inspect.Parameter.empty:
             defaults[name] = param.default
 
-    setattr(cls, '__repr__', lambda self: self._repr_wrapper_str_)
+    setattr(cls, "__repr__", lambda self: self._repr_wrapper_str_)
 
     @functools.wraps(fn)
     def _wrapper(*args, **kwargs):
@@ -822,29 +854,24 @@ def repr_wrapper(cls):
             s.append(pprint.pformat(val))
         for k, val in kwargs.items():
             if k not in defaults or val != defaults[k]:
-                s.append(k + '=' + pprint.pformat(val))
+                s.append(k + "=" + pprint.pformat(val))
         l = sum(map(len, s))
-        multiline = l > 80 or any(map(lambda x: '\n' in x, s))
+        multiline = l > 80 or any(map(lambda x: "\n" in x, s))
         if multiline:
-            s = ['  ' + x for x in s]
-            self._repr_wrapper_str_ = '%s(\n%s)' % (cls.__qualname__,
-                                                    ",\n".join(s))
+            s = ["  " + x for x in s]
+            self._repr_wrapper_str_ = "%s(\n%s)" % (cls.__qualname__, ",\n".join(s))
         else:
-            self._repr_wrapper_str_ = '%s(%s)' % (cls.__qualname__,
-                                                  ", ".join(s))
+            self._repr_wrapper_str_ = "%s(%s)" % (cls.__qualname__, ", ".join(s))
         return ret
 
     decorated_fn = _wrapper
-    if construction_fn.__name__ == '__new__':
+    if construction_fn.__name__ == "__new__":
         decorated_fn = staticmethod(decorated_fn)
     setattr(cls, construction_fn.__name__, decorated_fn)
     return cls
 
 
-def configurable(fn_or_name=None,
-                 whitelist=[],
-                 blacklist=[],
-                 config_only_args=[]):
+def configurable(fn_or_name=None, whitelist=[], blacklist=[], config_only_args=[]):
     """Decorator to make a function or class configurable.
 
     This decorator registers the decorated function/class as configurable, which
@@ -975,18 +1002,17 @@ def configurable(fn_or_name=None,
         if entry in config_only_args:
             raise ValueError(
                 f"Entry '{entry}' found in both blacklist and config_only_args. "
-                f"An entry can only be in one of these lists.")
+                f"An entry can only be in one of these lists."
+            )
 
     if not callable(fn_or_name):
 
         def _decorator(fn_or_cls):
-            return _decorate(fn_or_cls, name, whitelist, blacklist,
-                             config_only_args)
+            return _decorate(fn_or_cls, name, whitelist, blacklist, config_only_args)
 
         return _decorator
     else:
-        return _decorate(fn_or_name, name, whitelist, blacklist,
-                         config_only_args)
+        return _decorate(fn_or_name, name, whitelist, blacklist, config_only_args)
 
 
 def define_config(name, default_value):
@@ -1002,8 +1028,8 @@ def define_config(name, default_value):
     """
     node = _Config()
     node.set_default_value(default_value)
-    _add_to_conf_tree(['_CONFIG'], '_USER', name, node)
-    _DEFINED_CONFIGS.append('_CONFIG._USER.' + name)
+    _add_to_conf_tree(["_CONFIG"], "_USER", name, node)
+    _DEFINED_CONFIGS.append("_CONFIG._USER." + name)
     return get_config_value("_CONFIG._USER." + name)
 
 
@@ -1023,7 +1049,7 @@ def _get_conf_file_full_path(conf_file):
     conf_path = os.environ.get("ALF_CONFIG_PATH", None)
     conf_dirs = []
     if conf_path is not None:
-        conf_dirs = conf_path.split(':')
+        conf_dirs = conf_path.split(":")
     for dir in conf_dirs:
         candidate = os.path.join(dir, conf_file)
         if os.path.exists(candidate):
@@ -1071,8 +1097,9 @@ def import_config(conf_file):
         imported module.
     """
     if len(_IMPORT_STACK) == 0:
-        raise ValueError("alf.import_config() can only be called inside a "
-                         "config file.")
+        raise ValueError(
+            "alf.import_config() can only be called inside a " "config file."
+        )
     conf_file = _get_conf_file_full_path(conf_file)
     return _import_config(conf_file)
 
@@ -1117,7 +1144,8 @@ def load_config(conf_file):
         raise ValueError(
             "One process can only call alf.load_config() once. "
             "If you want to call it multiple times, you need to call "
-            "alf.reset_configs() between the calls.")
+            "alf.reset_configs() between the calls."
+        )
     conf_file = _get_conf_file_full_path(conf_file)
     _ROOT_CONF_FILE = conf_file
     return _import_config(conf_file)
@@ -1133,8 +1161,9 @@ def save_config(alf_config_file):
 
     """
     if _ROOT_CONF_FILE is None:
-        raise ValueError("alf.save_config() cannot be called before "
-                         "alf.load_config()")
+        raise ValueError(
+            "alf.save_config() cannot be called before " "alf.load_config()"
+        )
     config_dirname = "config_files"
     dir = os.path.join(os.path.dirname(alf_config_file), config_dirname)
     os.makedirs(dir, exist_ok=True)
@@ -1142,7 +1171,7 @@ def save_config(alf_config_file):
     conf_root_dir = os.path.dirname(_ROOT_CONF_FILE)
 
     pre_configs = get_handled_pre_configs()
-    config = ''
+    config = ""
     config += "import alf\n"
     if pre_configs:
         config += "alf.pre_config({\n"
@@ -1153,13 +1182,13 @@ def save_config(alf_config_file):
                 config += "    '%s': %s,\n" % (config_name, config_value)
         config += "})\n\n"
     config += f"config = alf.import_config('{config_dirname}/{conf_file_name}')\n"
-    f = open(alf_config_file, 'w')
+    f = open(alf_config_file, "w")
     f.write(config)
     f.close()
 
     for conf_file, content in _CONF_FILES.items():
         if conf_file.startswith(conf_root_dir):
-            conf_rel_path = conf_file[len(conf_root_dir) + 1:]
+            conf_rel_path = conf_file[len(conf_root_dir) + 1 :]
             conf_rel_dir = os.path.dirname(conf_rel_path)
             if conf_rel_dir:
                 os.makedirs(os.path.join(dir, conf_rel_dir), exist_ok=True)

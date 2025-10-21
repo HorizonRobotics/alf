@@ -13,11 +13,12 @@
 # limitations under the License.
 
 import collections
+
 import gym
 import gym.spaces
 
 import alf
-from alf.environments import gym_wrappers, alf_wrappers, alf_gym_wrapper
+from alf.environments import alf_gym_wrapper, alf_wrappers, gym_wrappers
 
 
 @alf.configurable
