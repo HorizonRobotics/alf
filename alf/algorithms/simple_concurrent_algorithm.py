@@ -17,19 +17,15 @@ Routes batch elements to independent copies of a base algorithm.
 """
 
 from typing import Callable, Optional
-from collections import namedtuple
+
 import torch
 import torch.nn as nn
 
 import alf
-from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
-from alf.data_structures import TimeStep, AlgStep, LossInfo
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.data_structures import AlgStep, LossInfo, TimeStep
 from alf.tensor_specs import TensorSpec
-
-
-SimpleConcurrentState = namedtuple('SimpleConcurrentState',
-                                    ['algorithm_states'])
 
 
 @alf.configurable
@@ -82,14 +78,12 @@ class SimpleConcurrentAlgorithm(OffPolicyAlgorithm):
         is_on_policy = temp_alg.on_policy
 
         # Collect state specs from temporary algorithm
-        train_state_spec = []
-        rollout_state_spec = []
-        predict_state_spec = []
-
-        for i in range(num_copies):
-            train_state_spec.append(temp_alg.train_state_spec)
-            rollout_state_spec.append(temp_alg.rollout_state_spec)
-            predict_state_spec.append(temp_alg.predict_state_spec)
+        train_state_spec = [temp_alg.train_state_spec for _ in range(num_copies)]
+        rollout_state_spec = [temp_alg.rollout_state_spec for _ in range(num_copies)]
+        predict_state_spec = [temp_alg.predict_state_spec for _ in range(num_copies)]
+        
+        # Clean up temporary algorithm
+        del temp_alg
 
         super().__init__(
             observation_spec=observation_spec,
@@ -107,6 +101,10 @@ class SimpleConcurrentAlgorithm(OffPolicyAlgorithm):
             name=name)
 
         self._num_copies = num_copies
+        
+        # Validate that batch size will be compatible with num_copies
+        if env and hasattr(env, 'batch_size'):
+            assert env.batch_size % num_copies == 0, f"Environment batch size {env.batch_size} must be a multiple of num_copies {num_copies}"
 
         # Create K independent algorithm copies
         self._algorithms = nn.ModuleList([
@@ -141,13 +139,12 @@ class SimpleConcurrentAlgorithm(OffPolicyAlgorithm):
             dict: mapping algorithm index -> (sliced_time_step, sliced_state, batch_indices)
         """
         batch_size = alf.nest.get_nest_batch_size(time_step.observation)
+        device = next(iter(alf.nest.flatten(time_step.observation))).device
 
         routing = {}
         for i in range(self._num_copies):
-            # Find batch elements for this algorithm: i % K == algorithm_index
-            batch_indices = torch.tensor(
-                [j for j in range(batch_size) if j % self._num_copies == i],
-                dtype=torch.int64)
+            # Use efficient slicing: elements where j % K == i
+            batch_indices = torch.arange(i, batch_size, self._num_copies, device=device)
 
             if len(batch_indices) == 0:
                 continue
@@ -187,18 +184,10 @@ class SimpleConcurrentAlgorithm(OffPolicyAlgorithm):
                 device=sample_tensor.device)
 
             # Scatter each algorithm's outputs
-            for alg_idx, (tensor, batch_indices) in tensor_by_alg.items():
+            for tensor, batch_indices in tensor_by_alg.values():
                 result[batch_indices] = tensor
 
             return result
-
-        # Create dict: {alg_idx: (tensor, batch_indices)} for each leaf
-        def _extract_leaf_with_indices(path_to_leaf):
-            return {
-                alg_idx: (alf.nest.get_field(output, path_to_leaf),
-                          batch_indices)
-                for alg_idx, (output, batch_indices) in outputs_by_alg.items()
-            }
 
         # Get all paths in the nest
         flat_structure = alf.nest.flatten(first_output)
@@ -300,12 +289,11 @@ class SimpleConcurrentAlgorithm(OffPolicyAlgorithm):
         total_priority = ()
         extra_dict = {}
 
+        device = next(iter(alf.nest.flatten(info))).device
+        
         for alg_idx in range(self._num_copies):
-            # Find batch elements for this algorithm
-            batch_indices = torch.tensor(
-                [j for j in range(batch_size) if j % self._num_copies == alg_idx
-                 ],
-                dtype=torch.int64)
+            # Use efficient slicing: elements where j % K == alg_idx
+            batch_indices = torch.arange(alg_idx, batch_size, self._num_copies, device=device)
 
             if len(batch_indices) == 0:
                 continue
