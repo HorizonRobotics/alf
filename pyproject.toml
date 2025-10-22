@@ -34,7 +34,7 @@ dependencies = [
     "pathos==0.3.3",
     "pillow>=8",
     "pre-commit==3.6.2",
-    "protobuf==6.30.2",
+    "protobuf>=6.31.1",
     "psutil==7.0.0",
     "pybind11==2.13.6",
     "pybullet==2.5.0",
