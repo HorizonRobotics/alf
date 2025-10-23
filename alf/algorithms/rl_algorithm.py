@@ -602,9 +602,12 @@ class RLAlgorithm(Algorithm):
                              transformed_time_step, policy_state,
                              experience_list, original_reward_list):
         self.observe_for_metrics(time_step.cpu())
-        exp = make_experience(time_step.cpu(),
-                              alf.layers.to_float32(policy_step),
-                              alf.layers.to_float32(policy_state))
+
+        cast = alf.layers.to_float32 if self._config.enable_amp else (
+            lambda x: x)
+
+        exp = make_experience(time_step.cpu(), cast(policy_step),
+                              cast(policy_state))
 
         store_exp_time = 0
         if not self.on_policy:
