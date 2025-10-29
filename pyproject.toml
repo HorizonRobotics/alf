@@ -31,7 +31,7 @@ dependencies = [
     "matplotlib==3.10.1",
     "numpy==1.26",
     "opencv-python==4.11.0.86",
-    "pathos==0.3.3",
+    # "pathos==0.3.4",  pathos removed due to conflict with lerobot (from openpi)
     "pillow>=8",
     "pre-commit==3.6.2",
     "protobuf>=6.31.1",
@@ -44,9 +44,9 @@ dependencies = [
     "rectangle-packer==2.0.4",
     "tensorboard==2.19.0",
     "threadpoolctl==3.6.0",
-    "torch==2.8.0+cu128",
+    "torch==2.7.1+cu128",
     "torchtext==0.18.0",
-    "torchvision==0.23.0+cu128",
+    "torchvision==0.22.1+cu128",
     "wheel",
     "yapf==0.43.0",
 ]
