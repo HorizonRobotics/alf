@@ -23,6 +23,7 @@ from enum import Enum
 from functools import partial
 import multiprocessing
 import os
+import subprocess
 import sys
 import threadpoolctl
 import torch
@@ -39,12 +40,23 @@ from alf.utils.common import lazy_load_extension
 import pathlib
 
 DIR = pathlib.Path(__file__).parent.absolute()
+boost_include = os.path.join(os.path.expanduser('~'),
+                             'opt/homebrew/opt/boost/include')
+if not os.path.exists(boost_include):
+    brew_boost = subprocess.run(['brew', '--prefix', 'boost'],
+                                capture_output=True,
+                                text=True)
+    if brew_boost.returncode == 0:
+        boost_include = os.path.join(brew_boost.stdout.strip(), 'include')
+extra_cflags = [
+    '-O3', '-Wall', '-shared', '-std=c++17', '-fPIC', '-fvisibility=hidden'
+]
+if os.path.exists(boost_include):
+    extra_cflags.append(f'-I{boost_include}')
 _penv = lazy_load_extension(
     name="penv",
     sources=[os.path.join(DIR, "parallel_environment.cpp")],
-    extra_cflags=[
-        '-O3', '-Wall', '-shared', '-std=c++17', '-fPIC', '-fvisibility=hidden'
-    ],
+    extra_cflags=extra_cflags,
     verbose=True)
 
 FLAGS = flags.FLAGS
