@@ -97,11 +97,25 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             loss_class (type): the class of the loss. The signature of its
                 constructor: ``loss_class(debug_summaries)``
             actor_avg_fns: a list of functions for doing model averaging for
-                the trajectory predictor. Each function will be responsible for
+                the actor network. Each function will be responsible for
                 performing one model averaging. The function must take in the
                 current value of the `AveragedModel` parameter, the
                 current value of `model` parameter, and the number of models
                 already averaged. See alf.utils/model_averager.ema_avg_fn for an example.
+
+                Example:
+
+                .. code-block:: python
+
+                    actor_avg_fns=[
+                        partial(ema_avg_fn,
+                                ema_rate=1e-3,
+                                starting_average_after=300_000),
+                        partial(ema_avg_fn,
+                                ema_rate=1e-2,
+                                starting_average_after=300_000),
+                    ])
+
             predict_ema_id: the index of the actor average model to be used
                 for prediction. -1 means the original actor network is used.
                 0 means the first averaged model in actor_avg_fns is used,
