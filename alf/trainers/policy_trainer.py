@@ -1159,7 +1159,10 @@ def play(root_dir,
         # some side effects on xserver (if its backend needs graphics).
         # This is incompatible with RLBench parallel envs >1 (or other
         # envs requiring xserver) for some unknown reasons, so we have a lazy import here.
-        from alf.utils.video_recorder import VideoRecorder
+        # Unlock gin config to allow VideoRecorder to be registered as configurable
+        import gin
+        with gin.unlock_config():
+            from alf.utils.video_recorder import VideoRecorder
         recorder = VideoRecorder(env,
                                  last_step_repeats=last_step_repeats,
                                  append_blank_frames=append_blank_frames,

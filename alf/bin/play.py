@@ -118,21 +118,29 @@ def play():
     render.enable_rendering(FLAGS.alg_render)
 
     seed = common.set_random_seed(FLAGS.random_seed)
-    if FLAGS.parallel_play > 1:
-        alf.config('create_environment',
-                   for_evaluation=True,
-                   num_parallel_environments=FLAGS.parallel_play,
-                   mutable=False)
-    else:
-        alf.config('create_environment',
-                   for_evaluation=True,
-                   nonparallel=True,
-                   num_parallel_environments=1,
-                   batch_size_per_env=1,
-                   mutable=False)
     alf.config('TrainerConfig', mutable=False, random_seed=seed)
     conf_file = common.get_conf_file()
     assert conf_file is not None, "Conf file not found! Check your root_dir"
+    
+    # For gin files, add gin_param to override environment settings for play mode
+    # This must be done before parse_conf_file which creates the environment
+    if conf_file.endswith('.gin'):
+        existing_gin_params = getattr(FLAGS, 'gin_param', None) or []
+        if FLAGS.parallel_play > 1:
+            play_gin_params = [
+                'create_environment.for_evaluation=True',
+                f'create_environment.num_parallel_environments={FLAGS.parallel_play}',
+            ]
+        else:
+            play_gin_params = [
+                'create_environment.for_evaluation=True',
+                'create_environment.nonparallel=True',
+                'create_environment.num_parallel_environments=1',
+                'create_environment.batch_size_per_env=1',
+            ]
+        # Combine existing gin_params with play-specific overrides
+        FLAGS.gin_param = list(existing_gin_params) + play_gin_params
+    
     try:
         common.parse_conf_file(conf_file)
     except Exception as e:

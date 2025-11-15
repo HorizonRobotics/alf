@@ -15,6 +15,7 @@
 import cv2
 import http.server
 import json
+import logging
 import numpy as np
 import pprint
 import socketserver
@@ -177,9 +178,16 @@ def register_endpoint(path: str,
 
 
 def start_server(port):
-    with socketserver.TCPServer(("", port), CustomRequestHandler) as httpd:
-        print(f"Serving at port {port}")
-        httpd.serve_forever()
+    try:
+        with socketserver.TCPServer(("", port), CustomRequestHandler) as httpd:
+            print(f"Serving at port {port}")
+            httpd.serve_forever()
+    except OSError as e:
+        if e.errno == 98:  # Address already in use
+            logging.warning(
+                f"Port {port} is already in use. HTTP server will not be started.")
+        else:
+            raise
 
 
 def home_handler(request):
