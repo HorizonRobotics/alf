@@ -187,7 +187,10 @@ class DiffusionFPOActorCriticLoss(ActorCriticLoss):
             LossInfo with FPO loss + TD loss + Imitation loss
         """
         returns = info.returns
-        td_loss = self._td_error_loss_fn(returns.detach(), info.value)
+        # CRITICAL: Clip returns to prevent explosion when value network diverges
+        # This prevents training failure from extremely large negative returns
+        returns_clipped = torch.clamp(returns, -100.0, 100.0)
+        td_loss = self._td_error_loss_fn(returns_clipped.detach(), info.value)
         
         # PPO uses the same value network as main algorithm, so no separate PPO value loss needed
         # The TD loss already trains the shared value network
@@ -1232,10 +1235,23 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
                 value_observation = inputs.observation
         else:
             # inputs.observation is a tensor
+            # For simple tensor observations (e.g., Bullet Humanoid), pass directly
+            # The value network with NestConcat() can handle both dict and tensor inputs
+            # If it expects a dict structure, wrap it; otherwise pass tensor directly
             if expected_field == 'context_info':
-                value_observation = {'representation': {'context_info': inputs.observation}}
+                # Check if value network expects dict structure
+                if isinstance(value_network_spec, dict) and 'representation' in value_network_spec:
+                    value_observation = {'representation': {'context_info': inputs.observation}}
+                else:
+                    # Value network expects tensor directly
+                    value_observation = inputs.observation
             else:
-                value_observation = {'representation': {'context_info': inputs.observation}}
+                # Fallback: try dict structure first
+                if isinstance(value_network_spec, dict) and 'representation' in value_network_spec:
+                    value_observation = {'representation': {'context_info': inputs.observation}}
+                else:
+                    # Value network expects tensor directly
+                    value_observation = inputs.observation
         
         value_output, value_state = self._value_network(value_observation, state.value)
         
@@ -1351,10 +1367,23 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
                 value_observation = inputs.observation
         else:
             # inputs.observation is a tensor
+            # For simple tensor observations (e.g., Bullet Humanoid), pass directly
+            # The value network with NestConcat() can handle both dict and tensor inputs
+            # If it expects a dict structure, wrap it; otherwise pass tensor directly
             if expected_field == 'context_info':
-                value_observation = {'representation': {'context_info': inputs.observation}}
+                # Check if value network expects dict structure
+                if isinstance(value_network_spec, dict) and 'representation' in value_network_spec:
+                    value_observation = {'representation': {'context_info': inputs.observation}}
+                else:
+                    # Value network expects tensor directly
+                    value_observation = inputs.observation
             else:
-                value_observation = {'representation': {'context_info': inputs.observation}}
+                # Fallback: try dict structure first
+                if isinstance(value_network_spec, dict) and 'representation' in value_network_spec:
+                    value_observation = {'representation': {'context_info': inputs.observation}}
+                else:
+                    # Value network expects tensor directly
+                    value_observation = inputs.observation
         
         value_output, value_state = self._value_network(value_observation, state.value)
         
