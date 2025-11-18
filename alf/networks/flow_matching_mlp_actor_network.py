@@ -537,15 +537,40 @@ class MLPTrajectoryHead(nn.Module):
         
         Returns:
             dict with 'trajectory' key containing [B, action_size] actions
+            During training with targets, also returns 'v_pred' and 'v_target' for imitation loss
         """
         if self.training and targets is not None and 'trajectory' in targets:
-            # Training mode: return trajectory for loss computation
-            # The algorithm will call diffusion_model() separately for CFM loss
+            # Training mode: compute v_pred and v_target for imitation loss
             trajectory = targets['trajectory']
             # If trajectory is [B, num_poses, action_dim], take first pose or flatten
             if trajectory.dim() == 3:
-                trajectory = trajectory[:, 0, :]  # Take first pose
-            return {'trajectory': trajectory}
+                trajectory = trajectory[:, 0, :]  # Take first pose [B, action_dim]
+            
+            batch_size = trajectory.shape[0]
+            device = trajectory.device
+            action_dim = trajectory.shape[-1]
+            
+            # Sample noise and timestep for velocity computation (matching CFM loss)
+            # Sample single timestep per sample (not multiple MC samples)
+            eps = self.sample_noise([batch_size, action_dim], device)  # [B, action_dim]
+            t = torch.rand(batch_size, device=device)  # [B] timesteps in [0, 1]
+            
+            # Compute interpolated action: x_t = (1-t) * action + t * eps
+            t_expanded = t.view(-1, 1)  # [B, 1]
+            x_t = (1.0 - t_expanded) * trajectory + t_expanded * eps  # [B, action_dim]
+            
+            # Compute predicted velocity: v_pred = model(x_t, context, t)
+            v_pred = self._compute_velocity(x_t, context, t, condition_mask=None)  # [B, action_dim]
+            
+            # Compute target velocity: v_target = eps - action (ground truth velocity)
+            # This matches the CFM loss computation: u_t = x1 - x0 = eps - action
+            v_target = eps - trajectory  # [B, action_dim]
+            
+            return {
+                'trajectory': trajectory,
+                'v_pred': v_pred,
+                'v_target': v_target
+            }
         else:
             # Inference mode: sample actions
             actions = self.sample_actions(context)
@@ -602,10 +627,10 @@ class FlowMatchingMLPActorNetwork(nn.Module):
             # Use provided constructor (for compatibility with ALF patterns)
             filtered_kwargs = {k: v for k, v in kwargs.items() 
                               if k not in ['input_tensor_spec', 'action_spec', 'reward_spec']}
-            trajectory_head = head_ctor(**filtered_kwargs)
+            self.trajectory_head = head_ctor(**filtered_kwargs)
         else:
             # Create default MLPTrajectoryHead
-            trajectory_head = MLPTrajectoryHead(
+            self.trajectory_head = MLPTrajectoryHead(
                 input_size=input_size,
                 action_size=action_size,
                 hidden_size=hidden_size,
@@ -618,8 +643,8 @@ class FlowMatchingMLPActorNetwork(nn.Module):
                 **kwargs
             )
         
-        # Register as submodule
-        self.add_module('trajectory_head', trajectory_head)
+        # Register as submodule (for proper parameter tracking)
+        self.add_module('trajectory_head', self.trajectory_head)
     
     @property
     def state_spec(self):
@@ -695,6 +720,20 @@ class FlowMatchingMLPActorNetwork(nn.Module):
         
         # Call trajectory_head.forward() (matching FlowMatchingActorNetwork pattern)
         outputs = self.trajectory_head(context, targets)
+        
+        # Pass through v_pred and v_target if available (for imitation loss)
+        # The trajectory_head returns these during training when targets are provided
+        if isinstance(outputs, dict):
+            # Ensure v_pred and v_target are in the output dict
+            # They may already be there from trajectory_head, but ensure they're accessible
+            if 'v_pred' in outputs and 'v_target' in outputs:
+                # Store them in representation dict for compatibility with algorithm expectations
+                if 'representation' not in outputs:
+                    outputs['representation'] = {}
+                if not isinstance(outputs['representation'], dict):
+                    outputs['representation'] = {}
+                outputs['representation']['v_pred'] = outputs['v_pred']
+                outputs['representation']['v_target'] = outputs['v_target']
         
         return outputs, state
     

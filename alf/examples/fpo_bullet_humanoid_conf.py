@@ -15,6 +15,7 @@ from alf.algorithms.ppo_loss import PPOLoss
 from alf.networks.value_networks import ValueNetwork
 from alf.networks.flow_matching_actor_network import FlowMatchingActorNetwork
 from alf.networks.flow_matching_trajectory_head import FlowMatchingTrajectoryHead
+from alf.networks.flow_matching_mlp_actor_network import FlowMatchingMLPActorNetwork, MLPTrajectoryHead
 from alf.utils.losses import element_wise_squared_loss
 import alf.nest.utils
 
@@ -25,37 +26,75 @@ import pybullet_envs  # noqa: F401
 alf.config('create_environment', env_name="HumanoidBulletEnv-v0", num_parallel_environments=96)
 alf.config('suite_gym.wrap_env', clip_action=False)
 
-# Observation: [376] (state vector)
+# Observation: [44] (preprocessed state vector)
 # Action: [17] (continuous torques for 17 joints)
 # For FPO, we treat single-step actions as 1-step trajectories
 
-# FlowMatchingTrajectoryHead configuration
-# Treat single action [17] as 1-step trajectory [1, 17]
+# ============================================================================
+# Previous FlowMatchingActorNetwork configuration (DiT-based, commented out)
+# ============================================================================
+# # FlowMatchingTrajectoryHead configuration
+# # Treat single action [17] as 1-step trajectory [1, 17]
+# head_ctor_old = partial(
+#     FlowMatchingTrajectoryHead,
+#     num_poses=1,  # Single step trajectory
+#     d_ffn=256,
+#     d_model=256,
+#     action_dim=17,  # Humanoid action dimension
+#     diffusion_steps=20,
+#     dit_depth=3,
+#     time_sample_alpha=0.0,
+#     pretrained_checkpoint=None,  # No pretrained checkpoint for Bullet Humanoid
+#     enable_trajectory_scaling=False,
+# )
+# 
+# # FlowMatchingActorNetwork configuration
+# # Note: encoder_input_dim should match the actual observation dimension after preprocessing
+# # HumanoidBulletEnv-v0 outputs [376] but may be preprocessed to a different dimension
+# # If observation is [376], set encoder_input_dim=376; if preprocessed to [44], use encoder_input_dim=44
+# actor_network_ctor_old = partial(
+#     FlowMatchingActorNetwork,
+#     head_ctor=head_ctor_old,
+#     flow_matching_steps=5,
+#     encoder_input_dim=44,  # Match HumanoidBulletEnv-v0 observation dimension
+#     encoder_output_dim=256,  # Encoded feature dimension for DiT
+#     encoder_hidden_dims=(128,),  # Hidden layer dimensions
+#     encoder_activation=torch.nn.ReLU,
+# )
+# ============================================================================
+
+# MLPTrajectoryHead configuration (matching PHC architecture)
+# For Bullet Humanoid: observation [44], action [17]
+# NOTE: num_envs is used for pre-allocating condition dropout mask.
+# Since condition_drop_ratio=0.0, the mask isn't used, but if enabled later,
+# num_envs should be >= max batch size (num_parallel_environments * unroll_length = 96 * 512 = 49,152)
 head_ctor = partial(
-    FlowMatchingTrajectoryHead,
-    num_poses=1,  # Single step trajectory
-    d_ffn=256,
-    d_model=256,
-    action_dim=17,  # Humanoid action dimension
-    diffusion_steps=20,
-    dit_depth=3,
-    time_sample_alpha=0.0,
-    pretrained_checkpoint=None,  # No pretrained checkpoint for Bullet Humanoid
-    enable_trajectory_scaling=False,
+    MLPTrajectoryHead,
+    input_size=44,  # Observation dimension (HumanoidBulletEnv-v0 preprocessed)
+    action_size=17,  # Action dimension (17 joints)
+    hidden_size=512,  # Hidden dimension (matching PHC default)
+    parameterization="velocity",  # Velocity parameterization (matching PHC)
+    zero_action_input=False,  # Don't zero out action input
+    prior_noise_std=1.0,  # Prior noise standard deviation
+    solver_step_size=0.1,  # ODE solver step size (matching PHC)
+    condition_drop_ratio=0.0,  # No condition dropout
+    num_envs=49152,  # Max batch size (96 * 512) for dropout mask pre-allocation (if condition_drop_ratio > 0)
 )
 
-# FlowMatchingActorNetwork configuration
-# Note: encoder_input_dim should match the actual observation dimension after preprocessing
-# HumanoidBulletEnv-v0 outputs [376] but may be preprocessed to a different dimension
-# If observation is [376], set encoder_input_dim=376; if preprocessed to [44], use encoder_input_dim=44
+# FlowMatchingMLPActorNetwork configuration (matching PHC FlowMatchingPolicy)
+# Note: No encoder needed - MLP network uses observation directly
 actor_network_ctor = partial(
-    FlowMatchingActorNetwork,
-    head_ctor=head_ctor,
-    flow_matching_steps=5,
-    encoder_input_dim=44,  # Match HumanoidBulletEnv-v0 observation dimension
-    encoder_output_dim=256,  # Encoded feature dimension for DiT
-    encoder_hidden_dims=(128,),  # Hidden layer dimensions
-    encoder_activation=torch.nn.ReLU,
+    FlowMatchingMLPActorNetwork,
+    input_size=44,  # Observation dimension (HumanoidBulletEnv-v0 preprocessed)
+    action_size=17,  # Action dimension (17 joints)
+    hidden_size=512,  # Hidden dimension (matching PHC default)
+    parameterization="velocity",  # Velocity parameterization (matching PHC)
+    zero_action_input=False,  # Don't zero out action input
+    prior_noise_std=1.0,  # Prior noise standard deviation
+    solver_step_size=0.1,  # ODE solver step size (matching PHC)
+    condition_drop_ratio=0.0,  # No condition dropout
+    num_envs=49152,  # Max batch size (96 * 512) for dropout mask pre-allocation (if condition_drop_ratio > 0)
+    head_ctor=head_ctor,  # Use MLPTrajectoryHead
 )
 
 # Value network configuration

@@ -48,7 +48,9 @@ class FlowMatchingActorNetwork(nn.Module):
                           if k not in ['input_tensor_spec', 'action_spec', 'reward_spec']}
         
         # Create the Flow Matching trajectory head
-        self.trajectory_head = head_ctor(**filtered_kwargs)
+        # Explicitly register as submodule to ensure proper parameter tracking
+        trajectory_head = head_ctor(**filtered_kwargs)
+        self.add_module('trajectory_head', trajectory_head)
         
         # Create MLP encoder to map context_info to latent feature
         encoder_layers = []
