@@ -6,7 +6,7 @@
 export ALF_USE_GIN=0
 
 # Set the output directory
-OUTPUT_DIR="/mnt/nas26/qiang.liu/experiments/fm_humanoid"
+OUTPUT_DIR="/mnt/cwai/hpfs0/qiang.liu/e2e-rl/fpo_humanoid"
 
 # Set the config file path (relative to ALF root)
 CONF_FILE="alf/examples/fpo_bullet_humanoid_conf.py"

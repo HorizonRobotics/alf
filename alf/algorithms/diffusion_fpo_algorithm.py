@@ -18,12 +18,14 @@ FPOInfo = alf.data_structures.namedtuple(
         "loss_eps",                 # Noise samples ε for FPO loss [T, B, Nmc, D]
         "loss_t",                   # Timestep samples τ for FPO loss [T, B, Nmc, 1]
         "initial_cfm_loss",         # CFM loss computed with old policy [T, B, Nmc]
+        "initial_log_probs",        # Log probabilities computed with old policy [T, B, Nmc] (PHC-style)
         "ppo_advantages",           # PPO advantages from GAE
         "observation",              # Buffered observation for loss computation
         "returns",                  # Returns for value loss computation
         "valid_target",             # Valid target for FPO loss [B]
         "v_pred",                   # Predicted velocity from flow matching
         "v_target",                 # Target velocity for flow matching
+        "ppo_value",                # PPO value network output for PPO value loss [T, B]
     ),
     default_value=()
 )
@@ -187,12 +189,19 @@ class DiffusionFPOActorCriticLoss(ActorCriticLoss):
         returns = info.returns
         td_loss = self._td_error_loss_fn(returns.detach(), info.value)
         
+        # PPO uses the same value network as main algorithm, so no separate PPO value loss needed
+        # The TD loss already trains the shared value network
+        ppo_value_loss = torch.tensor(0.0, device=td_loss.device if isinstance(td_loss, torch.Tensor) else 'cpu')
+        
         # Get current FPO weight based on schedule function
         current_fpo_weight = (
             self._fpo_weight_schedule_fn() if self._fpo_weight_schedule_fn is not None else self._fpo_loss_weight
         )
         
-        if self._compute_fpo_loss_fn is not None and current_fpo_weight > 0.0:
+        # CRITICAL: Always compute FPO loss even during warmup (when weight=0) to ensure
+        # encoder and trajectory_head.diffusion_model parameters receive gradients.
+        # The weight multiplication (which can be 0) doesn't break the computation graph.
+        if self._compute_fpo_loss_fn is not None:
             fpo_loss_info = self._compute_fpo_loss_fn(info)
         else:
             fpo_loss_info = LossInfo(
@@ -211,7 +220,8 @@ class DiffusionFPOActorCriticLoss(ActorCriticLoss):
                 extra={'imitation_loss': torch.tensor(0.0)}
             )
         
-        # Combine losses: FPO loss + TD loss + Imitation loss      
+        # Combine losses: FPO loss + TD loss + Imitation loss
+        # Note: PPO uses the same value network, so TD loss trains it
         total_loss = (current_fpo_weight * fpo_loss_info.loss + 
                      self._td_loss_weight * td_loss.mean() +
                      self._imitation_loss_weight * imitation_loss_info.loss)
@@ -325,6 +335,9 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
                  imitation_loss_weight: float = 1.0,
                  warmup_value_network_iterations: int = 100,
                  cfm_loss_mode: str = "eps_mse",  # "eps_mse" (preferred) or "u_mse"
+                 use_noise_schedule_weight: bool = False,  # Whether to apply noise schedule weighting to CFM loss
+                 use_noise_std_for_importance_ratio: bool = False,  # Whether to use noise std (0.05) for importance ratio computation (PHC-style)
+                 noise_std: float = 0.05,  # Noise standard deviation for CFM loss (PHC uses 0.05)
                  ):
         """
         Args:
@@ -352,6 +365,11 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
             imitation_loss_weight: Weight for imitation loss
             warmup_value_network_iterations: Number of iterations to warmup value network
             cfm_loss_mode: CFM loss mode - "eps_mse" (preferred) or "u_mse"
+            use_noise_schedule_weight: Whether to apply noise schedule weighting (1/2)/(τ(1-τ)) to CFM loss.
+                If False, uses unweighted MSE loss (matches fpo.py reference implementation).
+            use_noise_std_for_importance_ratio: If True, compute log_probs with noise std for importance ratio (PHC-style).
+                If False, use CFM loss differences for importance ratio (ALF-style).
+            noise_std: Noise standard deviation for CFM loss computation (default: 0.05, matches PHC).
         """
         # Create filtered observation spec for value networks (only context_info)
         # This prevents dimension mismatch when NestConcat tries to concatenate
@@ -443,38 +461,35 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
             f"cfm_loss_mode must be 'eps_mse' or 'u_mse', got '{cfm_loss_mode}'"
         )
         self._cfm_loss_mode = cfm_loss_mode
+        self._use_noise_schedule_weight = use_noise_schedule_weight
+        self._use_noise_std_for_importance_ratio = use_noise_std_for_importance_ratio
+        self._noise_std = noise_std
         if use_ppo_advantages:
-            # PPOAlgorithm also needs filtered observation spec for its value network
-            # Get value_network_ctor from config if available, otherwise use default
-            ppo_value_network_ctor = None
-            if config is not None and hasattr(config, 'value_network_ctor'):
-                ppo_value_network_ctor = config.value_network_ctor
-            elif value_network_ctor is not None:
-                ppo_value_network_ctor = value_network_ctor
-            
-            # Create wrapper for PPO's value network that uses filtered spec
-            if ppo_value_network_ctor is not None:
-                def ppo_value_network_ctor_wrapper(input_tensor_spec):
-                    # Ignore input_tensor_spec from parent, use filtered spec instead
-                    return ppo_value_network_ctor(input_tensor_spec=value_observation_spec)
-            else:
-                ppo_value_network_ctor_wrapper = None
-            
+            # Share the same value network with PPOAlgorithm instead of creating a duplicate
+            # Pass value_network_ctor=None to prevent PPOAlgorithm from creating its own
             self._ppo_algorithm = PPOAlgorithm(
                 observation_spec=observation_spec,
                 action_spec=action_spec,
                 reward_spec=reward_spec,
-                value_network_ctor=ppo_value_network_ctor_wrapper,
+                value_network_ctor=None,  # Don't create a separate value network
                 config=config,
                 debug_summaries=debug_summaries,
                 name=f"{name}_PPO"
             )
+            # Share the main value network with PPO algorithm
+            # This ensures we only have ONE value network that's trained
+            if self._value_network is not None:
+                self._ppo_algorithm._value_network = self._value_network
+            # PPO actor_network is not used (only preprocess_experience is called, which only uses value_network)
+            # Set to None to prevent unused parameters from being registered with optimizer
+            self._ppo_algorithm._actor_network = None
         self._loss = DiffusionFPOActorCriticLoss(
             compute_fpo_loss_fn=self._compute_fpo_loss_from_info,
             gamma=0.99,
             td_lambda=0.95,
             entropy_regularization=0.0,
             normalize_scalar_advantages=True,
+            advantage_clip=10.0,  # Clip advantages to prevent explosion
             td_loss_weight=self._td_loss_weight,
             fpo_loss_weight=self._fpo_loss_weight,
             imitation_loss_weight=self._imitation_loss_weight,
@@ -482,6 +497,20 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
         )
         # Set FPO loss weight schedule: start at 0, then enable after a flat period
         self._loss.set_fpo_weight_schedule(lambda: self._scheduled_fpo_loss_weight(flat=warmup_value_network_iterations))
+        
+        # CRITICAL FIX: Ensure actor and value networks are in train mode and have gradients enabled
+        # This fixes the bug where networks don't have gradients during training
+        if self._actor_network is not None:
+            self._actor_network.train()  # Set to training mode
+            for param in self._actor_network.parameters():
+                param.requires_grad = True  # Ensure gradients are enabled
+        if self._value_network is not None:
+            self._value_network.train()  # Set to training mode
+            for param in self._value_network.parameters():
+                param.requires_grad = True  # Ensure gradients are enabled
+        
+        # PPO's value network is now the same as main value network (shared)
+        # No need to set it separately since it's already set above
 
     def calc_noise_schedule_weight(self, tau: torch.Tensor, eps: float = 1e-6, max_weight: float = 100.0, min_weight: float = -100.0) -> torch.Tensor:
         """
@@ -516,7 +545,8 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
                          eps: torch.Tensor,
                          t: torch.Tensor,
                          context: torch.Tensor,
-                         trajectory_head=None):
+                         trajectory_head=None,
+                         return_log_probs=False):
         '''
         Computes the CFM loss for a given action, eps, t, and context.
         Args:
@@ -525,6 +555,10 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
             t: Timestep tensor, shape [..., 1]
             context: Context tensor, shape [..., context_dim] (raw observation, will be encoded)
             trajectory_head: Trajectory head model
+            return_log_probs: If True, also return log_probs for importance ratio computation
+        Returns:
+            cfm_loss: CFM loss tensor
+            log_probs: (optional) Log probabilities if return_log_probs=True
         '''
         if trajectory_head is None:
             trajectory_head = self._actor_network.trajectory_head
@@ -565,43 +599,52 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
         context_flat = context_broadcast.reshape(total_samples, -1)
         x_t = (1.0 - t_flat) * action_flat + t_flat * eps_flat
         x_t_input = x_t.unsqueeze(1)
+        # CRITICAL: This call to diffusion_model must maintain gradients
+        # v_pred is part of the computation graph that flows back to diffusion_model parameters
         v_pred = trajectory_head.diffusion_model(
             x_t_input, context_flat, t_flat.squeeze(-1)
         ).squeeze(1)
         
-        if self._cfm_loss_mode == "eps_mse":
-            # ϵ-MSE (preferred): convert velocity to x1_pred, then MSE against eps
-            # This is more stable than direct velocity MSE (u-MSE)
-            velocity_pred = v_pred  # v_pred is u = x1 - x0
-            # Reconstruct x0 from x_t and velocity: x0 = x_t - t * velocity
-            x0_pred = x_t - t_flat * velocity_pred
-            # Reconstruct x1 from x0 and velocity: x1 = x0 + velocity
-            x1_pred = x0_pred + velocity_pred
-            # Compute MSE against ground truth x1 (eps)
-            mse_loss = F.mse_loss(x1_pred, eps_flat, reduction='none')
-        elif self._cfm_loss_mode == "u_mse":
-            # u-MSE: direct MSE on velocity predictions
-            v_target = eps_flat - action_flat  # Ground truth velocity: u = x1 - x0
-            mse_loss = F.mse_loss(v_pred, v_target, reduction='none')
-        else:
-            raise ValueError(f"Unknown cfm_loss_mode: {self._cfm_loss_mode}")
+        # Compute target velocity: u_t = x1 - x0 = eps - action
+        v_target = eps_flat - action_flat  # Ground truth velocity: u = x1 - x0
         
-        # Apply weighted loss: ℓw_θ(τ, ϵ) = (1/2) · w(λ_τ) · (-dλ/dτ) · ||ε̂_θ(a_τ^t; λ_τ) - ϵ||²
-        # Compute noise schedule weight using calc_noise_schedule_weight
-        weight = self.calc_noise_schedule_weight(t_flat)  # [total_samples, 1]
-        # Apply weight to MSE loss: weight has shape [total_samples, 1], mse_loss has shape [total_samples, action_dim]
-        weighted_mse_loss = weight * mse_loss  # [total_samples, action_dim]
+        # Use PHC-style loss formula: log_probs = -((u_t - velocity)²) / (2 * noise_std²)
+        # Then loss = -mean(log_probs) = mean(((u_t - velocity)²) / (2 * noise_std²))
+        # This matches PHC implementation: -((u_t - velocity) ** 2) / (2 * 0.05 ** 2)
+        squared_error = (v_target - v_pred) ** 2  # [total_samples, action_dim]
         
-        # Average over action dimension to get per-sample loss
-        cfm_loss = weighted_mse_loss.mean(dim=-1)  # [total_samples]
+        # Compute log probabilities with noise std (PHC formula)
+        log_probs = -squared_error / (2 * self._noise_std ** 2)  # [total_samples, action_dim]
+        
+        # Average over action dimension to get per-sample log_prob
+        log_probs_per_sample = log_probs.mean(dim=-1)  # [total_samples]
+        
+        # CFM loss is negative mean of log_probs (PHC formula)
+        # loss = -mean(log_probs) = mean(((u_t - velocity)²) / (2 * noise_std²))
+        cfm_loss = -log_probs_per_sample  # [total_samples]
+        
+        # Optionally apply noise schedule weight (if enabled)
+        if self._use_noise_schedule_weight:
+            weight = self.calc_noise_schedule_weight(t_flat)  # [total_samples, 1]
+            # Apply weight to CFM loss
+            cfm_loss = weight.squeeze(-1) * cfm_loss  # [total_samples]
         # Reshape back robustly: works for [B, D] (batch_dims=[B]) and [T, B, D] (batch_dims=[T, B])
         if len(batch_dims) == 0:
             # Scalar batch, keep as [samples_dim]
             cfm_loss = cfm_loss.reshape(samples_dim)
+            if return_log_probs:
+                log_probs_per_sample = log_probs_per_sample.reshape(samples_dim)
         elif len(batch_dims) == 1:
             cfm_loss = cfm_loss.reshape(batch_dims[0], samples_dim)
+            if return_log_probs:
+                log_probs_per_sample = log_probs_per_sample.reshape(batch_dims[0], samples_dim)
         else:
             cfm_loss = cfm_loss.reshape(*batch_dims, samples_dim)
+            if return_log_probs:
+                log_probs_per_sample = log_probs_per_sample.reshape(*batch_dims, samples_dim)
+        
+        if return_log_probs:
+            return cfm_loss, log_probs_per_sample
         return cfm_loss
     
     def _compute_fpo_loss_from_info(self, info):
@@ -618,33 +661,74 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
                 scalar_loss=torch.tensor(0.0),
                 extra={'fpo_loss': torch.tensor(0.0)}
             )
-        context = info.observation['context_info']
+        # Extract context_info from observation (handles both dict and tensor cases)
+        observation = info.observation
+        if isinstance(observation, dict):
+            if 'representation' in observation:
+                repr_data = observation['representation']
+                if isinstance(repr_data, dict) and 'context_info' in repr_data:
+                    context = repr_data['context_info']
+                else:
+                    context = repr_data
+            elif 'context_info' in observation:
+                context = observation['context_info']
+            else:
+                context = next(iter(observation.values()))
+        else:
+            # observation is a tensor
+            context = observation
         loss_eps = info.loss_eps
         loss_t = info.loss_t
         initial_cfm_loss = info.initial_cfm_loss
+        initial_log_probs = getattr(info, 'initial_log_probs', ())
         advantages = info.ppo_advantages
-        T, B, D = action.shape
+        # Handle different action shapes: [T, B, D] or [T, B, num_poses, D]
+        if action.ndim == 3:
+            T, B, D = action.shape
+            action_downscaled = action.clone()
+        elif action.ndim == 4:
+            # Action is [T, B, num_poses, D] - flatten poses dimension
+            T, B, num_poses, D = action.shape
+            action_downscaled = action.view(T, B, -1)  # [T, B, num_poses * D]
+        else:
+            raise ValueError(f"Unexpected action shape: {action.shape}, expected [T, B, D] or [T, B, num_poses, D]")
         Nmc = loss_eps.shape[2]
         # Only apply OmniAD-specific downscaling if action_dim >= 2
         # This is hardcoded for OmniAD (x, y coordinates) and should be disabled for other environments
-        action_downscaled = action.clone()
         # Check if trajectory head has scaling enabled (OmniAD-specific)
         enable_scaling = getattr(self._actor_network.trajectory_head, '_enable_trajectory_scaling', False)
-        if enable_scaling and D >= 2:
+        if enable_scaling and action.ndim == 3 and D >= 2:
+            # Only apply scaling if action is [T, B, D] (not already flattened)
             action_downscaled[..., 0] = (action_downscaled[..., 0] - 20) / 20
             action_downscaled[..., 1] = action_downscaled[..., 1] / 20
-        action_downscaled = action_downscaled.view(T, B, -1)
+        # Ensure action_downscaled is [T, B, flattened_dim]
+        if action_downscaled.ndim != 3:
+            action_downscaled = action_downscaled.view(T, B, -1)
         action_flat = action_downscaled.reshape(T * B, -1)
         context_flat = context.reshape(T * B, -1)
         loss_eps_flat = loss_eps.reshape(T * B, Nmc, -1)
         loss_t_flat = loss_t.reshape(T * B, Nmc, 1)
-        cfm_loss_current = self._compute_cfm_loss(
-            action=action_flat,
-            eps=loss_eps_flat,
-            t=loss_t_flat,
-            context=context_flat,
-            trajectory_head=self._actor_network.trajectory_head
-        )
+        # CRITICAL: cfm_loss_current must maintain gradients to flow back to trajectory_head.diffusion_model
+        # This is computed using the current (trainable) trajectory_head, not the frozen old one
+        if self._use_noise_std_for_importance_ratio:
+            # Compute CFM loss and log_probs for importance ratio (PHC-style)
+            cfm_loss_current, log_probs_current = self._compute_cfm_loss(
+                action=action_flat,
+                eps=loss_eps_flat,
+                t=loss_t_flat,
+                context=context_flat,
+                trajectory_head=self._actor_network.trajectory_head,  # Current trainable head
+                return_log_probs=True
+            )
+        else:
+            # Compute only CFM loss (ALF-style)
+            cfm_loss_current = self._compute_cfm_loss(
+                action=action_flat,
+                eps=loss_eps_flat,
+                t=loss_t_flat,
+                context=context_flat,
+                trajectory_head=self._actor_network.trajectory_head  # Current trainable head
+            )
         # Ensure initial_cfm_loss has correct shape [T, B, Nmc] before reshaping
         # Handle both cases: if it's already [T, B, Nmc] or if it's [T*B, Nmc]
         if initial_cfm_loss.ndim == 2:
@@ -663,35 +747,98 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
         else:
             # Fallback: try reshaping directly
             initial_cfm_loss_flat = initial_cfm_loss.reshape(T * B, Nmc)
-        if self._average_losses_before_exp:
-            mean_current_loss = cfm_loss_current.mean(dim=-1, keepdim=True)
-            mean_initial_loss = initial_cfm_loss_flat.mean(dim=-1, keepdim=True)
-            # Ensure shapes match for proper comparison
-            assert mean_current_loss.shape == mean_initial_loss.shape, (
-                f"Shape mismatch: mean_current_loss {mean_current_loss.shape} vs "
-                f"mean_initial_loss {mean_initial_loss.shape}"
-            )
-            # Clip loss difference before exp() to prevent numerical instability
-            # This prevents rho from exploding/vanishing when loss differences are large
-            loss_diff = mean_initial_loss - mean_current_loss
-            loss_diff_clipped = torch.clamp(loss_diff, -3.0, 3.0)  # Todo: expose this as a parameter
-            rho = torch.exp(loss_diff_clipped).squeeze(-1)
+        if self._use_noise_std_for_importance_ratio:
+            # PHC-style: Use log_probs difference for importance ratio
+            # Ensure initial_log_probs has correct shape
+            if initial_log_probs == ():
+                raise ValueError("initial_log_probs must be provided when use_noise_std_for_importance_ratio=True")
+            
+            if initial_log_probs.ndim == 2:
+                if initial_log_probs.shape[0] == T * B:
+                    initial_log_probs_flat = initial_log_probs
+                elif initial_log_probs.shape[0] == T and initial_log_probs.shape[1] == B * Nmc:
+                    initial_log_probs_flat = initial_log_probs.reshape(T, B, Nmc).reshape(T * B, Nmc)
+                else:
+                    initial_log_probs_flat = initial_log_probs.reshape(T * B, Nmc)
+            elif initial_log_probs.ndim == 3:
+                initial_log_probs_flat = initial_log_probs.reshape(T * B, Nmc)
+            else:
+                initial_log_probs_flat = initial_log_probs.reshape(T * B, Nmc)
+            
+            # Compute importance ratio from log_probs difference
+            # rho = exp(log_prob_current - log_prob_old)
+            if self._average_losses_before_exp:
+                mean_current_logprob = log_probs_current.mean(dim=-1, keepdim=True)
+                mean_initial_logprob = initial_log_probs_flat.mean(dim=-1, keepdim=True)
+                assert mean_current_logprob.shape == mean_initial_logprob.shape
+                logprob_diff = mean_current_logprob - mean_initial_logprob
+                logprob_diff_clipped = torch.clamp(logprob_diff, -3.0, 3.0)
+                rho = torch.exp(logprob_diff_clipped).squeeze(-1)
+            else:
+                assert log_probs_current.shape == initial_log_probs_flat.shape
+                logprob_diff = log_probs_current - initial_log_probs_flat
+                logprob_diff_clipped = torch.clamp(logprob_diff, -3.0, 3.0)
+                rho = torch.exp(logprob_diff_clipped)  # Shape: (T*B, Nmc)
         else:
-            # Ensure shapes match for proper comparison
-            assert cfm_loss_current.shape == initial_cfm_loss_flat.shape, (
-                f"Shape mismatch: cfm_loss_current {cfm_loss_current.shape} vs "
-                f"initial_cfm_loss_flat {initial_cfm_loss_flat.shape}"
-            )
-            loss_diff = initial_cfm_loss_flat - cfm_loss_current
-            loss_diff_clipped = torch.clamp(loss_diff, -3.0, 3.0)  # Todo: expose this as a parameter
-            rho = torch.exp(loss_diff_clipped).mean(dim=-1)
-        advantages_flat = advantages.reshape(T * B)
-        rho_clipped = torch.clamp(rho, 1.0 - self._clip_epsilon, 1.0 + self._clip_epsilon)
+            # ALF-style: Use CFM loss difference for importance ratio
+            if self._average_losses_before_exp:
+                mean_current_loss = cfm_loss_current.mean(dim=-1, keepdim=True)
+                mean_initial_loss = initial_cfm_loss_flat.mean(dim=-1, keepdim=True)
+                # Ensure shapes match for proper comparison
+                assert mean_current_loss.shape == mean_initial_loss.shape, (
+                    f"Shape mismatch: mean_current_loss {mean_current_loss.shape} vs "
+                    f"mean_initial_loss {mean_initial_loss.shape}"
+                )
+                # Clip loss difference before exp() to prevent numerical instability
+                # This prevents rho from exploding/vanishing when loss differences are large
+                # NOTE: mean_initial_loss is already detached (computed in torch.no_grad() context)
+                # But we need to ensure mean_current_loss maintains gradients
+                loss_diff = mean_initial_loss - mean_current_loss
+                loss_diff_clipped = torch.clamp(loss_diff, -3.0, 3.0)  # Todo: expose this as a parameter
+                rho = torch.exp(loss_diff_clipped).squeeze(-1)
+            else:
+                # Ensure shapes match for proper comparison
+                assert cfm_loss_current.shape == initial_cfm_loss_flat.shape, (
+                    f"Shape mismatch: cfm_loss_current {cfm_loss_current.shape} vs "
+                    f"initial_cfm_loss_flat {initial_cfm_loss_flat.shape}"
+                )
+                # NOTE: initial_cfm_loss_flat is already detached (computed in torch.no_grad() context)
+                # But we need to ensure cfm_loss_current maintains gradients
+                # BUG FIX: Do NOT average over MC samples here - keep them for proper broadcasting
+                # This matches fpo.py behavior: rho_s = exp(clip(initial_cfm_loss - cfm_loss, -3, 3))
+                # Shape: (T*B, Nmc) - one rho per MC sample
+                loss_diff = initial_cfm_loss_flat - cfm_loss_current
+                loss_diff_clipped = torch.clamp(loss_diff, -3.0, 3.0)  # Todo: expose this as a parameter
+                rho = torch.exp(loss_diff_clipped)  # Shape: (T*B, Nmc) - keep MC dimension
+        # NOTE: For GAE advantages, they're already detached (generalized_advantage_estimation returns .detach())
+        # For MC advantages, we detach value in _compute_mc_advantage to ensure no gradients
+        # Advantages are treated as constants (targets) in the policy loss, similar to standard PPO
+        # Explicit detach here for safety and clarity (redundant for GAE but safe for MC)
+        advantages_flat = advantages.reshape(T * B).detach()  # Shape: (T*B,)
+        
+        # CRITICAL: Clip advantages to prevent explosion and training failure
+        # Large advantages multiplied by rho can cause loss to explode
+        if self._loss._advantage_clip is not None and self._loss._advantage_clip > 0:
+            advantages_flat = torch.clamp(advantages_flat, -self._loss._advantage_clip, self._loss._advantage_clip)
+        
         # PPO-style clipping: use minimum for pessimistic clipping
         # This matches the reference implementation in fpo.py
-        surrogate_loss1 = rho * advantages_flat
-        surrogate_loss2 = rho_clipped * advantages_flat
-        fpo_loss = -torch.minimum(surrogate_loss1, surrogate_loss2).mean()
+        # CRITICAL: rho has gradients from cfm_loss_current, which flows back to trajectory_head.diffusion_model
+        if self._average_losses_before_exp:
+            # rho shape: (T*B,), advantages_flat shape: (T*B,)
+            rho_clipped = torch.clamp(rho, 1.0 - self._clip_epsilon, 1.0 + self._clip_epsilon)
+            surrogate_loss1 = rho * advantages_flat
+            surrogate_loss2 = rho_clipped * advantages_flat
+            fpo_loss = -torch.minimum(surrogate_loss1, surrogate_loss2).mean()
+        else:
+            # rho shape: (T*B, Nmc), need to broadcast advantages
+            # Match fpo.py: surrogate_loss1 = rho_s * gae_advantages[..., None]
+            advantages_expanded = advantages_flat.unsqueeze(-1)  # Shape: (T*B, 1)
+            rho_clipped = torch.clamp(rho, 1.0 - self._clip_epsilon, 1.0 + self._clip_epsilon)  # Shape: (T*B, Nmc)
+            surrogate_loss1 = rho * advantages_expanded  # Shape: (T*B, Nmc)
+            surrogate_loss2 = rho_clipped * advantages_expanded  # Shape: (T*B, Nmc)
+            # Average over all dimensions (batch and MC samples) - matches fpo.py: jnp.mean(jnp.minimum(...))
+            fpo_loss = -torch.minimum(surrogate_loss1, surrogate_loss2).mean()
         self._record_debug_fpo_summaries(
             rho=rho,
             rho_clipped=rho_clipped,
@@ -727,8 +874,8 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
         Record debug summaries for FPO training to monitor stability and values.
         
         Args:
-            rho: Policy ratio (importance ratio) [T*B]
-            rho_clipped: Clipped policy ratio [T*B]
+            rho: Policy ratio (importance ratio) [T*B] or [T*B, Nmc] depending on average_losses_before_exp
+            rho_clipped: Clipped policy ratio [T*B] or [T*B, Nmc] (same shape as rho)
             advantages_flat: Advantages [T*B]
             cfm_loss_current: Current CFM loss [T*B, Nmc] or [T*B]
             initial_cfm_loss_flat: Initial CFM loss [T*B, Nmc]
@@ -907,14 +1054,27 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
         # Compute initial CFM loss with old trajectory head
         with torch.no_grad():
             self._old_trajectory_head.eval()
-            initial_cfm_loss = self._compute_cfm_loss(
-                action=trajectory_flat,
-                eps=loss_eps,
-                t=loss_t,
-                context=context_info,
-                trajectory_head=self._old_trajectory_head
-            )
-        return loss_eps, loss_t, initial_cfm_loss
+            if self._use_noise_std_for_importance_ratio:
+                # Compute CFM loss and log_probs for importance ratio (PHC-style)
+                initial_cfm_loss, initial_log_probs = self._compute_cfm_loss(
+                    action=trajectory_flat,
+                    eps=loss_eps,
+                    t=loss_t,
+                    context=context_info,
+                    trajectory_head=self._old_trajectory_head,
+                    return_log_probs=True
+                )
+            else:
+                # Compute only CFM loss (ALF-style)
+                initial_cfm_loss = self._compute_cfm_loss(
+                    action=trajectory_flat,
+                    eps=loss_eps,
+                    t=loss_t,
+                    context=context_info,
+                    trajectory_head=self._old_trajectory_head
+                )
+                initial_log_probs = None
+        return loss_eps, loss_t, initial_cfm_loss, initial_log_probs
     
     def _update_old_model(self):
         """
@@ -992,12 +1152,14 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
                 loss_eps=(),
                 loss_t=(),
                 initial_cfm_loss=(),
+                initial_log_probs=(),
                 ppo_advantages=(),
                 observation=inputs.observation,
                 returns=(),
                 v_pred=(),
                 v_target=(),
-                valid_target=()
+                valid_target=(),
+                ppo_value=()
             )
         )
     
@@ -1008,7 +1170,13 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
             with torch.no_grad():
                 actor_outputs, actor_state = self._actor_network(inputs.observation)
         finally:
+            # CRITICAL: Restore original trajectory_head and ensure it's trainable
             self._actor_network.trajectory_head = current_head
+            # Ensure trajectory_head is in train mode and has gradients enabled
+            if hasattr(self._actor_network, 'trajectory_head') and self._actor_network.trajectory_head is not None:
+                self._actor_network.trajectory_head.train()
+                for param in self._actor_network.trajectory_head.parameters():
+                    param.requires_grad = True
         if isinstance(actor_outputs, dict) and 'trajectory' in actor_outputs:
             generated_trajectory = actor_outputs['trajectory']
         else:
@@ -1072,9 +1240,15 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
         value_output, value_state = self._value_network(value_observation, state.value)
         
         # Prepare FPO loss samples and compute initial CFM loss
-        loss_eps, loss_t, initial_cfm_loss = self._prepare_fpo_loss_samples(
+        result = self._prepare_fpo_loss_samples(
             generated_trajectory, inputs.observation
         )
+        if len(result) == 4:
+            loss_eps, loss_t, initial_cfm_loss, initial_log_probs = result
+        else:
+            # Backward compatibility: handle old return format
+            loss_eps, loss_t, initial_cfm_loss = result
+            initial_log_probs = None
         if self.has_multidim_reward():
             reward_weights = tensor_utils.tensor_extend_new_dim(
                 self.reward_weights, dim=0, n=value_output.shape[0])
@@ -1110,12 +1284,14 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
                 loss_eps=loss_eps,
                 loss_t=loss_t,
                 initial_cfm_loss=initial_cfm_loss,
+                initial_log_probs=initial_log_probs if initial_log_probs is not None else (),
                 ppo_advantages=(),
                 observation=inputs.observation,
                 returns=(),
                 v_pred=(),  # Will be filled in train_step
                 v_target=(),  # Will be filled in train_step
-                valid_target=()  # Will be filled in train_step (not available during rollout)
+                valid_target=(),  # Will be filled in train_step (not available during rollout)
+                ppo_value=()  # Will be filled in preprocess_experience
             )
         )
     
@@ -1182,6 +1358,9 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
         
         value_output, value_state = self._value_network(value_observation, state.value)
         
+        # PPO uses the same value network as main algorithm (shared)
+        # So value_output is used for both TD loss and PPO advantages
+        
         # Extract gt_trajectory from inputs.observation (stored by repr_learner when _repr_mode=True)
         # The structure is: inputs.observation['representation']['gt_trajectory']
         gt_trajectory = None
@@ -1228,7 +1407,8 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
                 reward_weights=getattr(rollout_info, 'reward_weights', ()),
                 v_pred=getattr(rollout_info, 'v_pred', ()),
                 v_target=getattr(rollout_info, 'v_target', ()),
-                valid_target=valid_target  # Extracted from observation in train_step
+                valid_target=valid_target,  # Extracted from observation in train_step
+                ppo_value=()  # Not needed since PPO uses same value network
             )
         )
     
@@ -1367,21 +1547,23 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
             )
             
             # Compute MC advantages: A = MC_returns - value (first T-1 timesteps)
-            # mc_returns: [B, T-1, D] or [B, T-1]
-            # value: [B, T, D] or [B, T]
-            if mc_returns.ndim == 3 and value.ndim == 3:
+            # mc_returns: [B, T-1, D] or [B, T-1] (already detached from discounted_return)
+            # value: [B, T, D] or [B, T] (from rollout, should be detached to prevent gradients)
+            # Detach value to ensure advantages don't have gradients from value network
+            value_detached = value.detach()
+            if mc_returns.ndim == 3 and value_detached.ndim == 3:
                 # Both are multidimensional: [B, T-1, D] and [B, T, D]
                 # Compute advantages for first T-1 timesteps
-                mc_advantages = mc_returns - value[:, :-1, :]  # [B, T-1, D]
-            elif mc_returns.ndim == 2 and value.ndim == 2:
+                mc_advantages = mc_returns - value_detached[:, :-1, :]  # [B, T-1, D]
+            elif mc_returns.ndim == 2 and value_detached.ndim == 2:
                 # Both are scalar: [B, T-1] and [B, T]
-                mc_advantages = mc_returns - value[:, :-1]  # [B, T-1]
+                mc_advantages = mc_returns - value_detached[:, :-1]  # [B, T-1]
             else:
                 # Shape mismatch: align timesteps
-                if mc_returns.ndim == 3 and value.ndim == 3:
-                    mc_advantages = mc_returns - value[:, :mc_returns.shape[1], :]
+                if mc_returns.ndim == 3 and value_detached.ndim == 3:
+                    mc_advantages = mc_returns - value_detached[:, :mc_returns.shape[1], :]
                 else:
-                    mc_advantages = mc_returns - value[:, :mc_returns.shape[1]]
+                    mc_advantages = mc_returns - value_detached[:, :mc_returns.shape[1]]
             
             # Reduce multidimensional advantages to scalar (similar to normalized_advantages)
             # Get reward_weights if available (from rollout_info or ppo_info)
@@ -1489,9 +1671,12 @@ class DiffusionFPOAlgorithm(ActorCriticAlgorithm):
                         alf.summary.scalar("returns/min", ppo_info.returns.min())
                         alf.summary.scalar("returns/max", ppo_info.returns.max())
             
+            # PPO now uses the same value network as main algorithm (shared)
+            # Store returns for TD loss computation
             rollout_info = rollout_info._replace(
                 ppo_advantages=ppo_advantages_for_fpo,
-                returns=ppo_info.returns
+                returns=ppo_info.returns,
+                ppo_value=()  # Not needed since PPO uses same value network
             )
         return root_inputs, rollout_info
     

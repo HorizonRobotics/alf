@@ -85,10 +85,12 @@ alf.config(
     td_lambda=0.95,
     td_loss_weight=0.5,
     td_error_loss_fn=element_wise_squared_loss,
+    advantage_clip=10.0,  # CRITICAL: Clip advantages to prevent explosion
 )
 
 # DiffusionFPOAlgorithm configuration
-# Use only FPO loss (no TD loss, no imitation loss)
+# CRITICAL: Must train value network (td_loss_weight > 0) to prevent value divergence
+# Without value network training, advantages explode and training fails
 alf.config(
     'DiffusionFPOAlgorithm',
     actor_network_ctor=actor_network_ctor,
@@ -100,11 +102,13 @@ alf.config(
     discretize_t_for_training=True,
     use_ppo_advantages=True,
     reward_mode="advantage",  # Use GAE advantages
-    td_loss_weight=0.0,  # Disable TD loss (FPO only)
+    td_loss_weight=0.5,  # CRITICAL: Enable TD loss to train value network (was 0.0)
     fpo_loss_weight=1.0,  # Enable FPO loss
     imitation_loss_weight=0.0,  # Disable imitation loss (FPO only)
-    warmup_value_network_iterations=100,
+    warmup_value_network_iterations=0,
     cfm_loss_mode="eps_mse",
+    use_noise_std_for_importance_ratio=True,  # Set to True for PHC-style importance ratio
+    noise_std=1.0,  # Noise standard deviation for CFM loss (PHC uses 0.05), the larger gives more stable training
 )
 
 # Agent configuration
@@ -114,13 +118,13 @@ alf.config('Agent', rl_algorithm_cls=DiffusionFPOAlgorithm)
 # Training configuration
 alf.config(
     'TrainerConfig',
-    num_updates_per_train_iter=20,
+    num_updates_per_train_iter=2,
     unroll_length=512,
     mini_batch_size=4096,
     mini_batch_length=1,
     num_iterations=1000,
     evaluate=True,
-    eval_interval=100,
+    eval_interval=30,
     async_eval=False,
     debug_summaries=True,
     summarize_grads_and_vars=True,
