@@ -11,7 +11,7 @@ export ALF_USE_GIN=0
 # OUTPUT_DIR="/mnt/cwai/hpfs0/qiang.liu/e2e-rl/fpo_humanoid"
 
 # MLP-based FPO
-OUTPUT_DIR="/mnt/cwai/hpfs0/qiang.liu/e2e-rl/fpo_humanoid_mlp"
+OUTPUT_DIR="/mnt/cwai/hpfs0/qiang.liu/e2e-rl/fpo_humanoid_mlp_debug1"
 
 # Set the config file path (relative to ALF root)
 CONF_FILE="alf/examples/fpo_bullet_humanoid_conf.py"
