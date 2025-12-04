@@ -16,6 +16,43 @@ Adapted and simplified from https://github.com/denisyarats/dmc2gym
 """
 
 from functools import partial
+import ctypes
+import os
+import subprocess
+import sys
+
+# Preload GLFW library on macOS before importing dm_control/glfw
+if sys.platform == 'darwin':
+    glfw_lib_path = None
+    # Check common Homebrew locations
+    for lib_dir in ['/opt/homebrew/lib', '/usr/local/lib']:
+        candidate = os.path.join(lib_dir, 'libglfw.dylib')
+        if os.path.exists(candidate):
+            glfw_lib_path = candidate
+            break
+    # Fall back to brew --prefix
+    if glfw_lib_path is None:
+        try:
+            result = subprocess.run(['brew', '--prefix', 'glfw'],
+                                    capture_output=True,
+                                    text=True)
+            if result.returncode == 0:
+                candidate = os.path.join(result.stdout.strip(), 'lib',
+                                         'libglfw.dylib')
+                if os.path.exists(candidate):
+                    glfw_lib_path = candidate
+        except Exception:
+            pass
+    # Tell glfw Python package where to find the library
+    if glfw_lib_path is None:
+        raise ImportError(
+            "Could not find libglfw.dylib on macOS. "
+            "Install with: brew install glfw && pip install glfw")
+    os.environ['PYGLFW_LIBRARY'] = glfw_lib_path
+    try:
+        ctypes.CDLL(glfw_lib_path, mode=ctypes.RTLD_GLOBAL)
+    except OSError as e:
+        raise ImportError(f"Failed to load {glfw_lib_path}: {e}")
 
 import gym
 from gym import spaces
@@ -23,12 +60,12 @@ from gym.envs.registration import register
 import numpy as np
 from typing import Dict, Optional, Any
 
-try:
-    import dm_control
-    from dm_control import suite
-    import dm_env
-except ImportError:
-    dm_control = None
+# try:
+import dm_control
+from dm_control import suite
+import dm_env
+# except ImportError:
+#     dm_control = None
 
 
 def _dmc_spec_to_box(spec):
