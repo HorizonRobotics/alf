@@ -16,6 +16,7 @@
 from absl import flags
 from absl import logging
 import contextlib
+import platform
 import copy
 import ctypes
 import ctypes.util
@@ -109,6 +110,8 @@ def allow_child_to_ptrace(child_pid: int) -> None:
 
         cat /proc/sys/kernel/yama/ptrace_scope
     """
+    if platform.system() != "Linux":
+        return
 
     libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
 

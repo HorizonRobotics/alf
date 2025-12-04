@@ -22,7 +22,6 @@ import math
 import os
 from pathlib import Path
 import re
-import signal
 import threading
 import sys
 from typing import Callable
@@ -324,31 +323,7 @@ class Trainer(object):
 
         self._checkpoint_requested = False
         self._evaluation_requested = False
-        if threading.current_thread() == threading.main_thread():
-            signal.signal(signal.SIGUSR2, self._request_checkpoint)
-            # kill -12 PID
-            logging.info(
-                "Use `kill -%s %s` to request checkpoint during training." %
-                (int(signal.SIGUSR2), self._pid))
-
         self._video_clip_requested = False
-        if threading.current_thread() == threading.main_thread():
-            signal.signal(signal.SIGRTMIN, self._request_video_clip)
-            # kill -34 PID
-            logging.info(
-                ("Use `kill -%s %s` to request video-clip during training. "
-                 f"The videos will be saved at `{self._train_dir}/train/video/"
-                 ) % (int(signal.SIGRTMIN), self._pid))
-
-        if (threading.current_thread() == threading.main_thread()
-                and PerProcessContext().ddp_rank <= 0):
-            # Debugging in subprocesses is not supported because they don't have
-            # stdin.
-            # kill -10 PID
-            signal.signal(signal.SIGUSR1, self._request_debug)
-            logging.info("Use `kill -%s %s` to request debugging." %
-                         (int(signal.SIGUSR1), self._pid))
-
         checkpoint_saved = False
         try:
             if self._config.profiling:
