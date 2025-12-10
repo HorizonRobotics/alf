@@ -231,52 +231,60 @@ def training_worker(rank: int,
         paras_queue (Queue): a shared Queue for checking the consistency of model parameters
             in different worker processes, if multi-gpu training is used.
     """
-    try:
-        _setup_logging(log_dir=root_dir, rank=rank)
-        _setup_device()
-        if world_size > 1:
-            # Specialization for distributed mode
-            # Recover the flags when spawned as a sub process
-            if rank > 0:
-                _define_flags()
-                FLAGS(sys.argv, known_only=True)
-                FLAGS.mark_as_parsed()
-            dist.init_process_group(
-                'nccl',
-                rank=rank,
-                world_size=world_size,
-                timeout=datetime.timedelta(minutes=FLAGS.nccl_timeout))
-            # Set the rank and total number of processes for distributed training.
-            PerProcessContext().set_distributed(rank=rank,
-                                                local_rank=-1,
-                                                num_processes=world_size)
-            assert paras_queue is not None
-            PerProcessContext().set_paras_queue(paras_queue)
 
-        # Make PerProcessContext read-only.
-        PerProcessContext().finalize()
+    def _worker_main(_):
+        try:
+            _setup_logging(log_dir=root_dir, rank=rank)
+            _setup_device()
+            if world_size > 1:
+                dist.init_process_group(
+                    'nccl',
+                    rank=rank,
+                    world_size=world_size,
+                    timeout=datetime.timedelta(minutes=FLAGS.nccl_timeout))
+                # Set the rank and total number of processes for distributed training.
+                PerProcessContext().set_distributed(rank=rank,
+                                                    local_rank=-1,
+                                                    num_processes=world_size)
+                assert paras_queue is not None
+                PerProcessContext().set_paras_queue(paras_queue)
 
-        # Automatically set up some configs for remote unroller and trainer if needed
-        _setup_remote_configs_if_needed()
+            # Make PerProcessContext read-only.
+            PerProcessContext().finalize()
 
-        # Parse the configuration file, which will also implicitly bring up the environments.
-        common.parse_conf_file(conf_file)
-        _train(root_dir=root_dir, rank=rank, world_size=world_size)
-    except KeyboardInterrupt:
-        pass
-    except Exception as e:
-        if world_size >= 1:
-            # If the training worker is running as a process in multiprocessing
-            # environment, this will make sure that the exception raised in this
-            # particular process is captured and shown.
-            logging.exception(f'{mp.current_process().name} - {e}')
-        raise e
-    finally:
-        # Note that each training worker will have its own child processes
-        # running the environments. In the case when training worker process
-        # finishes earlier (e.g. when it raises an exception), it will hang
-        # instead of quitting unless all child processes are killed.
-        alf.close_env()
+            # Automatically set up some configs for remote unroller and trainer if needed
+            _setup_remote_configs_if_needed()
+
+            # Parse the configuration file, which will also implicitly bring up the environments.
+            common.parse_conf_file(conf_file)
+            _train(root_dir=root_dir, rank=rank, world_size=world_size)
+        except KeyboardInterrupt:
+            pass
+        except Exception as e:
+            if world_size >= 1:
+                # If the training worker is running as a process in multiprocessing
+                # environment, this will make sure that the exception raised in this
+                # particular process is captured and shown.
+                logging.exception(f'{mp.current_process().name} - {e}')
+            raise e
+        finally:
+            # Note that each training worker will have its own child processes
+            # running the environments. In the case when training worker process
+            # finishes earlier (e.g. when it raises an exception), it will hang
+            # instead of quitting unless all child processes are killed.
+            alf.close_env()
+
+    if rank > 0:
+        # Specialization for distributed mode
+        # Recover the flags when spawned as a sub process
+        if rank > 0:
+            _define_flags()
+            FLAGS(sys.argv, known_only=True)
+            FLAGS.mark_as_parsed()
+
+        app.run(_worker_main)
+    else:
+        _worker_main(None)
 
 
 def training_worker_multi_node(local_rank: int,
