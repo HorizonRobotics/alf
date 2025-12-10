@@ -127,7 +127,12 @@ def _setup_logging(rank: int, log_dir: str):
     """
     FLAGS.alsologtostderr = True
     logging.set_verbosity(logging.INFO)
-    logging.get_absl_handler().use_absl_log_file(log_dir=log_dir)
+    logging.get_absl_handler().use_absl_log_file(
+        program_name=f'rank{rank}_logs', log_dir=log_dir)
+    # Spawned subprocesses create a new interpreter so will change the
+    # default logging back to python's logging module.
+    # For DDP worker logging to work, we need to explicitly set it back to absl.
+    logging.use_absl_handler()
 
 
 def _setup_device():
