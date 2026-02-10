@@ -99,6 +99,32 @@ class scope(object):
         _scope_stack.pop()
 
 
+import alf
+import contextlib
+
+
+@contextlib.contextmanager
+def average_all_summaries():
+    orig_scalar = alf.summary.scalar
+    orig_should_record_summaries = alf.summary.should_record_summaries
+
+    def _wrap(fn):
+
+        def wrapped(name, data, *args, **kwargs):
+            kwargs.setdefault("average_over_summary_interval", True)
+            return fn(name, data, *args, **kwargs)
+
+        return wrapped
+
+    alf.summary.scalar = _wrap(orig_scalar)
+    alf.summary.should_record_summaries = lambda: True
+    try:
+        yield
+    finally:
+        alf.summary.scalar = orig_scalar
+        alf.summary.should_record_summaries = orig_should_record_summaries
+
+
 _SUMMARY_DATA_BUFFER = {}
 
 
