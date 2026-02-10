@@ -158,7 +158,15 @@ class TDLoss(nn.Module):
 
         if hasattr(info, "discounted_return") and info.discounted_return != ():
             discounted_return = info.discounted_return[:-1]
-            returns = torch.max(returns, discounted_return)
+
+            # returns = torch.max(returns, discounted_return)
+            returns = discounted_return
+            with alf.summary.scope("sac_flow"):
+                higher_critic_target_rate = (returns > discounted_return).sum(
+                ) / discounted_return.numel()
+                alf.summary.scalar("higher_critic_target_rate",
+                                   higher_critic_target_rate)
+
             with alf.summary.scope(self._name):
                 mask = info.step_type[:-1] != StepType.LAST
                 episode_ended = discounted_return != self._default_return
@@ -192,6 +200,10 @@ class TDLoss(nn.Module):
         """
         returns = self.compute_td_target(info, target_value)
         value = value[:-1]
+        #
+        # print(value)
+        # print(returns)
+        # print("--------------")
 
         if self._normalize_target:
             if self._target_normalizer is None:
