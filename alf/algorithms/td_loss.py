@@ -159,8 +159,8 @@ class TDLoss(nn.Module):
         if hasattr(info, "discounted_return") and info.discounted_return != ():
             discounted_return = info.discounted_return[:-1]
 
-            # returns = torch.max(returns, discounted_return)
-            returns = discounted_return
+            returns = torch.max(returns, discounted_return)
+            # returns = discounted_return
             with alf.summary.scope("sac_flow"):
                 higher_critic_target_rate = (returns > discounted_return).sum(
                 ) / discounted_return.numel()
@@ -229,6 +229,8 @@ class TDLoss(nn.Module):
                     safe_mean_hist_summary('values' + suffix, v, mask)
                     safe_mean_hist_summary('returns' + suffix, r, mask)
                     safe_mean_hist_summary("td_error" + suffix, td, mask)
+                    safe_mean_hist_summary("td_error_abs" + suffix, td.abs(),
+                                           mask)
 
                 if value.ndim == 2:
                     _summarize(value, returns, td_error, '')
