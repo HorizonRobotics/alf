@@ -1223,7 +1223,8 @@ class Algorithm(AlgorithmInterface):
 
         if loss_info.loss != ():
             all_params, gns = self._backward_and_gradient_update(
-                loss_info.loss * weight)
+                loss_info.loss * weight,
+                loss_per_optimizer=loss_info.loss_per_optimizer)
         else:
             common.warning_once(
                 'The algorithm does not have loss for some update. Double check '
@@ -1278,7 +1279,7 @@ class Algorithm(AlgorithmInterface):
                 loss=add_ignore_empty(loss_info.loss, loss_info.scalar_loss))
         return loss_info
 
-    def _backward_and_gradient_update(self, loss):
+    def _backward_and_gradient_update(self, loss, loss_per_optimizer=()):
         """Do backward and gradient update to all the trainable parameters.
 
         Args:
@@ -1296,43 +1297,70 @@ class Algorithm(AlgorithmInterface):
                                "optimizer: %s" % (self.name, unhandled))
 
         optimizers = self.optimizers()
-        for optimizer in optimizers:
-            optimizer.zero_grad(set_to_none=True)
 
-        all_params = []
-        for optimizer in optimizers:
-            params = []
-            for param_group in optimizer.param_groups:
-                params.extend(param_group['params'])
-            assert params, (
-                "The recorded optimizer '" + optimizer.name +
-                "' haven't been used for learning any parameters! Please check."
-            )
-            all_params.extend(params)
+        if loss_per_optimizer != ():
 
-        simple_gns = ()
-        if self._debug_summaries and self._gns_estimator is not None:
-            simple_gns = self._gns_estimator(loss, all_params)
+            assert self._gns_estimator is None
+            assert self._grad_scaler is None
+            assert len(loss_per_optimizer) == len(optimizers)
 
-        if isinstance(loss, torch.Tensor):
-            with record_time("time/backward"):
-                if self._grad_scaler is not None:
-                    alf.summary.scalar("optimizer/grad_scale",
-                                       self._grad_scaler.get_scale())
-                    loss = self._grad_scaler.scale(loss)
-                loss.mean().backward()
+            all_params = []
+            simple_gns = ()
+            for i, (optimizer, optimizer_loss) in enumerate(
+                    zip(optimizers, loss_per_optimizer)):
+                optimizer.zero_grad(set_to_none=True)
+                params = []
+                for param_group in optimizer.param_groups:
+                    params.extend(param_group['params'])
+                assert params, (
+                    "The recorded optimizer '" + optimizer.name +
+                    "' haven't been used for learning any parameters! Please check."
+                )
+                all_params.extend(params)
 
-        for optimizer in optimizers:
-            if self._grad_scaler is not None:
-                # For ALF optimizers, gradient clipping is performed inside
-                # optimizer.step, so we don't need to explicitly unscale grad
-                # as the pytorch tutorial https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-clipping
-                self._grad_scaler.step(optimizer)
-            else:
+                assert isinstance(optimizer_loss, torch.Tensor)
+                with record_time(f"time/backward_{i}"):
+                    optimizer_loss.mean().backward()
                 optimizer.step()
 
-        if self._grad_scaler is not None:
-            self._grad_scaler.update()
+        else:
+            for optimizer in optimizers:
+                optimizer.zero_grad(set_to_none=True)
+
+            all_params = []
+            for optimizer in optimizers:
+                params = []
+                for param_group in optimizer.param_groups:
+                    params.extend(param_group['params'])
+                assert params, (
+                    "The recorded optimizer '" + optimizer.name +
+                    "' haven't been used for learning any parameters! Please check."
+                )
+                all_params.extend(params)
+
+            simple_gns = ()
+            if self._debug_summaries and self._gns_estimator is not None:
+                simple_gns = self._gns_estimator(loss, all_params)
+
+            if isinstance(loss, torch.Tensor):
+                with record_time("time/backward"):
+                    if self._grad_scaler is not None:
+                        alf.summary.scalar("optimizer/grad_scale",
+                                           self._grad_scaler.get_scale())
+                        loss = self._grad_scaler.scale(loss)
+                    loss.mean().backward()
+
+            for optimizer in optimizers:
+                if self._grad_scaler is not None:
+                    # For ALF optimizers, gradient clipping is performed inside
+                    # optimizer.step, so we don't need to explicitly unscale grad
+                    # as the pytorch tutorial https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-clipping
+                    self._grad_scaler.step(optimizer)
+                else:
+                    optimizer.step()
+
+            if self._grad_scaler is not None:
+                self._grad_scaler.update()
 
         all_params = [(self._param_to_name[p], p) for p in all_params]
         unused_parameters = [p[0] for p in all_params if p[1].grad is None]
@@ -1340,6 +1368,7 @@ class Algorithm(AlgorithmInterface):
             common.warning_once(
                 "Find parameters without gradients, please double check: %s",
                 unused_parameters)
+
         return all_params, simple_gns
 
     # Subclass may override calc_loss() to allow more sophisticated loss

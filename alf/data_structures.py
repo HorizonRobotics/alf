@@ -495,7 +495,8 @@ LossInfo = namedtuple(
 
         # per-sample labels used for summarizing loss of samples within each
         # category in the batch. Its shape should be the same as ``loss``.
-        "batch_label"
+        "batch_label",
+        "loss_per_optimizer"
     ],
     default_value=())
 

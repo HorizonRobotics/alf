@@ -35,6 +35,7 @@ class TDLoss(nn.Module):
                  td_lambda: float = 0.95,
                  normalize_target: bool = False,
                  default_return: Optional[float] = None,
+                 use_mc_return_only: bool = False,
                  debug_summaries: bool = False,
                  name: str = "TDLoss"):
         r"""
@@ -102,6 +103,7 @@ class TDLoss(nn.Module):
         self._normalize_target = normalize_target
         self._target_normalizer = None
         self._default_return = default_return
+        self._use_mc_return_only = use_mc_return_only
 
     @property
     def gamma(self):
@@ -159,13 +161,17 @@ class TDLoss(nn.Module):
         if hasattr(info, "discounted_return") and info.discounted_return != ():
             discounted_return = info.discounted_return[:-1]
 
-            returns = torch.max(returns, discounted_return)
-            # returns = discounted_return
-            with alf.summary.scope("sac_flow"):
-                higher_critic_target_rate = (returns > discounted_return).sum(
-                ) / discounted_return.numel()
-                alf.summary.scalar("higher_critic_target_rate",
-                                   higher_critic_target_rate)
+            if self._use_mc_return_only:
+                returns = discounted_return
+            else:
+                returns = torch.max(returns, discounted_return)
+
+                with alf.summary.scope("sac_flow"):
+                    higher_critic_target_rate = (
+                        returns
+                        > discounted_return).sum() / discounted_return.numel()
+                    alf.summary.scalar("higher_critic_target_rate",
+                                       higher_critic_target_rate)
 
             with alf.summary.scope(self._name):
                 mask = info.step_type[:-1] != StepType.LAST
@@ -200,10 +206,6 @@ class TDLoss(nn.Module):
         """
         returns = self.compute_td_target(info, target_value)
         value = value[:-1]
-        #
-        # print(value)
-        # print(returns)
-        # print("--------------")
 
         if self._normalize_target:
             if self._target_normalizer is None:
