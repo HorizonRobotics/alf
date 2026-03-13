@@ -125,6 +125,27 @@ def average_all_summaries():
         alf.summary.should_record_summaries = orig_should_record_summaries
 
 
+@contextlib.contextmanager
+def average_all_summaries_during_grad_update(grad_step: int = None):
+    """Average all summaries and record only at a specific grad step.
+
+    Args:
+        grad_step (int): which gradient step to record summaries at. If None,
+            use `TrainerConfig.num_updates_per_train_iter - 1`.
+    """
+    if grad_step is None:
+        num_updates = alf.get_config_value(
+            "TrainerConfig.num_updates_per_train_iter")
+        if num_updates is None:
+            raise ValueError(
+                "TrainerConfig.num_updates_per_train_iter is not set")
+        grad_step = num_updates - 1
+
+    with average_all_summaries(), record_if(lambda: get_grad_step_counter() ==
+                                            grad_step):
+        yield
+
+
 _SUMMARY_DATA_BUFFER = {}
 
 
