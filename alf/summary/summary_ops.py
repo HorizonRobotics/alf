@@ -16,9 +16,11 @@
 import functools
 import numpy as np
 import torch
+import contextlib
 from torch.utils.tensorboard import SummaryWriter
-from typing import Callable, Union
+from typing import Callable, Union, List
 from alf.utils.schedulers import update_progress
+import alf
 
 # These will be used by orig_tf_gfile_context() in alf.utils.common
 TF_IO_GFILE = None
@@ -97,6 +99,57 @@ class scope(object):
 
     def __exit__(self, type, value, traceback):
         _scope_stack.pop()
+
+
+@contextlib.contextmanager
+def average_all_summaries(cond: Callable, target_names: List[str] = None):
+    """
+    Context manager that sets all nested scalar summaries to average.
+    It also disables any nested recording interval logic.
+    Scalar summaries with an explicit average_over_summary_interval=False
+    will not be overridden.
+    
+    This is useful when training with small mini-batches, where per-step scalar
+    summaries can be noisy.
+
+    Args:
+        cond (Callable): a function which returns whether the summary recordings
+            should be averaged and recorded.
+        target_names: An optional list of substring summary names to record. If None,
+            will average all summaries.
+    """
+    orig_scalar = alf.summary.scalar
+    orig_record_if = alf.summary.record_if
+    orig_should_record_summaries = alf.summary.should_record_summaries
+
+    def _wrap(fn):
+
+        def wrapped(name, data, *args, **kwargs):
+            matched = True
+            if target_names is not None:
+                matched = any(t in name for t in target_names)
+
+            if matched:
+                kwargs.setdefault("average_over_summary_interval", True)
+
+            return fn(name, data, *args, **kwargs)
+
+        return wrapped
+
+    @contextlib.contextmanager
+    def _disabled_record_if(*args, **kwargs):
+        yield
+
+    alf.summary.scalar = _wrap(orig_scalar)
+    alf.summary.record_if = _disabled_record_if
+    alf.summary.should_record_summaries = lambda: True
+    try:
+        with orig_record_if(cond):
+            yield
+    finally:
+        alf.summary.scalar = orig_scalar
+        alf.summary.record_if = orig_record_if
+        alf.summary.should_record_summaries = orig_should_record_summaries
 
 
 _SUMMARY_DATA_BUFFER = {}
