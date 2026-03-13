@@ -20,7 +20,7 @@ from typing import Union, List, Callable, Optional
 import alf
 from alf.data_structures import LossInfo, namedtuple, StepType
 from alf.utils.losses import element_wise_squared_loss, iqn_huber_loss
-from alf.utils import losses, tensor_utils, value_ops
+from alf.utils import tensor_utils, value_ops
 from alf.utils.summary_utils import safe_mean_hist_summary
 from alf.utils.normalizers import AdaptiveNormalizer
 
@@ -217,6 +217,8 @@ class TDLoss(nn.Module):
                     safe_mean_hist_summary('values' + suffix, v, mask)
                     safe_mean_hist_summary('returns' + suffix, r, mask)
                     safe_mean_hist_summary("td_error" + suffix, td, mask)
+                    safe_mean_hist_summary('td_error_abs' + suffix, td.abs(),
+                                           mask)
 
                 if value.ndim == 2:
                     _summarize(value, returns, td_error, '')
