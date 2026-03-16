@@ -120,7 +120,6 @@ def average_all_summaries(cond: Callable, target_names: List[str] = None):
     """
     orig_scalar = alf.summary.scalar
     orig_record_if = alf.summary.record_if
-    orig_should_record_summaries = alf.summary.should_record_summaries
 
     def _wrap(fn):
 
@@ -142,14 +141,12 @@ def average_all_summaries(cond: Callable, target_names: List[str] = None):
 
     alf.summary.scalar = _wrap(orig_scalar)
     alf.summary.record_if = _disabled_record_if
-    alf.summary.should_record_summaries = lambda: True
     try:
         with orig_record_if(cond):
             yield
     finally:
         alf.summary.scalar = orig_scalar
         alf.summary.record_if = orig_record_if
-        alf.summary.should_record_summaries = orig_should_record_summaries
 
 
 _SUMMARY_DATA_BUFFER = {}
