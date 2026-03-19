@@ -94,6 +94,8 @@ class SummaryTest(alf.test.TestCase):
             tag2val = {
                 'scalar1': None,
                 'scalar2': None,
+                'scalar3': None,
+                'scalar4': None,
             }
 
             def load_summaries():
@@ -113,49 +115,43 @@ class SummaryTest(alf.test.TestCase):
                 alf.summary.scalar("scalar1", 101)
                 alf.summary.scalar("scalar1", 102)
                 alf.summary.scalar("scalar2", 103)
+                alf.summary.scalar("scalar3", 105)
+                alf.summary.scalar("scalar4", 106)
 
             load_summaries()
             self.assertEqual(tag2val['scalar1'], 102)
             self.assertEqual(tag2val['scalar2'], 103)
+            self.assertEqual(tag2val['scalar3'], 105)
+            self.assertEqual(tag2val['scalar4'], 106)
 
             # Test that average_all_summaries uses its own record boundary and
             # ignores nested record_if settings.
             num_iters = 4
             counter = 1
-            with alf.summary.average_all_summaries(lambda: counter ==
-                                                   num_iters):
+            cond = lambda: counter == num_iters
+            target_names = ["scalar1", "scalar3"]
+            with alf.summary.average_all_summaries(cond, target_names):
                 for i in range(num_iters):
-                    # This record_if should be overwritten
+                    # This record_if should be overwritten for scalar1
                     with alf.summary.record_if(lambda: True):
                         # This scalar should be averaged
                         alf.summary.scalar("scalar1", 100 + i)
-                        # This scalar should not be averaged given the explicit kwarg
-                        alf.summary.scalar("scalar2",
-                                           100 + i,
-                                           average_over_summary_interval=False)
+                        # This scalar should not be averaged
+                        alf.summary.scalar("scalar2", 100 + i)
+
+                    # This record_if should be overwritten for scalar3
+                    with alf.summary.record_if(lambda: counter == 2):
+                        # This scalar should be averaged
+                        alf.summary.scalar("scalar3", 100 + i)
+                        # This scalar should not be averaged
+                        alf.summary.scalar("scalar4", 100 + i)
                     counter += 1
 
             load_summaries()
             self.assertEqual(tag2val['scalar1'], 101.5)
             self.assertEqual(tag2val['scalar2'], 103)
-
-            # Test that average_all_summaries filters according to target_names.
-            num_iters = 4
-            counter = 1
-            with alf.summary.average_all_summaries(
-                    lambda: counter == num_iters, target_names=["scalar2"]):
-                for i in range(num_iters):
-                    # This record_if should be overwritten
-                    with alf.summary.record_if(lambda: True):
-                        # This scalar should not be averaged because it is not in target_names
-                        alf.summary.scalar("scalar1", 100 + i)
-                        # This scalar should be averaged
-                        alf.summary.scalar("scalar2", 100 + i)
-                    counter += 1
-
-            load_summaries()
-            self.assertEqual(tag2val['scalar1'], 103)
-            self.assertEqual(tag2val['scalar2'], 101.5)
+            self.assertEqual(tag2val['scalar3'], 101.5)
+            self.assertEqual(tag2val['scalar4'], 101)
 
             writer.close()
 

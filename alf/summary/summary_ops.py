@@ -102,51 +102,43 @@ class scope(object):
 
 
 @contextlib.contextmanager
-def average_all_summaries(cond: Callable, target_names: List[str] = None):
+def average_all_summaries(cond: Callable, target_names: List[str]):
     """
-    Context manager that sets all nested scalar summaries to average.
-    It also disables any nested recording interval logic.
-    Scalar summaries with an explicit average_over_summary_interval=False
-    will not be overridden.
-    
+    Context manager that sets selected nested scalar summaries to average.
+    For matching summaries, it disables any nested recording interval logic.
+
     This is useful when training with small mini-batches, where per-step scalar
     summaries can be noisy.
 
     Args:
         cond (Callable): a function which returns whether the summary recordings
             should be averaged and recorded.
-        target_names: An optional list of substring summary names to record. If None,
-            will average all summaries.
+        target_names: A list of substring summary names to record. Only matching
+            summaries are averaged and ignore nested record_if logic.
     """
     orig_scalar = alf.summary.scalar
-    orig_record_if = alf.summary.record_if
 
     def _wrap(fn):
 
         def wrapped(name, data, *args, **kwargs):
-            matched = True
-            if target_names is not None:
-                matched = any(t in name for t in target_names)
+            matched = any(t in name for t in target_names)
 
             if matched:
-                kwargs.setdefault("average_over_summary_interval", True)
+                kwargs["average_over_summary_interval"] = True
+                _record_if_stack.append(cond)
+                res = fn(name, data, *args, **kwargs)
+                _record_if_stack.pop()
+                return res
 
             return fn(name, data, *args, **kwargs)
 
         return wrapped
 
-    @contextlib.contextmanager
-    def _disabled_record_if(*args, **kwargs):
-        yield
-
     alf.summary.scalar = _wrap(orig_scalar)
-    alf.summary.record_if = _disabled_record_if
     try:
-        with orig_record_if(cond):
-            yield
+        yield
     finally:
         alf.summary.scalar = orig_scalar
-        alf.summary.record_if = orig_record_if
 
 
 _SUMMARY_DATA_BUFFER = {}
