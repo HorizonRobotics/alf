@@ -130,7 +130,7 @@ class SummaryTest(alf.test.TestCase):
             counter = 1
             cond = lambda: counter == num_iters
             target_names = ["scalar1", "scalar3"]
-            with alf.summary.average_all_summaries(cond, target_names):
+            with alf.summary.average_summaries(cond, target_names):
                 for i in range(num_iters):
                     # This record_if should be overwritten for scalar1
                     with alf.summary.record_if(lambda: True):

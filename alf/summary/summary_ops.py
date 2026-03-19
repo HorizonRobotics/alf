@@ -102,7 +102,7 @@ class scope(object):
 
 
 @contextlib.contextmanager
-def average_all_summaries(cond: Callable, target_names: List[str]):
+def average_summaries(cond: Callable, target_names: List[str]):
     """
     Context manager that sets selected nested scalar summaries to average.
     For matching summaries, it disables any nested recording interval logic.
