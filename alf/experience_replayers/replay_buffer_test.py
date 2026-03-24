@@ -688,6 +688,33 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(torch.tensor([[8, 9, 10, 11, 12, 13, 14]] * 4),
                          experience.step_type)
 
+    def test_compute_episodic_return_on_last_step(self):
+        replay_buffer = ReplayBuffer(data_spec=self.data_spec,
+                                     num_environments=1,
+                                     max_length=10,
+                                     keep_episodic_info=True,
+                                     record_episodic_return=True,
+                                     compute_episodic_return_on_last_step=True)
+        steps = [
+            ds.StepType.FIRST,
+            ds.StepType.MID,
+            ds.StepType.MID,
+            ds.StepType.LAST,
+        ]
+        for t in range(4):
+            batch = get_exp_batch([0], self.dim, t=steps[t], x=0.1 * t)
+            if steps[t] == ds.StepType.LAST:
+                batch.discount[:] = 1.0
+            replay_buffer.add_batch(batch, batch.env_id)
+        expected = torch.tensor([[
+            -2.9701, -1.99, -1., -1000., -1000., -1000., -1000., -1000.,
+            -1000., -1000.
+        ]],
+                                dtype=torch.float32)
+        self.assertTrue(
+            torch.allclose(replay_buffer._episodic_discounted_return,
+                           expected))
+
 
 def _write_to_buffer(buffer):
     bat = torch.zeros((
