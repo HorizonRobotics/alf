@@ -66,6 +66,7 @@ class ReplayBuffer(RingBuffer):
                  mp_context=None,
                  keep_episodic_info=None,
                  record_episodic_return=False,
+                 compute_episodic_return_on_last_step=False,
                  default_return=-1000.,
                  gamma=.99,
                  reward_clip=None,
@@ -113,6 +114,11 @@ class ReplayBuffer(RingBuffer):
                     ``ReplayBuffer.reward_clip=(-1,1)``.
                 2) Discount ``gamma`` needs to be set consistent with ``TDLoss.gamma``.
                 3) Assumes ``keep_episodic_info`` to be True.
+            compute_episodic_return_on_last_step (bool): If True, compute episodic
+                return when a LAST step is encountered regardless of the discount factor.
+                Default behavior when False is to compute the return when a discount factor
+                of 0 is encountered. If True, keep_episodic_return and record_episodic_return
+                must also be True.
             default_return (float): The default values of ``discounted_return``
                 when the episode has not ended.  For value target lower bounding,
                 default_return should not be bigger than the smallest possible
@@ -148,6 +154,9 @@ class ReplayBuffer(RingBuffer):
         self._record_episodic_return = record_episodic_return
         if record_episodic_return:
             assert keep_episodic_info
+        self._compute_episodic_return_on_last_step = compute_episodic_return_on_last_step
+        if compute_episodic_return_on_last_step:
+            assert record_episodic_return
         self._default_return = default_return
         self._gamma = gamma
         self._reward_clip = reward_clip
@@ -353,7 +362,10 @@ class ReplayBuffer(RingBuffer):
                     # This has the advantage of start storing episodic return earlier,
                     # but the disadvantage of having to compute episodic return a few times
                     # per episode, repeatedly for some of the earlier steps in the episode.
-                    disc_0, = torch.where(batch.discount == 0)
+                    compute_mask = batch.discount == 0
+                    if self._compute_episodic_return_on_last_step:
+                        compute_mask |= step_types == ds.StepType.LAST
+                    disc_0, = torch.where(compute_mask)
                     # Backfill episodic returns for episodes which ended
                     if disc_0.nelement() > 0:
                         self._compute_store_episodic_return(env_ids[disc_0])
@@ -546,7 +558,7 @@ class ReplayBuffer(RingBuffer):
         self._episodic_discounted_return[ind] = self._default_return
 
     def _compute_store_episodic_return(self, env_ids):
-        # Always pass in env_ids whose discount is 0, to save computation.
+        # Pass in env_ids marking the end of episodes to save computation.
         current_pos = self._current_pos[env_ids]
         current_pos -= 1
 
