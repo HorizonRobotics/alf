@@ -35,6 +35,7 @@ class TDLoss(nn.Module):
                  td_lambda: float = 0.95,
                  normalize_target: bool = False,
                  default_return: Optional[float] = None,
+                 use_mc_return: bool = False,
                  debug_summaries: bool = False,
                  name: str = "TDLoss"):
         r"""
@@ -102,6 +103,7 @@ class TDLoss(nn.Module):
         self._normalize_target = normalize_target
         self._target_normalizer = None
         self._default_return = default_return
+        self._use_mc_return = use_mc_return
 
     @property
     def gamma(self):
@@ -156,7 +158,9 @@ class TDLoss(nn.Module):
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
 
-        if hasattr(info, "discounted_return") and info.discounted_return != ():
+        if self._use_mc_return:
+            assert hasattr(
+                info, "discounted_return") and info.discounted_return != ()
             discounted_return = info.discounted_return[:-1]
             returns = torch.max(returns, discounted_return)
             with alf.summary.scope(self._name):
