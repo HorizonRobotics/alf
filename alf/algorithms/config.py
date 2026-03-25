@@ -76,6 +76,7 @@ class TrainerConfig(object):
                  summarize_output=False,
                  initial_collect_steps=0,
                  num_updates_per_train_iter=4,
+                 sample_mini_batch_per_update=False,
                  mini_batch_length=None,
                  mini_batch_size=None,
                  whole_replay_buffer_training=True,
@@ -286,6 +287,11 @@ class TrainerConfig(object):
                 by ``OffPolicyAlgorithm``.
             num_updates_per_train_iter (int): number of optimization steps for
                 one iteration. Only used by ``OffPolicyAlgorithm``.
+            sample_mini_batch_per_update (bool): If True and
+                ``whole_replay_buffer_training`` is False, sample one minibatch
+                per update instead of sampling ``num_updates_per_train_iter``
+                minibatches in one replay call. This reduces peak memory at the
+                cost of more replay calls. Only used by ``OffPolicyAlgorithm``.
             mini_batch_size (int): number of sequences for each minibatch. If None,
                 it's set to the replayer's ``batch_size``. Only used by
                 ``OffPolicyAlgorithm``.
@@ -435,6 +441,7 @@ class TrainerConfig(object):
         self.summarize_output = summarize_output
         self.initial_collect_steps = initial_collect_steps
         self.num_updates_per_train_iter = num_updates_per_train_iter
+        self.sample_mini_batch_per_update = sample_mini_batch_per_update
         self.mini_batch_length = mini_batch_length
         self.mini_batch_size = mini_batch_size
         self.whole_replay_buffer_training = whole_replay_buffer_training

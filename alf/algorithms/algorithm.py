@@ -1472,8 +1472,13 @@ class Algorithm(AlgorithmInterface):
           - If ``True``, each update will scan over the entire buffer to get
             chopped minibatches and a random experience shuffling is performed
             before each update;
-          - If ``False``, each update will sample a new minibatch from the replay
-            buffer.
+          - If ``False``, minibatches are sampled from replay. With
+            ``config.sample_mini_batch_per_update=True``, each update samples a
+            fresh minibatch from replay; otherwise all minibatches for the
+            iteration are sampled in one replay call.
+          - If ``False`` and ``config.sample_mini_batch_per_update`` is False,
+            all ``num_updates_per_train_iter`` minibatches are sampled in one
+            replay call.
 
         - ``whole_replay_buffer_training``: a very special case where all data in
           the replay buffer will be used for training (e.g., PPO). In this case,
@@ -1518,7 +1523,7 @@ class Algorithm(AlgorithmInterface):
                     f"the initial_collect_steps.")
             return 0
 
-        def _replay():
+        def _replay(batch_multiplier):
             # a local function to sample batch of experience from the
             # ``_replay_buffer`` for training.
             # TODO: If this function can be called asynchronously, and using
@@ -1536,25 +1541,44 @@ class Algorithm(AlgorithmInterface):
                         "No mini_batch_length is specified for off-policy training"
                     )
                     experience, batch_info = self._replay_buffer.get_batch(
-                        batch_size=(mini_batch_size *
-                                    config.num_updates_per_train_iter),
+                        batch_size=(mini_batch_size * batch_multiplier),
                         batch_length=config.mini_batch_length)
                     num_updates = 1
             return experience, batch_info, num_updates, mini_batch_size
 
         if not self.has_offline:
-            experience, batch_info, num_updates, mini_batch_size = _replay()
-            with record_time("time/train"):
-                return self._train_experience(
-                    experience,
-                    batch_info,
-                    num_updates,
-                    mini_batch_size,
-                    config.mini_batch_length,
-                    (config.update_counter_every_mini_batch
-                     and update_global_counter),
-                    whole_replay_buffer_training=config.
-                    whole_replay_buffer_training)
+            if (config.sample_mini_batch_per_update
+                    and not config.whole_replay_buffer_training):
+                train_steps = 0
+                for _ in range(config.num_updates_per_train_iter):
+                    experience, batch_info, num_updates, mini_batch_size = _replay(
+                        1)
+                    with record_time("time/train"):
+                        train_steps += self._train_experience(
+                            experience,
+                            batch_info,
+                            num_updates,
+                            mini_batch_size,
+                            config.mini_batch_length,
+                            (config.update_counter_every_mini_batch
+                             and update_global_counter),
+                            whole_replay_buffer_training=config.
+                            whole_replay_buffer_training)
+                return train_steps
+            else:
+                experience, batch_info, num_updates, mini_batch_size = _replay(
+                    config.num_updates_per_train_iter)
+                with record_time("time/train"):
+                    return self._train_experience(
+                        experience,
+                        batch_info,
+                        num_updates,
+                        mini_batch_size,
+                        config.mini_batch_length,
+                        (config.update_counter_every_mini_batch
+                         and update_global_counter),
+                        whole_replay_buffer_training=config.
+                        whole_replay_buffer_training)
         else:
             # hybrid training scheme
             global_step = alf.summary.get_global_counter()
@@ -1570,28 +1594,55 @@ class Algorithm(AlgorithmInterface):
             else:
                 self._pre_train = True
 
-            if self._RL_train:
-                experience, batch_info, num_updates, mini_batch_size = _replay(
-                )
-            else:
-                experience = None
-                batch_info = None
-                num_updates = 1
-                mini_batch_size = config.mini_batch_size
+            if (config.sample_mini_batch_per_update
+                    and not config.whole_replay_buffer_training):
+                train_steps = 0
+                for _ in range(config.num_updates_per_train_iter):
+                    if self._RL_train:
+                        experience, batch_info, num_updates, mini_batch_size = _replay(
+                            1)
+                    else:
+                        experience = None
+                        batch_info = None
+                        num_updates = 1
+                        mini_batch_size = config.mini_batch_size
 
-            with record_time("time/offline_replay"):
-                offline_experience, offline_batch_info = self._offline_replay_buffer.get_batch(
-                    batch_size=(mini_batch_size *
-                                config.num_updates_per_train_iter),
-                    batch_length=config.mini_batch_length)
-            # train hybrid
-            with record_time("time/offline_train"):
-                return self._train_hybrid_experience(
-                    experience, batch_info, offline_experience,
-                    offline_batch_info, num_updates, mini_batch_size,
-                    config.mini_batch_length,
-                    (config.update_counter_every_mini_batch
-                     and update_global_counter))
+                    with record_time("time/offline_replay"):
+                        offline_experience, offline_batch_info = self._offline_replay_buffer.get_batch(
+                            batch_size=mini_batch_size,
+                            batch_length=config.mini_batch_length)
+                    # train hybrid
+                    with record_time("time/offline_train"):
+                        train_steps += self._train_hybrid_experience(
+                            experience, batch_info, offline_experience,
+                            offline_batch_info, num_updates, mini_batch_size,
+                            config.mini_batch_length,
+                            (config.update_counter_every_mini_batch
+                             and update_global_counter))
+                return train_steps
+            else:
+                if self._RL_train:
+                    experience, batch_info, num_updates, mini_batch_size = _replay(
+                        config.num_updates_per_train_iter)
+                else:
+                    experience = None
+                    batch_info = None
+                    num_updates = 1
+                    mini_batch_size = config.mini_batch_size
+
+                with record_time("time/offline_replay"):
+                    offline_experience, offline_batch_info = self._offline_replay_buffer.get_batch(
+                        batch_size=(mini_batch_size *
+                                    config.num_updates_per_train_iter),
+                        batch_length=config.mini_batch_length)
+                # train hybrid
+                with record_time("time/offline_train"):
+                    return self._train_hybrid_experience(
+                        experience, batch_info, offline_experience,
+                        offline_batch_info, num_updates, mini_batch_size,
+                        config.mini_batch_length,
+                        (config.update_counter_every_mini_batch
+                         and update_global_counter))
 
     def _train_experience(self,
                           experience,
