@@ -1503,6 +1503,7 @@ class Algorithm(AlgorithmInterface):
                 ``config.update_counter_every_mini_batch=True``.
         """
         config: TrainerConfig = self._config
+        num_updates_per_train_iter = int(config.num_updates_per_train_iter())
 
         # returns 0 if haven't started training yet, when ``_replay_buffer`` is
         # not None and the number of samples in the buffer is less than
@@ -1535,7 +1536,7 @@ class Algorithm(AlgorithmInterface):
                 if config.whole_replay_buffer_training:
                     experience, batch_info = self._replay_buffer.gather_all(
                         ignore_earliest_frames=True)
-                    num_updates = config.num_updates_per_train_iter
+                    num_updates = num_updates_per_train_iter
                 else:
                     assert config.mini_batch_length is not None, (
                         "No mini_batch_length is specified for off-policy training"
@@ -1550,7 +1551,7 @@ class Algorithm(AlgorithmInterface):
             if (config.sample_mini_batch_per_update
                     and not config.whole_replay_buffer_training):
                 train_steps = 0
-                for _ in range(config.num_updates_per_train_iter):
+                for _ in range(num_updates_per_train_iter):
                     experience, batch_info, num_updates, mini_batch_size = _replay(
                         1)
                     with record_time("time/train"):
@@ -1567,7 +1568,7 @@ class Algorithm(AlgorithmInterface):
                 return train_steps
             else:
                 experience, batch_info, num_updates, mini_batch_size = _replay(
-                    config.num_updates_per_train_iter)
+                    num_updates_per_train_iter)
                 with record_time("time/train"):
                     return self._train_experience(
                         experience,
@@ -1597,7 +1598,7 @@ class Algorithm(AlgorithmInterface):
             if (config.sample_mini_batch_per_update
                     and not config.whole_replay_buffer_training):
                 train_steps = 0
-                for _ in range(config.num_updates_per_train_iter):
+                for _ in range(num_updates_per_train_iter):
                     if self._RL_train:
                         experience, batch_info, num_updates, mini_batch_size = _replay(
                             1)
@@ -1623,7 +1624,7 @@ class Algorithm(AlgorithmInterface):
             else:
                 if self._RL_train:
                     experience, batch_info, num_updates, mini_batch_size = _replay(
-                        config.num_updates_per_train_iter)
+                        num_updates_per_train_iter)
                 else:
                     experience = None
                     batch_info = None
@@ -1633,7 +1634,7 @@ class Algorithm(AlgorithmInterface):
                 with record_time("time/offline_replay"):
                     offline_experience, offline_batch_info = self._offline_replay_buffer.get_batch(
                         batch_size=(mini_batch_size *
-                                    config.num_updates_per_train_iter),
+                                    num_updates_per_train_iter),
                         batch_length=config.mini_batch_length)
                 # train hybrid
                 with record_time("time/offline_train"):

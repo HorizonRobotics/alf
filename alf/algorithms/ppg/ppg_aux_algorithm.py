@@ -24,6 +24,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.data_structures import TimeStep, AlgStep, LossInfo
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.utils import dist_utils
+from alf.utils.schedulers import as_scheduler
 from alf.tensor_specs import TensorSpec
 
 # Data structure to store the options for PPG's auxiliary phase
@@ -109,7 +110,8 @@ class PPGAuxAlgorithm(OffPolicyAlgorithm):
         updated_config.mini_batch_length = (aux_options.mini_batch_length
                                             or config.unroll_length)
         updated_config.mini_batch_size = aux_options.mini_batch_size
-        updated_config.num_updates_per_train_iter = aux_options.num_updates_per_train_iter
+        updated_config.num_updates_per_train_iter = as_scheduler(
+            aux_options.num_updates_per_train_iter)
 
         # Since we are going to store already-transformed experience in the
         # replay buffer, the aux algorithm shall not inherit the data

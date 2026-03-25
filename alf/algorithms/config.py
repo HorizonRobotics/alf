@@ -285,8 +285,8 @@ class TrainerConfig(object):
             initial_collect_steps (int): if positive, number of steps each single
                 environment steps before perform first update. Only used
                 by ``OffPolicyAlgorithm``.
-            num_updates_per_train_iter (int): number of optimization steps for
-                one iteration. Only used by ``OffPolicyAlgorithm``.
+            num_updates_per_train_iter (int|Scheduler): number of optimization
+                steps for one iteration. Only used by ``OffPolicyAlgorithm``.
             sample_mini_batch_per_update (bool): If True and
                 ``whole_replay_buffer_training`` is False, sample one minibatch
                 per update instead of sampling ``num_updates_per_train_iter``
@@ -440,7 +440,8 @@ class TrainerConfig(object):
         self.summarize_action_distributions = summarize_action_distributions
         self.summarize_output = summarize_output
         self.initial_collect_steps = initial_collect_steps
-        self.num_updates_per_train_iter = num_updates_per_train_iter
+        self.num_updates_per_train_iter = as_scheduler(
+            num_updates_per_train_iter)
         self.sample_mini_batch_per_update = sample_mini_batch_per_update
         self.mini_batch_length = mini_batch_length
         self.mini_batch_size = mini_batch_size

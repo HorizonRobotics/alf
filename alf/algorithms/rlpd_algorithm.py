@@ -186,6 +186,9 @@ class RlpdAlgorithm(SacAlgorithm):
         else:
             total_utd = alf.config_util.get_config_value(
                 "num_updates_per_train_iter")
+            if callable(total_utd):
+                total_utd = total_utd()
+            total_utd = int(total_utd)
             if critic_utd is not None:
                 assert critic_utd < total_utd, (
                     "critic_utd should be less than num_updates_per_train_iter"

@@ -1027,7 +1027,8 @@ class MuzeroRepresentationLearner(OffPolicyAlgorithm):
             updated.clear_replay_buffer = False
             updated.mini_batch_length = training_options.mini_batch_length
             updated.mini_batch_size = training_options.mini_batch_size
-            updated.num_updates_per_train_iter = training_options.num_updates_per_train_iter
+            updated.num_updates_per_train_iter = as_scheduler(
+                training_options.num_updates_per_train_iter)
             updated.replay_buffer_length = training_options.replay_buffer_length
             updated.initial_collect_steps = training_options.initial_collect_steps
             updated.priority_replay = training_options.priority_replay
