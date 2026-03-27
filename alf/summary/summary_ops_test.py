@@ -81,6 +81,80 @@ class SummaryTest(alf.test.TestCase):
             self.assertEqual(tag2val['root/b/histogram'].max(), 99)
             self.assertEqual(len(tag2val['root/b/histogram']), 30)
 
+    def test_average_all_summaries(self):
+        with tempfile.TemporaryDirectory() as root_dir:
+            writer = alf.summary.create_summary_writer(root_dir,
+                                                       flush_secs=10,
+                                                       max_queue=10)
+            alf.summary.set_default_writer(writer)
+            alf.summary.enable_summary()
+            event_file = _find_event_file(root_dir)
+            self.assertIsNotNone(event_file)
+
+            tag2val = {
+                'scalar1': None,
+                'scalar2': None,
+                'scalar3': None,
+                'scalar4': None,
+            }
+
+            def load_summaries():
+                writer.flush()
+                for event_str in event_file_loader.EventFileLoader(
+                        event_file).Load():
+                    if event_str.summary.value:
+                        for item in event_str.summary.value:
+                            self.assertTrue(item.tag in tag2val)
+                            tag2val[item.tag] = tensor_util.make_ndarray(
+                                item.tensor)
+
+            load_summaries()
+
+            with alf.summary.record_if(lambda: True):
+                # average_over_summary_interval is False by default
+                alf.summary.scalar("scalar1", 101)
+                alf.summary.scalar("scalar1", 102)
+                alf.summary.scalar("scalar2", 103)
+                alf.summary.scalar("scalar3", 105)
+                alf.summary.scalar("scalar4", 106)
+
+            load_summaries()
+            self.assertEqual(tag2val['scalar1'], 102)
+            self.assertEqual(tag2val['scalar2'], 103)
+            self.assertEqual(tag2val['scalar3'], 105)
+            self.assertEqual(tag2val['scalar4'], 106)
+
+            # Test that average_all_summaries uses its own record boundary and
+            # ignores nested record_if settings.
+            num_iters = 4
+            counter = 1
+            cond = lambda: counter == num_iters
+            target_names = ["scalar1", "scalar3"]
+            with alf.summary.average_summaries(cond, target_names):
+                for i in range(num_iters):
+                    # This record_if should be overwritten for scalar1
+                    with alf.summary.record_if(lambda: True):
+                        # This scalar should be averaged
+                        alf.summary.scalar("scalar1", 100 + i)
+                        # This scalar should not be averaged
+                        alf.summary.scalar("scalar2", 100 + i)
+
+                    # This record_if should be overwritten for scalar3
+                    with alf.summary.record_if(lambda: counter == 2):
+                        # This scalar should be averaged
+                        alf.summary.scalar("scalar3", 100 + i)
+                        # This scalar should not be averaged
+                        alf.summary.scalar("scalar4", 100 + i)
+                    counter += 1
+
+            load_summaries()
+            self.assertEqual(tag2val['scalar1'], 101.5)
+            self.assertEqual(tag2val['scalar2'], 103)
+            self.assertEqual(tag2val['scalar3'], 101.5)
+            self.assertEqual(tag2val['scalar4'], 101)
+
+            writer.close()
+
 
 if __name__ == "__main__":
     alf.test.main()

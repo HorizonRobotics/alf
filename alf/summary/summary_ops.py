@@ -16,9 +16,11 @@
 import functools
 import numpy as np
 import torch
+import contextlib
 from torch.utils.tensorboard import SummaryWriter
-from typing import Callable, Union
+from typing import Callable, Union, List
 from alf.utils.schedulers import update_progress
+import alf
 
 # These will be used by orig_tf_gfile_context() in alf.utils.common
 TF_IO_GFILE = None
@@ -97,6 +99,46 @@ class scope(object):
 
     def __exit__(self, type, value, traceback):
         _scope_stack.pop()
+
+
+@contextlib.contextmanager
+def average_summaries(cond: Callable, target_names: List[str]):
+    """
+    Context manager that sets selected nested scalar summaries to average.
+    For matching summaries, it disables any nested recording interval logic.
+
+    This is useful when training with small mini-batches, where per-step scalar
+    summaries can be noisy.
+
+    Args:
+        cond (Callable): a function which returns whether the summary recordings
+            should be averaged and recorded.
+        target_names: A list of substring summary names to record. Only matching
+            summaries are averaged and ignore nested record_if logic.
+    """
+    orig_scalar = alf.summary.scalar
+
+    def _wrap(fn):
+
+        def wrapped(name, data, *args, **kwargs):
+            matched = any(t in name for t in target_names)
+
+            if matched:
+                kwargs["average_over_summary_interval"] = True
+                _record_if_stack.append(cond)
+                res = fn(name, data, *args, **kwargs)
+                _record_if_stack.pop()
+                return res
+
+            return fn(name, data, *args, **kwargs)
+
+        return wrapped
+
+    alf.summary.scalar = _wrap(orig_scalar)
+    try:
+        yield
+    finally:
+        alf.summary.scalar = orig_scalar
 
 
 _SUMMARY_DATA_BUFFER = {}
