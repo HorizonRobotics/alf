@@ -19,6 +19,7 @@ import unittest
 
 import alf
 from alf.utils import common, dist_utils, tensor_utils
+from alf.utils.schedulers import StepScheduler, update_progress
 from alf.data_structures import AlgStep, Experience, LossInfo, StepType, TimeStep
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.config import TrainerConfig
@@ -174,6 +175,39 @@ class MyEnv(object):
 
 class RLAlgorithmTest(unittest.TestCase):
 
+    class _ReplayOnlyAlg(MyAlg):
+
+        def __init__(self, config):
+            observation_spec = TensorSpec((2, ), dtype='float32')
+            action_spec = alf.BoundedTensorSpec(shape=(),
+                                                dtype='int64',
+                                                minimum=0,
+                                                maximum=2)
+            super().__init__(observation_spec=observation_spec,
+                             action_spec=action_spec,
+                             env=None,
+                             config=config,
+                             on_policy=False)
+            self._replay_buffer = object()
+            self.unroll_calls = []
+            self.train_calls = 0
+            self.after_train_iter_calls = 0
+
+        def _unroll(self, unroll_length: int):
+            self.unroll_calls.append(unroll_length)
+            return None
+
+        def train_from_replay_buffer(self, update_global_counter=False):
+            self.train_calls += 1
+            self.update_global_counter = update_global_counter
+            return 7
+
+        def after_train_iter(self, root_inputs, train_info):
+            self.after_train_iter_calls += 1
+
+    def tearDown(self):
+        update_progress('iterations', 0)
+
     def test_on_policy_algorithm(self):
         # root_dir is not used. We have to give it a value because
         # it is a required argument of TrainerConfig.
@@ -197,6 +231,77 @@ class RLAlgorithmTest(unittest.TestCase):
         print("logits: ", logits)
         self.assertTrue(torch.all(logits[1, :] > logits[0, :]))
         self.assertTrue(torch.all(logits[1, :] > logits[2, :]))
+
+    def test_scheduled_unroll_length_guards(self):
+        unroll_length = StepScheduler('iterations', [(1, 1), (2, 0)])
+
+        with self.assertRaisesRegex(
+                AssertionError,
+                "scheduled unroll_length is not supported for async_unroll=True"
+        ):
+            TrainerConfig(root_dir='/tmp/rl_algorithm_test',
+                          unroll_length=unroll_length,
+                          async_unroll=True,
+                          max_unroll_length=1)
+
+        with self.assertRaisesRegex(
+                AssertionError, "scheduled unroll_length is not supported for "
+                "whole_replay_buffer_training=True"):
+            TrainerConfig(root_dir='/tmp/rl_algorithm_test',
+                          unroll_length=unroll_length,
+                          whole_replay_buffer_training=True)
+
+        with self.assertRaisesRegex(
+                AssertionError,
+                "scheduled unroll_length is not supported when num_env_steps "
+                "is used as a termination criterion"):
+            TrainerConfig(root_dir='/tmp/rl_algorithm_test',
+                          unroll_length=unroll_length,
+                          num_env_steps=1,
+                          num_iterations=0,
+                          whole_replay_buffer_training=False)
+
+    def test_scheduled_zero_unroll_skips_rollout(self):
+        config = TrainerConfig(root_dir='/tmp/rl_algorithm_test',
+                               unroll_length=StepScheduler(
+                                   'iterations', [(1, 1), (2, 0)]),
+                               mini_batch_length=1,
+                               mini_batch_size=1,
+                               whole_replay_buffer_training=False)
+        alg = self._ReplayOnlyAlg(config)
+
+        update_progress('iterations', 0)
+        self.assertEqual(alg._train_iter_off_policy(), 7)
+        self.assertEqual(alg.unroll_calls, [1])
+        self.assertEqual(alg.train_calls, 1)
+        self.assertEqual(alg.after_train_iter_calls, 1)
+        self.assertTrue(alg.update_global_counter)
+
+        update_progress('iterations', 1)
+        self.assertEqual(alg._train_iter_off_policy(), 7)
+        self.assertEqual(alg.unroll_calls, [1])
+        self.assertEqual(alg.train_calls, 2)
+        self.assertEqual(alg.after_train_iter_calls, 1)
+
+    def test_constant_unroll_length_keeps_scalar_behavior(self):
+        config = TrainerConfig(root_dir='/tmp/rl_algorithm_test',
+                               unroll_length=5,
+                               async_unroll=True,
+                               max_unroll_length=5)
+        self.assertEqual(config.unroll_length, 5)
+        self.assertEqual(config.max_unroll_length, 5)
+
+    def test_on_policy_constant_unroll_length_still_works(self):
+        config = TrainerConfig(root_dir='/tmp/rl_algorithm_test',
+                               unroll_length=3)
+        env = MyEnv(batch_size=2)
+        alg = MyAlg(observation_spec=env.observation_spec(),
+                    action_spec=env.action_spec(),
+                    env=env,
+                    config=config,
+                    on_policy=True)
+        steps = alg.train_iter()
+        self.assertEqual(steps, 6)
 
     def test_off_policy_algorithm(self):
         with tempfile.TemporaryDirectory() as root_dir:

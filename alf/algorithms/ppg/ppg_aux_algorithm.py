@@ -23,6 +23,7 @@ from alf.algorithms.ppg import PPGRolloutInfo, PPGTrainInfo, PPGAuxPhaseLoss, pp
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.data_structures import TimeStep, AlgStep, LossInfo
 from alf.experience_replayers.replay_buffer import ReplayBuffer
+from alf.utils.schedulers import as_scheduler
 from alf.utils import dist_utils
 from alf.tensor_specs import TensorSpec
 

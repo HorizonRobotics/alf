@@ -15,7 +15,7 @@
 from typing import Optional, Callable
 import torch
 import alf
-from alf.utils.schedulers import as_scheduler
+from alf.utils.schedulers import ConstantScheduler, as_scheduler
 
 
 @alf.configurable
@@ -143,13 +143,18 @@ class TrainerConfig(object):
                 total number of FRAMES will be (``num_env_steps*frame_skip``) for
                 calculating sample efficiency. See alf/environments/wrappers.py
                 for the definition of FrameSkip.
-            unroll_length (float):  number of time steps each environment proceeds per
-                iteration. The total number of time steps from all environments per
-                iteration can be computed as: ``num_envs * env_batch_size * unroll_length``.
-                If ``unroll_length`` is not an integer, the actual unroll_length
+            unroll_length (float|Scheduler): number of time steps each environment
+                proceeds per iteration. The total number of time steps from all
+                environments per iteration can be computed as:
+                ``num_envs * env_batch_size * unroll_length``. If
+                ``unroll_length`` is not an integer, the actual unroll_length
                 being used will fluctuate between ``floor(unroll_length)`` and
                 ``ceil(unroll_length)`` and the expectation will be equal to
-                ``unroll_length``.
+                ``unroll_length``. For sync off-policy training,
+                ``unroll_length`` can also be a scheduler. In that case,
+                ``async_unroll`` and ``whole_replay_buffer_training`` must both
+                be False. If a resolved value is 0, the iteration skips rollout
+                and only performs replay-buffer updates.
             unroll_with_grad (bool): a bool flag indicating whether we require
                 grad during ``unroll()``. This flag is only used by
                 ``OffPolicyAlgorithm`` where unrolling with grads is usually
@@ -389,6 +394,16 @@ class TrainerConfig(object):
         self.unroll_with_grad = unroll_with_grad
         self.use_root_inputs_for_after_train_iter = use_root_inputs_for_after_train_iter
         self.async_unroll = async_unroll
+        if not isinstance(self._unroll_length, ConstantScheduler):
+            assert not async_unroll, (
+                "scheduled unroll_length is not supported for async_unroll=True"
+            )
+            assert not whole_replay_buffer_training, (
+                "scheduled unroll_length is not supported for "
+                "whole_replay_buffer_training=True")
+            assert num_env_steps == 0, (
+                "scheduled unroll_length is not supported when num_env_steps "
+                "is used as a termination criterion")
         if async_unroll:
             assert not unroll_with_grad, ("unroll_with_grad is not supported "
                                           "for async_unroll=True")
@@ -455,3 +470,11 @@ class TrainerConfig(object):
         self.normalize_importance_weights_by_max = normalize_importance_weights_by_max
         self.visualize_alf_tree = visualize_alf_tree
         self.remote_training = remote_training
+
+    @property
+    def unroll_length(self):
+        return self._unroll_length()
+
+    @unroll_length.setter
+    def unroll_length(self, value):
+        self._unroll_length = as_scheduler(value)
