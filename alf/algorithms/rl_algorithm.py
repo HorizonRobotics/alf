@@ -813,7 +813,11 @@ class RLAlgorithm(Algorithm):
         if not config.update_counter_every_mini_batch:
             alf.summary.increment_global_counter()
 
-        unroll_length = self._remaining_unroll_length_fraction + config.unroll_length
+        # Preserve the configured value so we can distinguish it from the
+        # integerized length after carrying over any fractional remainder.
+        requested_unroll_length = config.unroll_length
+        unroll_length = (self._remaining_unroll_length_fraction +
+                         requested_unroll_length)
         self._remaining_unroll_length_fraction = unroll_length - int(
             unroll_length)
         unroll_length = int(unroll_length)
@@ -823,9 +827,13 @@ class RLAlgorithm(Algorithm):
         unrolled = False
         root_inputs = None
         rollout_info = None
+        # Async unroll still needs one unroll call to pump queued work even when
+        # the configured unroll length is exactly zero.
+        allow_zero_length_unroll = (config.async_unroll
+                                    and requested_unroll_length == 0)
         if (alf.summary.get_global_counter()
                 >= self._rl_train_after_update_steps
-                and (unroll_length > 0 or config.unroll_length == 0) and
+                and (unroll_length > 0 or allow_zero_length_unroll) and
             (config.num_env_steps == 0
              or self.get_step_metrics()[1].result() < config.num_env_steps)):
             unrolled = True
