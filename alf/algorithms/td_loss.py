@@ -35,6 +35,7 @@ class TDLoss(nn.Module):
                  td_lambda: float = 0.95,
                  normalize_target: bool = False,
                  default_return: Optional[float] = None,
+                 bootstrap_only: bool = False,
                  debug_summaries: bool = False,
                  name: str = "TDLoss"):
         r"""
@@ -89,6 +90,9 @@ class TDLoss(nn.Module):
             default_return: The default values of ``discounted_return``  used in
                 ``ReplayBuffer`` when the episode has not ended. It is used to summarizing
                 the actual Monte Carlo return (MC-return) values.
+            bootstrap_only: If True, will ignore the MC-returns if present and instead
+                rely solely on bootstrapping. Note that if MC-returns are not present,
+                this flag has no effect.
             debug_summaries: True if debug summaries should be created.
             name: The name of this loss.
         """
@@ -102,6 +106,7 @@ class TDLoss(nn.Module):
         self._normalize_target = normalize_target
         self._target_normalizer = None
         self._default_return = default_return
+        self._bootstrap_only = bootstrap_only
 
     @property
     def gamma(self):
@@ -158,7 +163,8 @@ class TDLoss(nn.Module):
 
         if hasattr(info, "discounted_return") and info.discounted_return != ():
             discounted_return = info.discounted_return[:-1]
-            returns = torch.max(returns, discounted_return)
+            if not self._bootstrap_only:
+                returns = torch.max(returns, discounted_return)
             with alf.summary.scope(self._name):
                 mask = info.step_type[:-1] != StepType.LAST
                 episode_ended = discounted_return != self._default_return
