@@ -116,9 +116,25 @@ class ReplayBuffer(RingBuffer):
                 3) Assumes ``keep_episodic_info`` to be True.
             compute_episodic_return_on_last_step (bool): If True, compute episodic
                 return when a LAST step is encountered regardless of the discount factor.
-                Default behavior when False is to compute the return when a discount factor
-                of 0 is encountered. If True, keep_episodic_return and record_episodic_return
+                Default behavior when False is to compute the return only when a discount factor
+                of 0 is encountered, otherwise, steps will be populated with a return of
+                'default_return'. Useful for infinite horizon RL formulations that need
+                the discounted return. If True, keep_episodic_return and record_episodic_return
                 must also be True.
+                NOTE:
+                    If the discount factor is not 0, then the computed MC return can
+                    be biased because future rewards beyond the last step are implicitly
+                    assumed to be zero (i.e., the return is truncated at the episode boundary).
+
+                    For infinite-horizon RL, this results in a missing term of the form
+                    γ^k V(s_T), where s_T is the last state. Therefore:
+
+                    - If the true value of the last state is positive, the MC return is a lower bound.
+                    - If the true value is negative, the MC return is an upper bound.
+
+                    This bias can be significant when episodes end due to time limits rather
+                    than true terminal conditions, and the resulting discounted return should
+                    be used cautiously.
             default_return (float): The default values of ``discounted_return``
                 when the episode has not ended.  For value target lower bounding,
                 default_return should not be bigger than the smallest possible
