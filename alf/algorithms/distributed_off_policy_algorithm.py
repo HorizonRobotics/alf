@@ -850,8 +850,10 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         # Get the current worker id to send the exp to
         worker_id = f'worker-{self._current_worker}'
         self._num_exps += 1
-        episode_end = ((self._episode_length <= 0 and bool(exp.is_last()))
-                       or (self._num_exps % self._episode_length == 0))
+        if self._episode_length <= 0:
+            episode_end = bool(exp.is_last())
+        else:
+            episode_end = (self._num_exps % self._episode_length == 0)
 
         if self._is_first_step:
             # When the unroller has a ``max_episode_length``, we need to correctly
