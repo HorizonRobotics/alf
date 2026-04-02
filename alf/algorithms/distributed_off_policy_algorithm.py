@@ -296,15 +296,26 @@ def pull_params_from_trainer(memory_name: str, memory_lock: mp.Lock,
         zmq.DEALER, _trainer_addr_config.ip,
         _trainer_addr_config.port + _params_port_offset + params_socket_rank,
         unroller_id + "_params")
+    logging.info(
+        f"Unroller {unroller_id} connected param socket to "
+        f"{_trainer_addr_config.ip}:"
+        f"{_trainer_addr_config.port + _params_port_offset + params_socket_rank}."
+    )
     params = SharedMemory(name=memory_name)
     # signifies that this unroller is ready to receive params
     socket.send_string(UnrollerMessage.OK)
+    logging.info(
+        f"Unroller {unroller_id} sent initial param-ready signal to trainer.")
     while True:
         data = socket.recv()
+        logging.info(f"Unroller {unroller_id} received param payload of "
+                     f"{len(data) / 1024 / 1024:.2f} MB from trainer.")
         with memory_lock:
             params.buf[0] = 1
             params.buf[1:] = data
         socket.send_string(UnrollerMessage.OK)
+        logging.info(
+            f"Unroller {unroller_id} acknowledged param payload to trainer.")
 
 
 @alf.configurable(whitelist=[
@@ -413,14 +424,25 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             # Block until the unroller is ready to receive params
             # If we don't do so, the outgoing params might get lost before
             # the receiving socket is actually created.
+            logging.info(
+                f"Rank {self._ddp_rank} waiting for initial param-ready "
+                f"signal from unroller {unroller_id.decode()}.")
             unroller_id_, message = self._params_socket.recv_multipart()
             assert unroller_id_ == unroller_id1
             assert message == UnrollerMessage.OK.encode()
+            logging.info(
+                f"Rank {self._ddp_rank} received initial param-ready signal "
+                f"from unroller {unroller_id.decode()}.")
 
         # Get all parameters/buffers in a state dict and send them out
         buffer = io.BytesIO()
         torch.save(self._distributed_state_dict(), buffer)
-        self._params_socket.send_multipart([unroller_id1, buffer.getvalue()])
+        payload = buffer.getvalue()
+        payload_size_mb = len(payload) / 1024 / 1024
+        logging.info(
+            f"Rank {self._ddp_rank} sending params to unroller "
+            f"{unroller_id.decode()} with payload {payload_size_mb:.2f} MB.")
+        self._params_socket.send_multipart([unroller_id1, payload])
         # 3 sec timeout for receiving unroller's acknowledgement
         # In case some unrollers might die, we don't want to block forever
         for _ in range(30):
@@ -431,9 +453,15 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                 logging.debug(
                     f"[worker-{self._ddp_rank}] Params sent to unroller"
                     f" {unroller_id.decode()}.")
+                logging.info(f"Rank {self._ddp_rank} received param ack from "
+                             f"unroller {unroller_id.decode()}.")
                 return True
             except zmq.Again:
                 time.sleep(0.1)
+        logging.warning(
+            f"Rank {self._ddp_rank} timed out waiting for param ack from "
+            f"unroller {unroller_id.decode()} after sending "
+            f"{payload_size_mb:.2f} MB.")
         return False
 
     def _create_unroller_registration_thread(self):
@@ -792,17 +820,28 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         buffer = None
         with self._shared_mem_lock:
             if self._shared_alg_params.buf[0] == 1:
+                logging.info(
+                    f"Unroller {self._id} detected updated params in shared "
+                    f"memory ({(len(self._shared_alg_params.buf) - 1) / 1024 / 1024:.2f} MB)."
+                )
                 with record_time(
                         "time/dist_unroller_params_update/1_buffer_from_io"):
                     buffer = io.BytesIO(self._shared_alg_params.buf[1:])
         if buffer is not None:
             with record_time("time/dist_unroller_params_update/2_load_to_cpu"):
+                logging.info(
+                    f"Unroller {self._id} deserializing params from shared "
+                    f"memory.")
                 state_dict = torch.load(buffer, map_location='cpu')
             # We might only update part of the params
             with record_time(
                     "time/dist_unroller_params_update/3_load_state_dict"):
+                logging.info(
+                    f"Unroller {self._id} loading params into algorithm.")
                 self._core_alg.load_state_dict(state_dict, strict=False)
             logging.debug("Params updated from the trainer.")
+            logging.info(
+                f"Unroller {self._id} finished loading params from trainer.")
             with self._shared_mem_lock:
                 self._shared_alg_params.buf[0] = 0
             return True
