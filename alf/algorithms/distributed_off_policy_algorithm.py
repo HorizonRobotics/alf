@@ -16,6 +16,7 @@ from absl import logging
 from typing import Callable
 import time
 import io
+import os
 import queue
 import random
 import threading
@@ -49,6 +50,66 @@ def get_local_ip():
     """Get the ip address of the local machine."""
     return subprocess.check_output(["hostname",
                                     "-I"]).decode().strip().split()[0]
+
+
+def _memory_debug_info() -> str:
+    """Return a compact snapshot of process and cgroup memory state."""
+    rss_mb = None
+    try:
+        with open("/proc/self/status", "r") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    rss_kb = int(line.split()[1])
+                    rss_mb = rss_kb / 1024
+                    break
+    except Exception:
+        pass
+
+    cgroup_paths = [
+        "/sys/fs/cgroup/memory.current",
+        "/sys/fs/cgroup/memory/memory.usage_in_bytes",
+    ]
+    cgroup_current_mb = None
+    for path in cgroup_paths:
+        try:
+            with open(path, "r") as f:
+                cgroup_current_mb = int(f.read().strip()) / 1024 / 1024
+                break
+        except Exception:
+            continue
+
+    limit_paths = [
+        "/sys/fs/cgroup/memory.max",
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+    ]
+    cgroup_limit_mb = None
+    for path in limit_paths:
+        try:
+            with open(path, "r") as f:
+                value = f.read().strip()
+                if value != "max":
+                    cgroup_limit_mb = int(value) / 1024 / 1024
+                break
+        except Exception:
+            continue
+
+    shm_mb = None
+    try:
+        stat = os.statvfs("/dev/shm")
+        shm_mb = (stat.f_bavail * stat.f_frsize) / 1024 / 1024
+    except Exception:
+        pass
+
+    parts = []
+    if rss_mb is not None:
+        parts.append(f"rss={rss_mb:.2f}MB")
+    if cgroup_current_mb is not None:
+        parts.append(f"cgroup_current={cgroup_current_mb:.2f}MB")
+    if cgroup_limit_mb is not None:
+        parts.append(f"cgroup_limit={cgroup_limit_mb:.2f}MB")
+    if shm_mb is not None:
+        parts.append(f"shm_free={shm_mb:.2f}MB")
+    return ", ".join(parts) if parts else "memory info unavailable"
 
 
 @alf.configurable
@@ -164,12 +225,26 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
         """
         # Note that self._core_alg won't create a relay buffer so we don't have
         # to worry about including it in the state dict.
-        return {
+        logging.info(f"Rank {self._ddp_rank} building distributed state dict "
+                     f"({ _memory_debug_info() }).")
+        state = {
             k: v
             for k, v in self._core_alg.state_dict().items()
             if (('_optimizers.' not in k) and (
                 not isinstance(v, torch.nn.Parameter) or v.requires_grad))
         }
+        total_bytes = 0
+        tensor_entries = 0
+        for v in state.values():
+            if isinstance(v, torch.Tensor):
+                total_bytes += v.numel() * v.element_size()
+                tensor_entries += 1
+        logging.info(
+            f"Rank {self._ddp_rank} built distributed state dict with "
+            f"{len(state)} entries, {tensor_entries} tensor entries, "
+            f"estimated tensor bytes={total_bytes / 1024 / 1024:.2f} MB "
+            f"({ _memory_debug_info() }).")
+        return state
 
     ###############################
     ######### Forward calls #######
@@ -435,14 +510,29 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                 f"from unroller {unroller_id.decode()}.")
 
         # Get all parameters/buffers in a state dict and send them out
+        logging.info(
+            f"Rank {self._ddp_rank} starting param serialization for "
+            f"unroller {unroller_id.decode()} ({_memory_debug_info()}).")
         buffer = io.BytesIO()
-        torch.save(self._distributed_state_dict(), buffer)
+        state_dict = self._distributed_state_dict()
+        logging.info(
+            f"Rank {self._ddp_rank} obtained distributed state dict for "
+            f"unroller {unroller_id.decode()} ({_memory_debug_info()}).")
+        torch.save(state_dict, buffer)
+        logging.info(f"Rank {self._ddp_rank} finished torch.save for unroller "
+                     f"{unroller_id.decode()} ({_memory_debug_info()}).")
         payload = buffer.getvalue()
+        logging.info(
+            f"Rank {self._ddp_rank} materialized payload bytes for unroller "
+            f"{unroller_id.decode()} ({_memory_debug_info()}).")
         payload_size_mb = len(payload) / 1024 / 1024
         logging.info(
             f"Rank {self._ddp_rank} sending params to unroller "
             f"{unroller_id.decode()} with payload {payload_size_mb:.2f} MB.")
         self._params_socket.send_multipart([unroller_id1, payload])
+        logging.info(
+            f"Rank {self._ddp_rank} send_multipart completed for unroller "
+            f"{unroller_id.decode()} ({_memory_debug_info()}).")
         # 3 sec timeout for receiving unroller's acknowledgement
         # In case some unrollers might die, we don't want to block forever
         for _ in range(30):
