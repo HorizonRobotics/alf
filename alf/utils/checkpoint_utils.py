@@ -16,13 +16,14 @@ from absl import logging
 import glob
 import json
 import os
+import shutil
 import torch
+import torch.distributed as dist
 from torch import nn
-from typing import Optional, List
+from typing import Optional
 import warnings
 
 import alf
-from alf.nest import map_structure
 
 
 def is_checkpoint_enabled(module):
@@ -135,6 +136,8 @@ class Checkpointer(object):
              including_optimizer=True,
              including_replay_buffer=True,
              including_data_transformers=True,
+             replay_buffer_rank: Optional[int] = None,
+             replay_buffer_world_size: Optional[int] = None,
              strict=True):
         """Load checkpoint
         Args:
@@ -152,6 +155,12 @@ class Checkpointer(object):
             including_optimizer (bool): whether load optimizer checkpoint.
             including_replay_buffer (bool): whether load replay buffer checkpoint.
             including_data_transformers (bool): whether load data transformer checkpoint.
+            replay_buffer_rank (int|None): the DDP rank whose replay buffer
+                shard should be loaded from a sharded replay buffer checkpoint
+                directory. If None, load rank 0's shard.
+            replay_buffer_world_size (int|None): the number of workers to shard
+                the sharded replay buffer checkpoint across. If None, shard for
+                one worker.
             strict (bool, optional): whether to strictly enforce that the keys
                 in ``state_dict`` match the keys returned by this module's
                 ``torch.nn.Module.state_dict`` function. If ``strict=True``, will
@@ -201,6 +210,9 @@ class Checkpointer(object):
                 else:
                     checkpoint[k] = v
 
+        loading_sharded_replay_buffer = False
+        effective_including_replay_buffer = including_replay_buffer
+
         def _load_one(module, checkpoint):
             if isinstance(module, nn.Module):
                 missing_keys, unexpected_keys = module.load_state_dict(
@@ -212,9 +224,9 @@ class Checkpointer(object):
             if not including_optimizer:
                 missing_keys = list(
                     filter(lambda k: k.find('_optimizers.') < 0, missing_keys))
-            if not including_replay_buffer:
+            if not effective_including_replay_buffer:
                 missing_keys = list(
-                    filter(lambda k: not k.startswith('_replay_buffer.'),
+                    filter(lambda k: not self._is_replay_buffer_key(k),
                            missing_keys))
             if strict:
                 error_msgs = []
@@ -264,9 +276,24 @@ class Checkpointer(object):
                                         map_location=map_location)
             _merge_checkpoint(checkpoint, opt_checkpoint)
         if including_replay_buffer:
-            replay_buffer_checkpoint = torch.load(f_path + '-replay_buffer',
-                                                  map_location=map_location)
-            _merge_checkpoint(checkpoint, replay_buffer_checkpoint)
+            replay_buffer_path = f_path + '-replay_buffer'
+            if not os.path.exists(replay_buffer_path):
+                logging.info("No replay buffer checkpoint found at '%s'.",
+                             replay_buffer_path)
+                effective_including_replay_buffer = False
+            elif os.path.isdir(replay_buffer_path):
+                # New sharded format: replay-buffer data lives in a directory
+                # of source shards, so skip normal state_dict loading here. The
+                # replay buffers are restored after model/optimizer state so
+                # lazily-created replay buffers already exist.
+                loading_sharded_replay_buffer = True
+                effective_including_replay_buffer = False
+            else:
+                # Backward-compatible path for older checkpoints where the
+                # replay buffer was saved as one full state_dict file.
+                replay_buffer_checkpoint = torch.load(
+                    replay_buffer_path, map_location=map_location)
+                _merge_checkpoint(checkpoint, replay_buffer_checkpoint)
 
         self._global_step = checkpoint["global_step"]
         for k in self._modules.keys():
@@ -283,6 +310,14 @@ class Checkpointer(object):
                         "Error: %s" % e)
             else:
                 _load_one(self._modules[k], checkpoint[k])
+
+        if loading_sharded_replay_buffer:
+            self._load_sharded_replay_buffer_dir(
+                replay_buffer_path,
+                replay_buffer_rank=0
+                if replay_buffer_rank is None else replay_buffer_rank,
+                replay_buffer_world_size=1 if replay_buffer_world_size is None
+                else replay_buffer_world_size)
 
         logging.info(
             "Checkpoint 'ckpt-{}' is loaded successfully.".format(global_step))
@@ -321,7 +356,8 @@ class Checkpointer(object):
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
         return os.path.isfile(f_path)
 
-    def _separate_state(self, state):
+    @staticmethod
+    def _separate_state(state):
         model_state = {}
         optimizer_state = {}
         replay_buffer_state = {}
@@ -330,14 +366,359 @@ class Checkpointer(object):
             if k.find('_optimizers.') >= 0 and isinstance(
                     v, dict) and 'param_groups' in v:
                 optimizer_state[k] = v
-            elif k.startswith('_replay_buffer.'):
+            elif Checkpointer._is_replay_buffer_key(k):
                 replay_buffer_state[k] = v
-            elif not k.startswith('_offline_replay_buffer.'):
+            elif not Checkpointer._is_offline_replay_buffer_key(k):
                 model_state[k] = v
 
         return model_state, optimizer_state, replay_buffer_state
 
-    def save(self, global_step, suffix: Optional[str] = None):
+    @staticmethod
+    def _is_replay_buffer_key(key):
+        return key.startswith('_replay_buffer.') or '._replay_buffer.' in key
+
+    @staticmethod
+    def _is_offline_replay_buffer_key(key):
+        return (key.startswith('_offline_replay_buffer.')
+                or '._offline_replay_buffer.' in key)
+
+    @staticmethod
+    def _is_offline_replay_buffer_path(path):
+        return path == '_offline_replay_buffer' or path.endswith(
+            '._offline_replay_buffer')
+
+    @staticmethod
+    def _iter_replay_buffers(module):
+        # The sharded replay-buffer format operates on ReplayBuffer instances
+        # directly instead of parsing their flattened state_dict keys. That
+        # keeps the save/load path independent of nested field names.
+        if type(module) == torch.nn.DataParallel:
+            module = module.module
+        if not isinstance(module, nn.Module):
+            return
+        for path, child in module.named_modules():
+            if (child.__class__.__name__ == "ReplayBuffer"
+                    and not Checkpointer._is_offline_replay_buffer_path(path)):
+                yield path, child
+
+    @staticmethod
+    def _pack_replay_buffer_episodes(replay_buffer):
+        """Return complete episodes from ``replay_buffer`` without empty slots."""
+        # The old checkpoint path writes the full ring-buffer tensors, including
+        # empty capacity. Here we scan only the populated range for each env row
+        # and keep full FIRST..LAST episodes. Partial head/tail episodes are
+        # intentionally dropped so resumed workers train on valid trajectories.
+        result = {
+            "max_length": replay_buffer.max_length,
+            "num_envs": replay_buffer.num_environments,
+            "episodes": [],
+        }
+        step_type = replay_buffer._buffer.step_type
+        current_pos = replay_buffer._current_pos
+        current_size = replay_buffer._current_size
+
+        for env_id in range(replay_buffer.num_environments):
+            size = int(current_size[env_id].detach().cpu())
+            if size == 0:
+                continue
+            end_pos = int(current_pos[env_id].detach().cpu())
+            # Positions are logical monotonic positions; indices are their
+            # wrapped locations in the physical ring buffer.
+            positions = torch.arange(end_pos - size,
+                                     end_pos,
+                                     device=step_type.device)
+            indices = replay_buffer.circular(positions)
+            steps = step_type[env_id, indices].detach().cpu().tolist()
+
+            first = None
+            for i, step in enumerate(steps):
+                if step == 0:  # StepType.FIRST
+                    first = i
+                elif step == 2 and first is not None:  # StepType.LAST
+                    episode_indices = indices[first:i + 1]
+                    # Store each complete episode as a regular [T, ...]
+                    # trajectory on CPU. Store a flat tensor list instead of a
+                    # namedtuple so PyTorch can load the file with its default
+                    # weights_only=True behavior.
+                    episode = alf.nest.map_structure(
+                        lambda b: b[env_id, episode_indices].detach().cpu().
+                        clone(), replay_buffer._buffer)
+                    result["episodes"].append(alf.nest.flatten(episode))
+                    first = None
+
+        return result
+
+    @staticmethod
+    def _empty_sharded_replay_buffer_checkpoint():
+        return {"version": 1, "modules": {}}
+
+    def _save_sharded_replay_buffer_source(self,
+                                           replay_buffer_dir,
+                                           rank: int = 0):
+        # Save-time format:
+        #   ckpt-N-replay_buffer/ckpt-N-rank-00000
+        #   ckpt-N-replay_buffer/ckpt-N-rank-00001
+        #   ...
+        # Each rank writes only its local packed episodes. There is no DDP
+        # tensor gather here, so rank 0 never holds every worker's buffer during
+        # normal checkpoint save.
+        checkpoint = self._empty_sharded_replay_buffer_checkpoint()
+        has_replay_buffer = False
+        for module_name, module in self._modules.items():
+            for path, replay_buffer in self._iter_replay_buffers(module):
+                if not is_checkpoint_enabled(replay_buffer):
+                    continue
+                has_replay_buffer = True
+                packed = self._pack_replay_buffer_episodes(replay_buffer)
+                checkpoint["modules"].setdefault(module_name,
+                                                 {})[path] = packed
+
+        if not has_replay_buffer:
+            logging.info("No replay buffer state to save.")
+            return
+
+        os.makedirs(replay_buffer_dir, exist_ok=True)
+        checkpoint_name = os.path.basename(replay_buffer_dir)
+        assert checkpoint_name.endswith("-replay_buffer")
+        checkpoint_name = checkpoint_name[:-len("-replay_buffer")]
+        torch.save(
+            checkpoint,
+            os.path.join(replay_buffer_dir,
+                         f"{checkpoint_name}-rank-{rank:05d}"))
+
+    @staticmethod
+    def _split_sharded_replay_buffers(replay_buffer_dir, world_size):
+        # Restore-time redistribution. Rank 0 scans the saved source files and
+        # writes exactly one shard for each currently active worker:
+        #   ckpt-N-replay_buffer/shards-world-00004/rank-00000
+        #   ckpt-N-replay_buffer/shards-world-00004/rank-00001
+        # This supports resuming with a different DDP world size from the one
+        # used to create the checkpoint. The implementation is intentionally
+        # two-pass so rank 0 does not hold all target shards in memory at once.
+        shard_dir = os.path.join(replay_buffer_dir,
+                                 f"shards-world-{world_size:05d}")
+        os.makedirs(shard_dir, exist_ok=True)
+
+        checkpoint_name = os.path.basename(replay_buffer_dir)
+        assert checkpoint_name.endswith("-replay_buffer")
+        checkpoint_name = checkpoint_name[:-len("-replay_buffer")]
+        source_paths = sorted(
+            glob.glob(
+                os.path.join(replay_buffer_dir, f"{checkpoint_name}-rank-*")))
+        map_location = torch.device('cpu')
+
+        # First pass: load one source file at a time and keep only lightweight
+        # episode references plus lengths for balancing. Do not keep episode
+        # tensors from all source files.
+        grouped_episodes = {}
+        for source_path in source_paths:
+            source = torch.load(source_path, map_location=map_location)
+            for module_name, module_payload in source["modules"].items():
+                for path, payload in module_payload.items():
+                    key = (module_name, path)
+                    group = grouped_episodes.setdefault(
+                        key, {
+                            "max_length": payload["max_length"],
+                            "num_envs": payload["num_envs"],
+                            "episodes": [],
+                        })
+                    group["episodes"].extend([{
+                        "source_path": source_path,
+                        "index": episode_index,
+                        "length": int(episode[0].shape[0]),
+                    } for episode_index, episode in enumerate(
+                        payload["episodes"])])
+            del source
+
+        # Build the assignment using only the small metadata from the first
+        # pass. Assign longer episodes first for a better greedy balance.
+        assignments = [
+            Checkpointer._empty_sharded_replay_buffer_checkpoint()
+            for _ in range(world_size)
+        ]
+        assignment_stats = [{
+            "episodes": 0,
+            "steps": 0,
+        } for _ in range(world_size)]
+        for (module_name, path), payload in grouped_episodes.items():
+            shard_steps = [0] * world_size
+            for assignment in assignments:
+                assignment["modules"].setdefault(module_name, {}).setdefault(
+                    path, {
+                        "max_length": payload["max_length"],
+                        "num_envs": payload["num_envs"],
+                        "episodes": [],
+                    })
+            episodes = sorted(payload["episodes"],
+                              key=lambda e: e["length"],
+                              reverse=True)
+            for episode in episodes:
+                # Greedy balance by total episode steps for this replay buffer.
+                # This keeps the split approximately even while preserving
+                # episode boundaries.
+                shard_idx = min(range(world_size),
+                                key=lambda i: shard_steps[i])
+                assignments[shard_idx]["modules"][module_name][path][
+                    "episodes"].append(episode)
+                shard_steps[shard_idx] += episode["length"]
+                assignment_stats[shard_idx]["episodes"] += 1
+                assignment_stats[shard_idx]["steps"] += episode["length"]
+
+        # Second pass: materialize and save one target shard at a time. This
+        # caps rank 0's replay-buffer memory to one loaded source file plus one
+        # target shard, instead of all target shards.
+        for rank, assignment in enumerate(assignments):
+            shard = Checkpointer._empty_sharded_replay_buffer_checkpoint()
+            for module_name, module_payload in assignment["modules"].items():
+                for path, payload in module_payload.items():
+                    shard_payload = shard["modules"].setdefault(
+                        module_name, {}).setdefault(
+                            path, {
+                                "max_length": payload["max_length"],
+                                "num_envs": payload["num_envs"],
+                                "episodes": [],
+                            })
+                    refs_by_source = {}
+                    for ref in payload["episodes"]:
+                        refs_by_source.setdefault(ref["source_path"],
+                                                  []).append(ref["index"])
+                    for source_path, episode_indices in refs_by_source.items():
+                        source = torch.load(source_path,
+                                            map_location=map_location)
+                        source_episodes = source["modules"][module_name][path][
+                            "episodes"]
+                        for episode_index in episode_indices:
+                            shard_payload["episodes"].append(
+                                source_episodes[episode_index])
+                        del source
+            torch.save(shard, os.path.join(shard_dir, f"rank-{rank:05d}"))
+            logging.info(
+                "Replay buffer restore shard for rank %d has %d episodes "
+                "and %d steps.", rank, assignment_stats[rank]["episodes"],
+                assignment_stats[rank]["steps"])
+            del shard
+
+        with open(os.path.join(shard_dir, "manifest.json"), "w") as outfile:
+            json.dump(
+                {
+                    "world_size":
+                        world_size,
+                    "source_paths":
+                        [os.path.basename(p) for p in source_paths],
+                },
+                outfile,
+                indent=4)
+
+    def _load_sharded_replay_buffer_shard(self, replay_buffer_dir, rank,
+                                          world_size):
+        # Each worker only loads its own rank shard. Replay buffers are
+        # populated through add_batch() instead of raw tensor assignment so
+        # replay-buffer indexes and derived episode metadata are rebuilt by the
+        # ReplayBuffer implementation.
+        shard_path = os.path.join(replay_buffer_dir,
+                                  f"shards-world-{world_size:05d}",
+                                  f"rank-{rank:05d}")
+        checkpoint = torch.load(shard_path, map_location=torch.device('cpu'))
+        module_lookup = dict(self._modules)
+
+        # Loading the model checkpoint may have run a warm-up train_iter() to
+        # create lazy replay buffers. Clear that dummy data before restoring.
+        for module in module_lookup.values():
+            for _, replay_buffer in self._iter_replay_buffers(module):
+                replay_buffer.clear()
+
+        for module_name, module_payload in checkpoint["modules"].items():
+            if module_name not in module_lookup:
+                continue
+            replay_buffers = dict(
+                self._iter_replay_buffers(module_lookup[module_name]))
+            for path, payload in module_payload.items():
+                if path not in replay_buffers:
+                    continue
+                replay_buffer = replay_buffers[path]
+                replay_buffer.clear()
+                env_lengths = [0] * replay_buffer.num_environments
+                for flat_episode in payload["episodes"]:
+                    episode = alf.nest.pack_sequence_as(
+                        replay_buffer.data_spec, flat_episode)
+                    episode_length = int(episode.step_type.shape[0])
+                    candidates = sorted(range(replay_buffer.num_environments),
+                                        key=lambda i: env_lengths[i])
+                    env_id = None
+                    for candidate in candidates:
+                        if (env_lengths[candidate] + episode_length
+                                <= replay_buffer.max_length):
+                            env_id = candidate
+                            break
+                    if env_id is None:
+                        # This can happen if resume-time replay-buffer capacity
+                        # is smaller than the saved complete episodes assigned
+                        # to this worker.
+                        logging.warning(
+                            "Skipping replay buffer episode with %d steps "
+                            "because it does not fit in current replay buffer "
+                            "capacity.", episode_length)
+                        continue
+                    for t in range(episode_length):
+                        replay_buffer.add_batch(alf.nest.map_structure(
+                            lambda x: x[t:t + 1], episode),
+                                                env_ids=torch.tensor([env_id]))
+                    env_lengths[env_id] += episode_length
+
+    def _load_sharded_replay_buffer_dir(self, replay_buffer_dir,
+                                        replay_buffer_rank,
+                                        replay_buffer_world_size):
+        # Rank 0 creates target-world-size shards once. The first barrier
+        # prevents other ranks from trying to load their shard before it exists.
+        # The second barrier prevents rank 0 from deleting the temporary shard
+        # directory before every rank has finished loading its shard.
+        shard_dir = os.path.join(
+            replay_buffer_dir, f"shards-world-{replay_buffer_world_size:05d}")
+        if replay_buffer_rank == 0:
+            self._split_sharded_replay_buffers(replay_buffer_dir,
+                                               replay_buffer_world_size)
+        if replay_buffer_world_size > 1:
+            dist.barrier()
+        self._load_sharded_replay_buffer_shard(replay_buffer_dir,
+                                               replay_buffer_rank,
+                                               replay_buffer_world_size)
+        if replay_buffer_world_size > 1:
+            dist.barrier()
+        if replay_buffer_rank == 0:
+            shutil.rmtree(shard_dir)
+
+    def save_replay_buffer(self,
+                           global_step,
+                           suffix: Optional[str] = None,
+                           rank: Optional[int] = None):
+        """Save replay buffer states of all modules to checkpoint.
+
+        Args:
+            global_step (int): the number of training steps corresponding to the
+                current state to be saved. It will be appended to the name of
+                the checkpoint as a suffix.
+            suffix (str): the suffix to be appended to the checkpoint file name.
+                If provided, it will be used as the suffix instead of
+                ``global_step``.
+            rank (int|None): rank id used for the per-rank replay buffer source
+                file in the sharded replay buffer checkpoint directory.
+        """
+        suffix = suffix or str(global_step)
+
+        f_path = os.path.join(self._ckpt_dir, f"ckpt-{suffix}")
+        replay_buffer_dir = f_path + '-replay_buffer'
+        # The path is a directory in the sharded format, not the old
+        # ckpt-N-replay_buffer state_dict file.
+        self._save_sharded_replay_buffer_source(
+            replay_buffer_dir, rank=0 if rank is None else rank)
+
+        logging.info("Replay buffer checkpoint '%s' is saved successfully.",
+                     os.path.basename(replay_buffer_dir))
+
+    def save(self,
+             global_step,
+             suffix: Optional[str] = None,
+             including_replay_buffer=True):
         """Save states of all modules to checkpoint
 
         Args:
@@ -346,16 +727,33 @@ class Checkpointer(object):
                 the checkpoint as a suffix.
             suffix (str): the suffix to be appended to the checkpoint file name.
                 If provided, it will be used as the suffix instead of ``global_step``.
+            including_replay_buffer (bool): whether save replay buffer state in
+                the main replay buffer checkpoint file.
         """
         suffix = suffix or str(global_step)
 
         f_path = os.path.join(self._ckpt_dir, f"ckpt-{suffix}")
-        state = {
-            k:
-                v.module.state_dict()
-                if type(v) == torch.nn.DataParallel else v.state_dict()
-            for k, v in self._modules.items()
-        }
+        disabled_replay_buffers = []
+        if not including_replay_buffer:
+            # Avoid materializing full replay-buffer tensors while building the
+            # regular model/optimizer checkpoint. The replay buffers are saved
+            # separately by save_replay_buffer().
+            for module in self._modules.values():
+                for _, replay_buffer in self._iter_replay_buffers(module):
+                    disabled_replay_buffers.append(
+                        (replay_buffer, is_checkpoint_enabled(replay_buffer)))
+                    enable_checkpoint(replay_buffer, False)
+        try:
+            state = {
+                k:
+                    v.module.state_dict()
+                    if type(v) == torch.nn.DataParallel else v.state_dict()
+                for k, v in self._modules.items()
+            }
+        finally:
+            for replay_buffer, enabled in disabled_replay_buffers:
+                enable_checkpoint(replay_buffer, enabled)
+
         model_state = {}
         optimizer_state = {}
         replay_buffer_state = {}
@@ -369,7 +767,8 @@ class Checkpointer(object):
 
         torch.save(model_state, f_path)
         torch.save(optimizer_state, f_path + '-optimizer')
-        torch.save(replay_buffer_state, f_path + '-replay_buffer')
+        if including_replay_buffer:
+            torch.save(replay_buffer_state, f_path + '-replay_buffer')
 
         if self._global_step == -1:
             # we only need to save the checkpoint structure once.``global_step``
