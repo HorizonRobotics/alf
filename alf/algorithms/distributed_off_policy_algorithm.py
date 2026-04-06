@@ -19,6 +19,7 @@ import io
 import os
 import queue
 import random
+import socket as pysocket
 import threading
 import subprocess
 import zmq
@@ -278,6 +279,9 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
     def after_train_iter(self, root_inputs, rollout_info):
         return self._core_alg.after_train_iter(root_inputs, rollout_info)
 
+    def summarize_metrics(self):
+        self._core_alg.summarize_metrics()
+
 
 def receive_experience_data(replay_buffer: ReplayBuffer,
                             new_unroller_ips_and_ports: 'Manager.Queue',
@@ -313,11 +317,37 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
             )
             # A new unroller has connected to the trainer
             if socket is None:
+                probe = pysocket.socket()
+                probe.settimeout(3)
+                try:
+                    probe.connect((unroller_ip, unroller_port))
+                    logging.info(
+                        f"Trainer worker-{worker_id} TCP probe succeeded for "
+                        f"{unroller_ip}:{unroller_port}.")
+                except OSError as e:
+                    logging.warning(
+                        f"Trainer worker-{worker_id} TCP probe failed for "
+                        f"{unroller_ip}:{unroller_port}: {e}")
+                finally:
+                    probe.close()
                 socket, _ = create_zmq_socket(zmq.DEALER, unroller_ip,
                                               unroller_port,
                                               f'worker-{worker_id}')
             else:
                 addr = 'tcp://' + ':'.join([unroller_ip, str(unroller_port)])
+                probe = pysocket.socket()
+                probe.settimeout(3)
+                try:
+                    probe.connect((unroller_ip, unroller_port))
+                    logging.info(
+                        f"Trainer worker-{worker_id} TCP probe succeeded for "
+                        f"{unroller_ip}:{unroller_port}.")
+                except OSError as e:
+                    logging.warning(
+                        f"Trainer worker-{worker_id} TCP probe failed for "
+                        f"{unroller_ip}:{unroller_port}: {e}")
+                finally:
+                    probe.close()
                 # Connect to an additional ROUTER
                 socket.connect(addr)
         except queue.Empty:
@@ -328,7 +358,11 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
             unroller_id, message = socket.recv_multipart()
 
             buffer = io.BytesIO(message)
-            exp_params = torch.load(buffer, map_location='cpu')
+            # weights_only need to be False starting from torch 2.6 since we have
+            # alf's Experience data structure in it.
+            exp_params = torch.load(buffer,
+                                    map_location='cpu',
+                                    weights_only=False)
             # we prune env_info according to the replay buffer for the following reasons:
             # 1) avoid env_info mismatch and allow the distributed unroller to have
             # a customized env_info for tb summarization,
@@ -341,6 +375,10 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
             if unroller_id not in unroller_exps_buffer:
                 unroller_exps_buffer[unroller_id] = []
             unroller_exps_buffer[unroller_id].append(exp_params)
+            logging.info(
+                f"Trainer worker-{worker_id} received step_type="
+                f"{int(exp_params.step_type)} from {unroller_id.decode()}, "
+                f"buffered_steps={len(unroller_exps_buffer[unroller_id])}.")
 
             if int(exp_params.step_type) == StepType.LAST:
                 # Add the temp exp buffer to the replay buffer
@@ -533,9 +571,9 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         logging.info(
             f"Rank {self._ddp_rank} send_multipart completed for unroller "
             f"{unroller_id.decode()} ({_memory_debug_info()}).")
-        # 3 sec timeout for receiving unroller's acknowledgement
+        # 60 sec timeout for receiving unroller's acknowledgement
         # In case some unrollers might die, we don't want to block forever
-        for _ in range(30):
+        for _ in range(600):
             try:
                 _, message = self._params_socket.recv_multipart(
                     flags=zmq.NOBLOCK)
@@ -669,10 +707,22 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         # A worker will pause when either happens:
         # 1. replay buffer is not ready (initial collect steps not reached)
         # 2. utd ratio is too high (training is too fast; wait for more data)
+        next_replay_buffer_log_time = time.time()
         while True:
-            replay_buffer_not_ready = (self._replay_buffer.total_size
+            replay_buffer_size = self._replay_buffer.total_size
+            replay_buffer_not_ready = (replay_buffer_size
                                        < self._config.initial_collect_steps)
-            utd_exceeded = self.utd() > self._max_utd_ratio
+            utd = self.utd()
+            utd_exceeded = utd > self._max_utd_ratio
+            now = time.time()
+            if now >= next_replay_buffer_log_time:
+                logging.info(
+                    f"Rank {self._ddp_rank} replay buffer steps="
+                    f"{replay_buffer_size}, initial_collect_steps="
+                    f"{self._config.initial_collect_steps}, utd={utd:.4f}, "
+                    f"waiting_for_data={replay_buffer_not_ready}, "
+                    f"waiting_for_utd={utd_exceeded}.")
+                next_replay_buffer_log_time = now + 5.0
             if not (replay_buffer_not_ready or utd_exceeded):
                 break
             time.sleep(0.01)
@@ -898,6 +948,9 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
                 worker_id.encode(), self._exp_socket.identity,
                 buffer.getvalue()
             ])
+            logging.info(
+                f"Unroller {self._id} sent step_type={int(exp_params.step_type)} "
+                f"to {worker_id}, episode_end={episode_end}.")
         except zmq.error.ZMQError:
             # Trainer is down.
             # We might want to keep running the unroller but restart a trainer later.
