@@ -708,6 +708,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         # 1. replay buffer is not ready (initial collect steps not reached)
         # 2. utd ratio is too high (training is too fast; wait for more data)
         next_replay_buffer_log_time = time.time()
+        utd_throttle_start_time = None
+        utd_throttle_total_time = 0.
         while True:
             replay_buffer_size = self._replay_buffer.total_size
             replay_buffer_not_ready = (replay_buffer_size
@@ -715,6 +717,12 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             utd = self.utd()
             utd_exceeded = utd > self._max_utd_ratio
             now = time.time()
+            if utd_exceeded and utd_throttle_start_time is None:
+                utd_throttle_start_time = now
+            elif not utd_exceeded and utd_throttle_start_time is not None:
+                wait_time = now - utd_throttle_start_time
+                utd_throttle_total_time += wait_time
+                utd_throttle_start_time = None
             if now >= next_replay_buffer_log_time:
                 logging.info(
                     f"Rank {self._ddp_rank} replay buffer steps="
@@ -726,6 +734,10 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             if not (replay_buffer_not_ready or utd_exceeded):
                 break
             time.sleep(0.01)
+
+        if utd_throttle_total_time > 0:
+            alf.summary.scalar("time/trainer_wait_for_utd",
+                               utd_throttle_total_time)
 
         steps = super()._train_iter_off_policy()
         self._total_updates += self._config.num_updates_per_train_iter
