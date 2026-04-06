@@ -13,13 +13,14 @@
 # limitations under the License.
 
 from absl.testing import parameterized
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 import numpy as np
 import functools
 import json
 import os
 import shutil
 import tempfile
+from unittest import mock
 import warnings
 
 import torch
@@ -27,7 +28,9 @@ import torch.nn as nn
 
 import alf
 from alf.data_structures import LossInfo
+from alf import data_structures as ds
 from alf.algorithms.algorithm import Algorithm
+from alf.experience_replayers.replay_buffer import ReplayBuffer
 import alf.utils.checkpoint_utils as ckpt_utils
 
 from alf.networks.encoding_networks import EncodingNetwork
@@ -621,6 +624,272 @@ class TestCheckpointStructure(alf.test.TestCase):
             }
 
             self.assertEqual(model_structure, expected_model_structure)
+
+
+ReplayBufferItem = namedtuple(
+    'ReplayBufferItem', ['step_type', 'env_id', 'reward', 'discount', 'x'])
+
+
+class ReplayBufferContainer(nn.Module):
+
+    def __init__(self, num_environments=1, max_length=10):
+        super().__init__()
+        data_spec = ReplayBufferItem(step_type=TensorSpec(shape=(),
+                                                          dtype=torch.int32),
+                                     env_id=TensorSpec(shape=(),
+                                                       dtype=torch.int64),
+                                     reward=TensorSpec(shape=(),
+                                                       dtype=torch.float32),
+                                     discount=TensorSpec(shape=(),
+                                                         dtype=torch.float32),
+                                     x=TensorSpec(shape=(),
+                                                  dtype=torch.float32))
+        self._replay_buffer = ReplayBuffer(data_spec=data_spec,
+                                           num_environments=num_environments,
+                                           max_length=max_length,
+                                           enable_checkpoint=True)
+
+    def add_steps(self, steps, env_id=0, value_offset=0):
+        for i, step_type in enumerate(steps):
+            batch = ReplayBufferItem(
+                step_type=torch.tensor([step_type], dtype=torch.int32),
+                env_id=torch.tensor([env_id], dtype=torch.int64),
+                reward=torch.tensor([float(value_offset + i)]),
+                discount=torch.tensor([float(step_type != ds.StepType.LAST)]),
+                x=torch.tensor([float(value_offset + i)]))
+            self._replay_buffer.add_batch(batch, batch.env_id)
+
+
+class TestShardedReplayBufferCheckpoint(alf.test.TestCase):
+
+    def setUp(self):
+        super().setUp()
+        self._default_device = alf.get_default_device()
+        alf.set_default_device("cpu")
+
+    def tearDown(self):
+        alf.set_default_device(self._default_device)
+        super().tearDown()
+
+    @staticmethod
+    def _save_source(ckpt_dir, rank, steps, value_offset=0):
+        module = ReplayBufferContainer()
+        module.add_steps(steps, value_offset=value_offset)
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, module=module)
+        ckpt_mngr.save_replay_buffer(global_step=0, rank=rank)
+
+    @staticmethod
+    def _load_rank_shard(ckpt_dir, rank, world_size, max_length=10):
+        module = ReplayBufferContainer(max_length=max_length)
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, module=module)
+        replay_buffer_dir = os.path.join(ckpt_dir, 'ckpt-0-replay_buffer')
+        ckpt_mngr._load_sharded_replay_buffer_shard(replay_buffer_dir, rank,
+                                                    world_size)
+        return module._replay_buffer
+
+    def test_sharded_replay_buffer_checkpoint_saves_complete_episodes_only(
+            self):
+        # Simulate two saved workers where rank 0 has one complete episode plus
+        # an incomplete tail. Only the complete episodes should survive the
+        # sharded checkpoint save/split/load round trip.
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            self._save_source(ckpt_dir,
+                              rank=0,
+                              steps=[
+                                  ds.StepType.FIRST,
+                                  ds.StepType.MID,
+                                  ds.StepType.LAST,
+                                  ds.StepType.FIRST,
+                                  ds.StepType.MID,
+                              ])
+            self._save_source(ckpt_dir,
+                              rank=1,
+                              steps=[
+                                  ds.StepType.FIRST,
+                                  ds.StepType.LAST,
+                              ],
+                              value_offset=10)
+
+            replay_buffer_dir = os.path.join(ckpt_dir, 'ckpt-0-replay_buffer')
+            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir)
+            ckpt_mngr._split_sharded_replay_buffers(replay_buffer_dir,
+                                                    world_size=1)
+
+            replay_buffer = self._load_rank_shard(ckpt_dir,
+                                                  rank=0,
+                                                  world_size=1)
+            experience, _ = replay_buffer.gather_all()
+            self.assertEqual(experience.step_type[0].tolist(), [
+                ds.StepType.FIRST,
+                ds.StepType.MID,
+                ds.StepType.LAST,
+                ds.StepType.FIRST,
+                ds.StepType.LAST,
+            ])
+
+    def test_sharded_replay_buffer_checkpoint_redistributes_to_world_size(
+            self):
+        # Simulate two saved source buffers and restore into two workers. This
+        # checks the basic per-rank shard load path and verifies each worker gets
+        # exactly one complete episode.
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            self._save_source(ckpt_dir,
+                              rank=0,
+                              steps=[
+                                  ds.StepType.FIRST,
+                                  ds.StepType.MID,
+                                  ds.StepType.LAST,
+                              ])
+            self._save_source(ckpt_dir,
+                              rank=1,
+                              steps=[
+                                  ds.StepType.FIRST,
+                                  ds.StepType.LAST,
+                              ],
+                              value_offset=10)
+
+            replay_buffer_dir = os.path.join(ckpt_dir, 'ckpt-0-replay_buffer')
+            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir)
+            ckpt_mngr._split_sharded_replay_buffers(replay_buffer_dir,
+                                                    world_size=2)
+
+            replay_buffer0 = self._load_rank_shard(ckpt_dir,
+                                                   rank=0,
+                                                   world_size=2)
+            replay_buffer1 = self._load_rank_shard(ckpt_dir,
+                                                   rank=1,
+                                                   world_size=2)
+
+            self.assertEqual(int(replay_buffer0.total_size), 3)
+            self.assertEqual(int(replay_buffer1.total_size), 2)
+            exp0, _ = replay_buffer0.gather_all()
+            exp1, _ = replay_buffer1.gather_all()
+            self.assertEqual(
+                exp0.step_type[0].tolist(),
+                [ds.StepType.FIRST, ds.StepType.MID, ds.StepType.LAST])
+            self.assertEqual(exp1.step_type[0].tolist(),
+                             [ds.StepType.FIRST, ds.StepType.LAST])
+
+    def test_sharded_replay_buffer_checkpoint_redistributes_to_world_size_hard(
+            self):
+        # Simulate eight saved source buffers and restore into three workers.
+        # This checks that redistribution is independent of save-time world size
+        # and balances by complete-episode step counts.
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            episode_lengths = [2, 3, 4, 5, 6, 7, 8, 9]
+            for rank, episode_length in enumerate(episode_lengths):
+                steps = [ds.StepType.FIRST]
+                steps.extend([ds.StepType.MID] * (episode_length - 2))
+                steps.append(ds.StepType.LAST)
+                self._save_source(ckpt_dir,
+                                  rank=rank,
+                                  steps=steps,
+                                  value_offset=rank * 100)
+
+            replay_buffer_dir = os.path.join(ckpt_dir, 'ckpt-0-replay_buffer')
+            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir)
+            ckpt_mngr._split_sharded_replay_buffers(replay_buffer_dir,
+                                                    world_size=3)
+
+            replay_buffers = [
+                self._load_rank_shard(ckpt_dir,
+                                      rank=rank,
+                                      world_size=3,
+                                      max_length=20) for rank in range(3)
+            ]
+            shard_sizes = [int(rb.total_size) for rb in replay_buffers]
+
+            self.assertEqual(sum(shard_sizes), sum(episode_lengths))
+            self.assertEqual(sorted(shard_sizes), [13, 15, 16])
+            for replay_buffer in replay_buffers:
+                experience, _ = replay_buffer.gather_all()
+                self.assertEqual(experience.step_type[0, 0], ds.StepType.FIRST)
+                self.assertEqual(experience.step_type[0, -1], ds.StepType.LAST)
+
+    def test_sharded_replay_buffer_checkpoint_split_memory_bound(self):
+        # Mock torch.load() with tracked source objects. The splitter should not
+        # retain all loaded source files while redistributing; at most one source
+        # payload should be live at any time.
+        class TrackedSource(dict):
+            live = 0
+            max_live = 0
+
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                TrackedSource.live += 1
+                TrackedSource.max_live = max(TrackedSource.max_live,
+                                             TrackedSource.live)
+
+            def __del__(self):
+                TrackedSource.live -= 1
+
+        def make_source(length):
+            return TrackedSource({
+                "version": 1,
+                "modules": {
+                    "module": {
+                        "_replay_buffer": {
+                            "max_length": 100,
+                            "num_envs": 1,
+                            "episodes": [[torch.zeros(length)]],
+                        }
+                    }
+                }
+            })
+
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            replay_buffer_dir = os.path.join(ckpt_dir, 'ckpt-0-replay_buffer')
+            os.makedirs(replay_buffer_dir)
+            checkpoint_name = os.path.basename(replay_buffer_dir)
+            checkpoint_name = checkpoint_name[:-len("-replay_buffer")]
+            for rank in range(8):
+                open(
+                    os.path.join(replay_buffer_dir,
+                                 f"{checkpoint_name}-rank-{rank:05d}"),
+                    "w").close()
+
+            def fake_load(path, map_location=None):
+                rank = int(os.path.basename(path).rsplit("-", 1)[1])
+                return make_source(rank + 2)
+
+            def fake_save(shard, path):
+                pass
+
+            with mock.patch.object(torch, "load", side_effect=fake_load):
+                with mock.patch.object(torch, "save", side_effect=fake_save):
+                    ckpt_mngr = ckpt_utils.Checkpointer(replay_buffer_dir)
+                    ckpt_mngr._split_sharded_replay_buffers(replay_buffer_dir,
+                                                            world_size=3)
+
+        self.assertEqual(TrackedSource.live, 0)
+        self.assertEqual(TrackedSource.max_live, 1)
+
+    def test_sharded_replay_buffer_checkpoint_deletes_restore_shards(self):
+        # The ckpt-N-rank files are the durable replay-buffer checkpoint. The
+        # per-world-size rank shards are temporary restore artifacts and should
+        # be deleted after loading succeeds.
+        with tempfile.TemporaryDirectory() as ckpt_dir:
+            self._save_source(ckpt_dir,
+                              rank=0,
+                              steps=[
+                                  ds.StepType.FIRST,
+                                  ds.StepType.MID,
+                                  ds.StepType.LAST,
+                              ])
+
+            module = ReplayBufferContainer()
+            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, module=module)
+            replay_buffer_dir = os.path.join(ckpt_dir, 'ckpt-0-replay_buffer')
+            shard_dir = os.path.join(replay_buffer_dir, 'shards-world-00001')
+            ckpt_mngr._load_sharded_replay_buffer_dir(
+                replay_buffer_dir,
+                replay_buffer_rank=0,
+                replay_buffer_world_size=1)
+
+            self.assertFalse(os.path.exists(shard_dir))
+            self.assertTrue(
+                os.path.exists(
+                    os.path.join(replay_buffer_dir, 'ckpt-0-rank-00000')))
 
 
 class TestCheckpointMapLocation(alf.test.TestCase):
