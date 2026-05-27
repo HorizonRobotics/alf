@@ -106,7 +106,6 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
                  port: int = 50000,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
-                 optimizer: alf.optimizers.Optimizer = None,
                  debug_summaries: bool = False,
                  name: str = "DistributedOffPolicyAlgorithm",
                  **kwargs):
@@ -117,7 +116,6 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
                 to always specify this argument.
             port: port number for communication on the *current* machine.
             env: The environment to interact with. Its batch size must be 1.
-            optimizer: optimizer for the training the core algorithm.
             debug_summaries: True if debug summaries should be created.
             name: the name of this algorithm.
             *args: args to pass to ``core_alg_ctor``.
@@ -144,7 +142,6 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
             predict_state_spec=core_alg.predict_state_spec,
             env=env,
             config=config,
-            optimizer=optimizer,
             # Prevent in-alg ckpt since there is no such a use case.
             checkpoint=None,
             debug_summaries=debug_summaries,
@@ -155,14 +152,22 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
         self._ddp_rank = max(0, PerProcessContext().ddp_rank)
         self._num_ranks = PerProcessContext().num_processes
 
+    def state_dict(self, *args, **kwargs):
+        return self._core_alg.state_dict(*args, **kwargs)
+
+    def load_state_dict(self, state_dict, strict=True, **kwargs):
+        return self._core_alg.load_state_dict(state_dict,
+                                              strict=strict,
+                                              **kwargs)
+
     def _distributed_state_dict(self) -> dict:
         """Return `self._core_alg` state dict for distributed training.
 
         This dict will be used for param syncing between a trainer and an unroller.
         Sometimes optimizers have large state vectors which we want to exclude.
-        Also we should exclude other parameters such as those of pretrained models.
+        Also, we should exclude other parameters such as those of pretrained models.
         """
-        # Note that self._core_alg won't create a relay buffer so we don't have
+        # Note that self._core_alg won't create a replay buffer so we don't have
         # to worry about including it in the state dict.
         return {
             k: v
@@ -202,6 +207,9 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
 
     def after_train_iter(self, root_inputs, rollout_info):
         return self._core_alg.after_train_iter(root_inputs, rollout_info)
+
+    def summarize_metrics(self):
+        self._core_alg.summarize_metrics()
 
 
 def receive_experience_data(replay_buffer: ReplayBuffer,
@@ -253,7 +261,9 @@ def receive_experience_data(replay_buffer: ReplayBuffer,
             unroller_id, message = socket.recv_multipart()
 
             buffer = io.BytesIO(message)
-            exp_params = torch.load(buffer, map_location='cpu')
+            exp_params = torch.load(buffer,
+                                    map_location='cpu',
+                                    weights_only=False)
             # we prune env_info according to the replay buffer for the following reasons:
             # 1) avoid env_info mismatch and allow the distributed unroller to have
             # a customized env_info for tb summarization,
@@ -308,7 +318,9 @@ def pull_params_from_trainer(memory_name: str, memory_lock: mp.Lock,
 
 
 @alf.configurable(whitelist=[
-    'max_utd_ratio', 'push_params_every_n_grad_updates', 'name', 'optimizer'
+    'max_utd_ratio',
+    'push_params_every_n_grad_updates',
+    'name',
 ])
 class DistributedTrainer(DistributedOffPolicyAlgorithm):
 
@@ -319,7 +331,6 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                  push_params_every_n_grad_updates: int = 1,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
-                 optimizer: alf.optimizers.Optimizer = None,
                  debug_summaries: bool = False,
                  name: str = "DistributedTrainer",
                  **kwargs):
@@ -347,7 +358,6 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                          port=_trainer_addr_config.port,
                          env=env,
                          config=config,
-                         optimizer=optimizer,
                          debug_summaries=debug_summaries,
                          name=name,
                          **kwargs)
@@ -421,9 +431,9 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         buffer = io.BytesIO()
         torch.save(self._distributed_state_dict(), buffer)
         self._params_socket.send_multipart([unroller_id1, buffer.getvalue()])
-        # 3 sec timeout for receiving unroller's acknowledgement
+        # 60 sec timeout for receiving unroller's acknowledgement
         # In case some unrollers might die, we don't want to block forever
-        for _ in range(30):
+        for _ in range(600):
             try:
                 _, message = self._params_socket.recv_multipart(
                     flags=zmq.NOBLOCK)
@@ -582,8 +592,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         return steps
 
 
-@alf.configurable(
-    whitelist=['episode_length', 'name', 'optimizer', 'unroller_only'])
+@alf.configurable(whitelist=['episode_length', 'name', 'unroller_only'])
 class DistributedUnroller(DistributedOffPolicyAlgorithm):
 
     def __init__(self,
@@ -732,8 +741,10 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         # Get the current worker id to send the exp to
         worker_id = f'worker-{self._current_worker}'
         self._num_exps += 1
-        episode_end = ((self._episode_length <= 0 and bool(exp.is_last()))
-                       or (self._num_exps % self._episode_length == 0))
+        if self._episode_length <= 0:
+            episode_end = bool(exp.is_last())
+        else:
+            episode_end = (self._num_exps % self._episode_length == 0)
 
         if self._is_first_step:
             # When the unroller has a ``max_episode_length``, we need to correctly
