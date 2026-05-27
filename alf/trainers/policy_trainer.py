@@ -512,11 +512,21 @@ class Trainer(object):
         request.send_text("Evaluation requested")
 
     def _save_checkpoint(self):
-        # Saving checkpoint is only enabled when running single process training
-        # (rank is -1) or master process of DDP training (rank is 0).
+        # Full checkpoint saving is only enabled when running single process
+        # training (rank is -1) or the master process of DDP training (rank is
+        # 0). Other DDP ranks only save their local replay buffers.
+        global_step = alf.summary.get_global_counter()
         if self._rank <= 0:
-            global_step = alf.summary.get_global_counter()
-            self._checkpointer.save(global_step=global_step)
+            # Replay buffers are saved separately below as sharded per-rank
+            # source files, so rank 0's full checkpoint only contains model,
+            # optimizer, metrics, and trainer progress.
+            self._checkpointer.save(global_step=global_step,
+                                    including_replay_buffer=False)
+        # Every rank writes one sharded replay-buffer source file into the
+        # checkpoint directory. Restore will redistribute these files across the
+        # active worker count, which may differ from the save-time worker count.
+        self._checkpointer.save_replay_buffer(global_step=global_step,
+                                              rank=max(self._rank, 0))
 
     def _save_video_clip(self, name: str = "video_clip"):
         # Saving video clip is only enabled when running single process training
@@ -550,7 +560,13 @@ class Trainer(object):
             # train_iter() once before loading the checkpoint
             self._algorithm.train_iter()
         try:
-            recovered_global_step = checkpointer.load()
+            context = PerProcessContext()
+            replay_buffer_rank = max(self._rank, 0)
+            # For sharded replay-buffer checkpoints, rank 0 creates per-worker
+            # restore shards and every rank loads only its own shard.
+            recovered_global_step = checkpointer.load(
+                replay_buffer_rank=replay_buffer_rank,
+                replay_buffer_world_size=context.num_processes)
             self._trainer_progress.update()
         except RuntimeError as e:
             raise RuntimeError(
