@@ -168,18 +168,20 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
                  port: int = 50000,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
-                 optimizer: alf.optimizers.Optimizer = None,
                  debug_summaries: bool = False,
                  name: str = "DistributedOffPolicyAlgorithm",
                  **kwargs):
         """
+            Note that optimizers should be configured on the core algorithm
+            created by ``core_alg_ctor``. This wrapper does not own optimizers
+            so its checkpoint format stays the same as the core algorithm.
+
         Args:
             core_alg_ctor: creates the algorithm to be wrapped by this class.
             config: the global ``TrainerConfig`` instance. The user is required
                 to always specify this argument.
             port: port number for communication on the *current* machine.
             env: The environment to interact with. Its batch size must be 1.
-            optimizer: optimizer for the training the core algorithm.
             debug_summaries: True if debug summaries should be created.
             name: the name of this algorithm.
             *args: args to pass to ``core_alg_ctor``.
@@ -206,7 +208,6 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
             predict_state_spec=core_alg.predict_state_spec,
             env=env,
             config=config,
-            optimizer=optimizer,
             # Prevent in-alg ckpt since there is no such a use case.
             checkpoint=None,
             debug_summaries=debug_summaries,
@@ -216,6 +217,14 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
         self._port = port
         self._ddp_rank = max(0, PerProcessContext().ddp_rank)
         self._num_ranks = PerProcessContext().num_processes
+
+    def state_dict(self, *args, **kwargs):
+        return self._core_alg.state_dict(*args, **kwargs)
+
+    def load_state_dict(self, state_dict, strict=True, **kwargs):
+        return self._core_alg.load_state_dict(state_dict,
+                                              strict=strict,
+                                              **kwargs)
 
     def _distributed_state_dict(self) -> dict:
         """Return `self._core_alg` state dict for distributed training.
@@ -431,9 +440,8 @@ def pull_params_from_trainer(memory_name: str, memory_lock: mp.Lock,
             f"Unroller {unroller_id} acknowledged param payload to trainer.")
 
 
-@alf.configurable(whitelist=[
-    'max_utd_ratio', 'push_params_every_n_grad_updates', 'name', 'optimizer'
-])
+@alf.configurable(
+    whitelist=['max_utd_ratio', 'push_params_every_n_grad_updates', 'name'])
 class DistributedTrainer(DistributedOffPolicyAlgorithm):
 
     def __init__(self,
@@ -443,7 +451,6 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                  push_params_every_n_grad_updates: int = 1,
                  env: AlfEnvironment = None,
                  config: TrainerConfig = None,
-                 optimizer: alf.optimizers.Optimizer = None,
                  debug_summaries: bool = False,
                  name: str = "DistributedTrainer",
                  **kwargs):
@@ -463,6 +470,9 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                 replay buffer data, while a smaller value will lead to data wastage.
             push_params_every_n_grad_updates: push model parameters to the unroller
                 every this number of gradient updates.
+            Note that optimizers should be configured on the core algorithm
+                created by ``core_alg_ctor``. This wrapper does not own
+                optimizers so checkpoints stay wrapper-agnostic.
             *args: additional args to pass to ``core_alg_ctor``.
             **kwargs: additional kwargs to pass to ``core_alg_ctor``.
         """
@@ -471,7 +481,6 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
                          port=_trainer_addr_config.port,
                          env=env,
                          config=config,
-                         optimizer=optimizer,
                          debug_summaries=debug_summaries,
                          name=name,
                          **kwargs)
@@ -649,26 +658,35 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         thread.daemon = True
         thread.start()
 
-    def _create_data_receiver_subprocess(self):
-        """Create a process to receive experience data from unrollers.
-        """
-        # First create the replay buffer in the main process. For this, we need
-        # to create a dummy experience to set up the replay buffer.
+    def _create_replay_buffer_sample_experience(self):
+        """Create a sample experience used to initialize the replay buffer."""
         time_step = self._env.current_time_step()
         rollout_state = self.get_initial_rollout_state(self._env.batch_size)
         alg_step = self.rollout_step(time_step, rollout_state)
         exp = make_experience(time_step, alg_step, rollout_state)
-        exp = alf.utils.common.prune_exp_replay_state(exp,
-                                                      self._use_rollout_state,
-                                                      self.rollout_state_spec,
-                                                      self.train_state_spec)
+        return alf.utils.common.prune_exp_replay_state(exp,
+                                                       self._use_rollout_state,
+                                                       self.rollout_state_spec,
+                                                       self.train_state_spec)
 
-        # enable multi_processing in replay_buffer here, because we need to
-        # receive data in a subprocess and process the data in the main process.
+    def _create_multiprocessing_replay_buffer(self):
+        """Create the replay buffer in shared memory."""
         ctx = mp.get_context('spawn')
-        self._set_replay_buffer(exp, mp_context=ctx)
+        assert self._replay_buffer is None
+        self._set_replay_buffer(self._create_replay_buffer_sample_experience(),
+                                mp_context=ctx)
         assert self._replay_buffer._allow_multiprocess, (
             "The replay buffer must allow multi-processing.")
+
+    def _create_data_receiver_subprocess(self):
+        """Create a process to receive experience data from unrollers.
+        """
+        # The warm-up train_iter() creates the normal trainer replay buffer in
+        # multiprocessing form before checkpoint restore, so restored shards
+        # load directly into the buffer that the receiver subprocess will use.
+        assert self._replay_buffer is not None
+        assert self._replay_buffer._allow_multiprocess
+        ctx = mp.get_context('spawn')
 
         # start the data receiver subprocess
         # Need to create the subprocess with 'spawn' so that we can pass a Module
@@ -691,8 +709,13 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         if self._num_train_iters == 0:
             # First time will be called by ``Trainer._restore_checkpoint()``
             # where the ckpt (if any) will be loaded after this function.
+            # Create the normal trainer replay buffer in multiprocessing form
+            # before checkpoint load so replay data is restored directly into
+            # it. Do not start the receiver subprocess yet; it should only
+            # consume unroller data after checkpoint restore has completed.
+            self._create_multiprocessing_replay_buffer()
             self._num_train_iters += 1
-            return super()._train_iter_off_policy()
+            return 0
 
         if self._num_train_iters == 1:
             # Only open the unroller registration after we are sure that
@@ -762,8 +785,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         return steps
 
 
-@alf.configurable(
-    whitelist=['episode_length', 'name', 'optimizer', 'unroller_only'])
+@alf.configurable(whitelist=['episode_length', 'name', 'unroller_only'])
 class DistributedUnroller(DistributedOffPolicyAlgorithm):
 
     def __init__(self,
