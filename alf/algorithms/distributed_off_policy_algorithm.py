@@ -503,26 +503,41 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         thread.daemon = True
         thread.start()
 
-    def _create_data_receiver_subprocess(self):
-        """Create a process to receive experience data from unrollers.
+    def _create_replay_buffer_sample_experience(self):
         """
-        # First create the replay buffer in the main process. For this, we need
-        # to create a dummy experience to set up the replay buffer.
+        Create a sample experience used to initialize the replay buffer.
+        """
         time_step = self._env.current_time_step()
         rollout_state = self.get_initial_rollout_state(self._env.batch_size)
         alg_step = self.rollout_step(time_step, rollout_state)
         exp = make_experience(time_step, alg_step, rollout_state)
-        exp = alf.utils.common.prune_exp_replay_state(exp,
-                                                      self._use_rollout_state,
-                                                      self.rollout_state_spec,
-                                                      self.train_state_spec)
+        return alf.utils.common.prune_exp_replay_state(exp,
+                                                       self._use_rollout_state,
+                                                       self.rollout_state_spec,
+                                                       self.train_state_spec)
 
-        # enable multi_processing in replay_buffer here, because we need to
-        # receive data in a subprocess and process the data in the main process.
+    def _create_multiprocessing_replay_buffer(self):
+        """
+        Create the replay buffer in shared memory.
+        """
         ctx = mp.get_context('spawn')
-        self._set_replay_buffer(exp, mp_context=ctx)
+        assert self._replay_buffer is None
+        self._set_replay_buffer(self._create_replay_buffer_sample_experience(),
+                                mp_context=ctx)
         assert self._replay_buffer._allow_multiprocess, (
             "The replay buffer must allow multi-processing.")
+
+    def _create_data_receiver_subprocess(self):
+        """
+        Create a process to receive experience data from unrollers.
+
+        The warm-up train_iter() creates the normal trainer replay buffer in
+        multiprocessing form before checkpoint restore, so restored shards
+        load directly into the buffer that the receiver subprocess will use.
+        """
+        assert self._replay_buffer is not None
+        assert self._replay_buffer._allow_multiprocess
+        ctx = mp.get_context('spawn')
 
         # start the data receiver subprocess
         # Need to create the subprocess with 'spawn' so that we can pass a Module
@@ -545,8 +560,13 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         if self._num_train_iters == 0:
             # First time will be called by ``Trainer._restore_checkpoint()``
             # where the ckpt (if any) will be loaded after this function.
+            # Create the normal trainer replay buffer in multiprocessing form
+            # before checkpoint load so replay data is restored directly into
+            # it. Do not start the receiver subprocess yet; it should only
+            # consume unroller data after checkpoint restore has completed.
+            self._create_multiprocessing_replay_buffer()
             self._num_train_iters += 1
-            return super()._train_iter_off_policy()
+            return 0
 
         if self._num_train_iters == 1:
             # Only open the unroller registration after we are sure that
