@@ -1924,8 +1924,9 @@ class Algorithm(AlgorithmInterface):
             weight (float): weight for this batch. Loss will be multiplied with
                 this weight before calculating gradient.
         """
-        with torch.cuda.amp.autocast(self._config.enable_amp,
-                                     dtype=self._config.amp_dtype):
+        with torch.amp.autocast('cuda',
+                                enabled=self._config.enable_amp,
+                                dtype=self._config.amp_dtype):
             train_info, loss_info = self._compute_train_info_and_loss_info(
                 experience)
 
@@ -2128,8 +2129,9 @@ class Algorithm(AlgorithmInterface):
                 this weight before calculating gradient.
         """
         if self._RL_train:
-            with torch.cuda.amp.autocast(self._config.enable_amp,
-                                         dtype=self._config.amp_dtype):
+            with torch.amp.autocast('cuda',
+                                    enabled=self._config.enable_amp,
+                                    dtype=self._config.amp_dtype):
                 train_info, loss_info = self._compute_train_info_and_loss_info(
                     experience)
                 self._update_priority(loss_info, batch_info,
