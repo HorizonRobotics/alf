@@ -1,7 +1,7 @@
 import alf.utils.math_ops
 import alf.algorithms.agent
 import alf.algorithms.mdq_algorithm
-
+import alf.environments.suite_gym
 
 observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()

@@ -4,7 +4,7 @@ import alf.trainers.policy_trainer
 import alf.algorithms.diayn_algorithm
 import alf.algorithms.goal_generator
 import alf.networks.critic_networks
-
+import alf.environments.suite_gym
 
 # skill related
 num_of_skills=5

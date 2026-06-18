@@ -15,12 +15,15 @@
 
 from absl import logging
 import functools
-import gin
 import inspect
 from inspect import Parameter
 import os
 import pprint
 import runpy
+
+USE_GIN = os.environ.get('ALF_USE_GIN', "1") == "1"
+if USE_GIN:
+    import gin
 
 __all__ = [
     'config',
@@ -759,8 +762,7 @@ def _decorate(fn_or_cls, name, whitelist, blacklist, config_only_args):
                                   has_self=0,
                                   config_only_args=config_only_args)
 
-    if fn_or_cls.__module__ != '<run_path>' and os.environ.get(
-            'ALF_USE_GIN', "1") == "1":
+    if fn_or_cls.__module__ != '<run_path>' and USE_GIN:
         # If a file is executed using runpy.run_path(), the module name is
         # '<run_path>', which is not an acceptable name by gin.
         return gin.configurable(orig_name,

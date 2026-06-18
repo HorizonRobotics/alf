@@ -1,3 +1,4 @@
+import alf.environments.suite_gym
 include 'ppo.gin'
 
 # environment config
