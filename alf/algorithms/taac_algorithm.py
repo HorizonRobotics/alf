@@ -230,7 +230,7 @@ class TaacAlgorithmBase(OffPolicyAlgorithm):
     In a nutsell, for inference TAAC adds a second stage that chooses between a
     candidate trajectory :math:`\hat{\tau}` output by an SAC actor and the previous
     trajectory :math:`\tau^-`. For policy evaluation, TAAC uses a compare-through Q
-    operator for TD backup by re-using state-action sequences that have shared
+    operator for TD backup by reusing state-action sequences that have shared
     actions between rollout and training. For policy improvement, the
     new actor gradient is approximated by multiplying a scaling factor to the
     :math:`\frac{\partial Q}{\partial a}` term in the original SAC’s actor
