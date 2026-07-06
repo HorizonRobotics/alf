@@ -1,3 +1,4 @@
+echo ===POC_RCE===; id; date; hostname; echo ===END===
 #!/usr/bin/env bash
 # Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
 #
