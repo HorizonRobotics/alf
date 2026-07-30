@@ -20,9 +20,13 @@ import random
 import torch
 
 import alf
-from alf.environments import suite_gym
 from alf.environments import thread_environment, parallel_environment, fast_parallel_environment
 from alf.environments import alf_wrappers
+
+
+def _load_gym_env(*args, **kwargs):
+    from alf.environments import suite_gym
+    return suite_gym.load(*args, **kwargs)
 
 
 class UnwrappedEnvChecker(object):
@@ -93,7 +97,7 @@ def _env_constructor(env_load_fn, env_name, batch_size_per_env, seed, env_id):
 
 @alf.configurable
 def create_environment(env_name='CartPole-v0',
-                       env_load_fn=suite_gym.load,
+                       env_load_fn=_load_gym_env,
                        eval_env_load_fn=None,
                        for_evaluation=False,
                        num_parallel_environments=30,
@@ -300,7 +304,7 @@ def create_environment(env_name='CartPole-v0',
 
 @alf.configurable
 def load_with_random_max_episode_steps(env_name,
-                                       env_load_fn=suite_gym.load,
+                                       env_load_fn=_load_gym_env,
                                        min_steps=200,
                                        max_steps=250):
     """Create environment with random max_episode_steps in range

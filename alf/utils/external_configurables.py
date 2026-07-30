@@ -15,15 +15,21 @@
 
 import gin
 import gin.torch
-import gym
 import torch
 
 import alf
 
-# This allows the environment creation arguments to be configurable by supplying
-# gym.envs.registration.EnvSpec.make.ARG_NAME=VALUE
-gym.envs.registration.EnvSpec.make = gin.external_configurable(
-    gym.envs.registration.EnvSpec.make, 'gym.envs.registration.EnvSpec.make')
+try:
+    import gym
+except ImportError:
+    gym = None
+
+if gym is not None:
+    # This allows the environment creation arguments to be configurable by supplying
+    # gym.envs.registration.EnvSpec.make.ARG_NAME=VALUE
+    gym.envs.registration.EnvSpec.make = gin.external_configurable(
+        gym.envs.registration.EnvSpec.make,
+        'gym.envs.registration.EnvSpec.make')
 
 # Activation functions.
 gin.external_configurable(torch.exp, 'torch.exp')
