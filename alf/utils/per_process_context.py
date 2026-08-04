@@ -36,6 +36,7 @@ class PerProcessContext(object):
             cls._instance._ddp_rank = -1
             cls._instance._local_rank = -1
             cls._instance._num_processes = 1
+            cls._instance._distributed_strategy = 'ddp'
         return cls._instance
 
     def finalize(self) -> None:
@@ -43,14 +44,18 @@ class PerProcessContext(object):
         """
         self._read_only = True
 
-    def set_distributed(self, rank: int, local_rank: int,
-                        num_processes: int) -> None:
+    def set_distributed(self,
+                        rank: int,
+                        local_rank: int,
+                        num_processes: int,
+                        strategy: str = 'ddp') -> None:
         """Set the distributed properties.
 
         Args:
             rank (int): the ID of the process
             local_rank (int): ID of process on a node
             num_processes (int): the total number of processes
+            strategy: parameter distribution strategy.
         """
         if self._read_only:
             raise AttributeError(
@@ -58,6 +63,7 @@ class PerProcessContext(object):
         self._ddp_rank = rank
         self._local_rank = local_rank
         self._num_processes = num_processes
+        self._distributed_strategy = strategy
 
     def set_paras_queue(self, paras_queue: mp.Queue):
         """Set the parameter queue.
@@ -89,3 +95,7 @@ class PerProcessContext(object):
     @property
     def num_processes(self):
         return self._num_processes
+
+    @property
+    def distributed_strategy(self):
+        return self._distributed_strategy

@@ -215,8 +215,18 @@ class Checkpointer(object):
 
         def _load_one(module, checkpoint):
             if isinstance(module, nn.Module):
-                missing_keys, unexpected_keys = module.load_state_dict(
-                    checkpoint, strict=strict)
+                from alf.utils.distributed import (FSDP2_OPTIMIZER_STATE,
+                                                   is_fsdp2_module,
+                                                   load_fsdp2_full_state_dict)
+                fsdp2_checkpoint = (FSDP2_OPTIMIZER_STATE in checkpoint
+                                    or not any('_optimizers.' in key
+                                               for key in checkpoint))
+                if is_fsdp2_module(module) and fsdp2_checkpoint:
+                    missing_keys, unexpected_keys = load_fsdp2_full_state_dict(
+                        module, checkpoint, strict=strict)
+                else:
+                    missing_keys, unexpected_keys = module.load_state_dict(
+                        checkpoint, strict=strict)
             else:
                 module.load_state_dict(checkpoint)
                 missing_keys, unexpected_keys = [], []
@@ -363,7 +373,10 @@ class Checkpointer(object):
         replay_buffer_state = {}
 
         for k, v in state.items():
-            if k.find('_optimizers.') >= 0 and isinstance(
+            from alf.utils.distributed import FSDP2_OPTIMIZER_STATE
+            if k == FSDP2_OPTIMIZER_STATE:
+                optimizer_state[k] = v
+            elif k.find('_optimizers.') >= 0 and isinstance(
                     v, dict) and 'param_groups' in v:
                 optimizer_state[k] = v
             elif Checkpointer._is_replay_buffer_key(k):
@@ -718,7 +731,8 @@ class Checkpointer(object):
     def save(self,
              global_step,
              suffix: Optional[str] = None,
-             including_replay_buffer=True):
+             including_replay_buffer=True,
+             state_overrides=None):
         """Save states of all modules to checkpoint
 
         Args:
@@ -729,6 +743,9 @@ class Checkpointer(object):
                 If provided, it will be used as the suffix instead of ``global_step``.
             including_replay_buffer (bool): whether save replay buffer state in
                 the main replay buffer checkpoint file.
+            state_overrides (dict|None): precomputed states keyed by module
+                name. Used by collective state-dict implementations such as
+                FSDP2.
         """
         suffix = suffix or str(global_step)
 
@@ -744,10 +761,12 @@ class Checkpointer(object):
                         (replay_buffer, is_checkpoint_enabled(replay_buffer)))
                     enable_checkpoint(replay_buffer, False)
         try:
+            state_overrides = state_overrides or {}
             state = {
                 k:
-                    v.module.state_dict()
-                    if type(v) == torch.nn.DataParallel else v.state_dict()
+                    state_overrides[k] if k in state_overrides else
+                    (v.module.state_dict()
+                     if type(v) == torch.nn.DataParallel else v.state_dict())
                 for k, v in self._modules.items()
             }
         finally:

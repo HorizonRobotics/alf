@@ -60,6 +60,14 @@ _record_if_stack = [
     lambda: True,
 ]
 
+# FSDP2 parameter summaries require every rank to compute shard-local
+# statistics even though only one rank owns a SummaryWriter. This stack is
+# separate from ``_record_if_stack`` so only their computations, not event
+# writing, are enabled on non-writer ranks.
+_compute_summary_if_stack = [
+    lambda: False,
+]
+
 _summary_writer_stack = [None]
 
 # The default number of bins for histogram
@@ -167,8 +175,22 @@ def _summary_wrapper(summary_func):
                 at the moment.
         """
         if average_over_summary_interval:
+            # Preserve ALF's existing behavior of accumulating values on the
+            # writer rank even between recording intervals. Non-writer FSDP2
+            # ranks do not need a duplicate buffer.
+            if not _summary_writer_stack[-1]:
+                return
             if isinstance(data, torch.Tensor):
                 data = data.detach()
+                try:
+                    from torch.distributed.tensor import DTensor
+                except ImportError:
+                    DTensor = ()
+                if isinstance(data, DTensor):
+                    raise ValueError(
+                        "Averaging DTensor summaries over multiple intervals "
+                        "is unsupported; summarize an ordinary scalar instead."
+                    )
             if name.startswith('/'):
                 name = name[1:]
             else:
@@ -179,24 +201,46 @@ def _summary_wrapper(summary_func):
                     _SUMMARY_DATA_BUFFER[name] = data_sum + data, counter + 1
                 else:
                     _SUMMARY_DATA_BUFFER[name] = data, 1
-            if should_record_summaries() and name in _SUMMARY_DATA_BUFFER:
+            if should_write_summaries() and name in _SUMMARY_DATA_BUFFER:
                 data_sum, counter = _SUMMARY_DATA_BUFFER[name]
                 del _SUMMARY_DATA_BUFFER[name]
                 data = data_sum / counter
                 if step is None:
                     step = _global_counter
                 summary_func(name, data, step, **kwargs)
+            return
+
+        if not should_record_summaries():
+            return
+        if isinstance(data, torch.Tensor):
+            data = data.detach()
+            try:
+                from torch.distributed.tensor import DTensor
+            except ImportError:
+                DTensor = ()
+            if isinstance(data, DTensor):
+                if data.numel() != 1:
+                    raise ValueError(
+                        "Only scalar DTensors can be passed directly to ALF "
+                        "summaries. Use summarize_variables() or "
+                        "summarize_gradients() for sharded tensors.")
+                # All FSDP2 ranks execute summary calls under the compute-only
+                # context, so materializing this one scalar is a matched and
+                # memory-negligible collective.
+                data = data.full_tensor()
+
+        # Non-writer FSDP2 ranks have now joined any scalar DTensor collective,
+        # but must not buffer or emit TensorBoard events.
+        if not should_write_summaries():
+            return
+
+        if step is None:
+            step = _global_counter
+        if name.startswith('/'):
+            name = name[1:]
         else:
-            if should_record_summaries():
-                if isinstance(data, torch.Tensor):
-                    data = data.detach()
-                if step is None:
-                    step = _global_counter
-                if name.startswith('/'):
-                    name = name[1:]
-                else:
-                    name = _scope_stack[-1] + name
-                summary_func(name, data, step, **kwargs)
+            name = _scope_stack[-1] + name
+        summary_func(name, data, step, **kwargs)
 
     return wrapper
 
@@ -309,6 +353,37 @@ def histogram(name, data, step=None, bins=None, walltime=None, max_bins=None):
                                             max_bins=max_bins)
 
 
+def histogram_raw(name,
+                  minimum,
+                  maximum,
+                  num,
+                  value_sum,
+                  sum_squares,
+                  bucket_limits,
+                  bucket_counts,
+                  step=None,
+                  walltime=None):
+    """Write a histogram from precomputed statistics and bucket counts."""
+    if not should_write_summaries():
+        return
+    if step is None:
+        step = _global_counter
+    if name.startswith('/'):
+        name = name[1:]
+    else:
+        name = _scope_stack[-1] + name
+    _summary_writer_stack[-1].add_histogram_raw(tag=name,
+                                                min=minimum,
+                                                max=maximum,
+                                                num=num,
+                                                sum=value_sum,
+                                                sum_squares=sum_squares,
+                                                bucket_limits=bucket_limits,
+                                                bucket_counts=bucket_counts,
+                                                global_step=step,
+                                                walltime=walltime)
+
+
 @_summary_wrapper
 def embedding(name, data, step=None, class_labels=None, label_imgs=None):
     """Add embeddings to summary. The potentially high-dimensional embeddings
@@ -339,16 +414,34 @@ def embedding(name, data, step=None, class_labels=None, label_imgs=None):
                                             global_step=step)
 
 
+def should_write_summaries():
+    """Whether this rank should write TensorBoard summaries."""
+    return bool(_summary_writer_stack[-1] and is_summary_enabled()
+                and _record_if_stack[-1]())
+
+
 def should_record_summaries():
-    """Whether summary should be recorded.
+    """Whether summary computations should run on this rank.
 
     Returns:
-        bool: False means that all calls to scalar(), text(), histogram() etc
-            are not recorded.
+        bool: For FSDP2, this is true on every rank when summaries are due so
+            collectives are matched, while only :func:`should_write_summaries`
+            is true on the writer rank. For other strategies the two values
+            are identical.
 
     """
-    return (_summary_writer_stack[-1] and is_summary_enabled()
-            and _record_if_stack[-1]())
+    return (should_write_summaries()
+            or (is_summary_enabled() and _record_if_stack[-1]()
+                and _compute_summary_if_stack[-1]()))
+
+
+def should_compute_summaries():
+    """Whether this rank should compute summary inputs.
+
+    This differs from :func:`should_record_summaries` only for FSDP2
+    non-writer ranks, which must join collectives for sharded summaries.
+    """
+    return should_record_summaries()
 
 
 def get_global_counter():
@@ -428,6 +521,19 @@ class record_if(object):
 
     def __exit__(self, type, value, traceback):
         _record_if_stack.pop()
+
+
+class compute_summary_if(object):
+    """Enable summary computation without requiring a SummaryWriter."""
+
+    def __init__(self, cond: Callable):
+        self._cond = cond
+
+    def __enter__(self):
+        _compute_summary_if_stack.append(self._cond)
+
+    def __exit__(self, type, value, traceback):
+        _compute_summary_if_stack.pop()
 
 
 def create_summary_writer(summary_dir, flush_secs=10, max_queue=10):

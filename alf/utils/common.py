@@ -520,17 +520,17 @@ def run_under_record_context(func,
         summary_max_queue (int): the largest number of summaries to keep in a queue;
             will flush once the queue gets bigger than this. Defaults to 10.
     """
-    # For DDP training, we only do summary on one of the ranks.
+    context = PerProcessContext()
+    fsdp2 = (context.is_distributed
+             and context.distributed_strategy == 'fsdp2')
+
+    # For DDP training, we only compute and write summaries on one rank.
     # Since rank-0 does more work than other rank (e.g. Evaluation),
     # we do summary on rank-1 to reduce the load of rank-0
-    if PerProcessContext().is_distributed and PerProcessContext(
-    ).ddp_rank != 1:
+    if context.is_distributed and context.ddp_rank != 1 and not fsdp2:
         func()
         return
 
-    summary_dir = os.path.expanduser(summary_dir)
-    summary_writer = alf.summary.create_summary_writer(
-        summary_dir, flush_secs=flush_secs, max_queue=summary_max_queue)
     global_step = alf.summary.get_global_counter()
 
     def _cond():
@@ -540,11 +540,24 @@ def run_under_record_context(func,
                 ((global_step < summary_interval and summarize_first_interval)
                  or global_step % summary_interval == 0))
 
-    with alf.summary.push_summary_writer(summary_writer):
-        with alf.summary.record_if(_cond):
+    # FSDP2 ranks without a writer still enter the compute context so that
+    # parameter and gradient summary collectives are matched across ranks.
+    compute_context = (alf.summary.compute_summary_if(_cond)
+                       if fsdp2 else contextlib.nullcontext())
+    with compute_context:
+        if context.is_distributed and context.ddp_rank != 1:
             func()
+            return
 
-    summary_writer.close()
+        summary_dir = os.path.expanduser(summary_dir)
+        summary_writer = alf.summary.create_summary_writer(
+            summary_dir, flush_secs=flush_secs, max_queue=summary_max_queue)
+        try:
+            with alf.summary.push_summary_writer(summary_writer):
+                with alf.summary.record_if(_cond):
+                    func()
+        finally:
+            summary_writer.close()
 
 
 @alf.configurable

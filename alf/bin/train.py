@@ -43,7 +43,8 @@ You can visualize playing of the trained model by running:
 
 In case you have multiple GPUs on the machine and you would like to
 train with all of them, specify --distributed multi-gpu. This will use
-PyTorch's DistributedDataParallel for training.
+PyTorch's DistributedDataParallel for training. Add
+--distributed_strategy fsdp2 to use composable FullyShardedDataParallel.
 
 If instead of Gin configuration file, you want to use ALF python conf file, then
 replace the "--gin_file" option with "--conf", and "--gin_param" with "--conf_param".
@@ -83,6 +84,9 @@ def _define_flags():
     flags.DEFINE_enum(
         'distributed', 'none', ['none', 'multi-gpu', 'multi-node-multi-gpu'],
         'Set whether and how to run training in distributed mode.')
+    flags.DEFINE_enum(
+        'distributed_strategy', 'ddp', ['ddp', 'fsdp2'],
+        'Parameter distribution strategy used in distributed mode.')
     flags.DEFINE_integer(
         'num_gpus_per_ddp_worker', 1,
         "The number of gpus per DDP worker. If specified will create N DDP workers where each worker "
@@ -201,8 +205,11 @@ def _train(root_dir, local_rank=-1, rank=0, world_size=1):
                 alg_wrapper_ctor = DistributedUnroller
         else:
             alg_wrapper_ctor = None
-        trainer = policy_trainer.RLTrainer(trainer_conf, ddp_rank,
-                                           alg_wrapper_ctor)
+        trainer = policy_trainer.RLTrainer(
+            trainer_conf,
+            ddp_rank,
+            alg_wrapper_ctor,
+            distributed_strategy=FLAGS.distributed_strategy)
     elif trainer_conf.ml_type == 'sl':
         # NOTE: SLTrainer does not support distributed training yet
         if world_size > 1:
@@ -250,9 +257,11 @@ def training_worker(rank: int,
                 world_size=world_size,
                 timeout=datetime.timedelta(minutes=FLAGS.nccl_timeout))
             # Set the rank and total number of processes for distributed training.
-            PerProcessContext().set_distributed(rank=rank,
-                                                local_rank=-1,
-                                                num_processes=world_size)
+            PerProcessContext().set_distributed(
+                rank=rank,
+                local_rank=-1,
+                num_processes=world_size,
+                strategy=FLAGS.distributed_strategy)
             assert paras_queue is not None
             PerProcessContext().set_paras_queue(paras_queue)
 

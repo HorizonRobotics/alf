@@ -18,6 +18,7 @@ import numpy as np
 import os
 import time
 import torch
+import torch.distributed as dist
 import torch.distributions as td
 
 import alf
@@ -108,7 +109,6 @@ def histogram_continuous(name,
     alf.summary.histogram(name, data, step=step, bins=bins.cpu())
 
 
-@_summary_wrapper
 @alf.configurable
 def summarize_variables(name_and_params, with_histogram=True):
     """Add summaries for variables.
@@ -118,18 +118,28 @@ def summarize_variables(name_and_params, with_histogram=True):
             tuples.
         with_histogram (bool): If True, generate histogram.
     """
+    if not alf.summary.should_compute_summaries():
+        return
     for var_name, var in name_and_params:
-        var_values = var
-        if with_histogram and torch.all(torch.isfinite(var_values)):
-            # Need to make sure all values are finite to avoid the histogram range
-            # error
-            alf.summary.histogram(name='summarize_vars/' + var_name + '_value',
-                                  data=var_values)
-        alf.summary.scalar(name='summarize_vars/' + var_name + '_value_norm',
-                           data=var_values.norm())
+        if _is_dtensor(var):
+            _summarize_sharded_tensor(
+                histogram_name='summarize_vars/' + var_name + '_value',
+                norm_name='summarize_vars/' + var_name + '_value_norm',
+                value=var,
+                with_histogram=with_histogram)
+        elif alf.summary.should_record_summaries():
+            var_values = var
+            if with_histogram and torch.all(torch.isfinite(var_values)):
+                # Need to make sure all values are finite to avoid the
+                # histogram range error.
+                alf.summary.histogram(name='summarize_vars/' + var_name +
+                                      '_value',
+                                      data=var_values)
+            alf.summary.scalar(name='summarize_vars/' + var_name +
+                               '_value_norm',
+                               data=var_values.norm())
 
 
-@_summary_wrapper
 @alf.configurable
 def summarize_gradients(name_and_params, with_histogram=True):
     """Add summaries for gradients.
@@ -139,18 +149,127 @@ def summarize_gradients(name_and_params, with_histogram=True):
             tuples.
         with_histogram (bool): If True, generate histogram.
     """
+    if not alf.summary.should_compute_summaries():
+        return
     for var_name, var in name_and_params:
+        if _is_dtensor(var):
+            has_gradient = torch.tensor(int(var.grad is not None),
+                                        dtype=torch.int32,
+                                        device=var.device)
+            dist.all_reduce(has_gradient, op=dist.ReduceOp.SUM)
+            ranks_with_gradient = has_gradient.item()
+            if not ranks_with_gradient:
+                continue
+            if ranks_with_gradient != dist.get_world_size():
+                raise RuntimeError("FSDP2 gradient presence differs across "
+                                   "ranks for parameter '%s'" % var_name)
         if var.grad is None:
             continue
         grad_values = var.grad
-        if with_histogram:
-            if torch.all(grad_values.isfinite()):
+        if _is_dtensor(grad_values):
+            _summarize_sharded_tensor(
+                histogram_name='summarize_grads/' + var_name + '_gradient',
+                norm_name='summarize_grads/' + var_name + '_gradient_norm',
+                value=grad_values,
+                with_histogram=with_histogram)
+        elif alf.summary.should_record_summaries():
+            if with_histogram and torch.all(grad_values.isfinite()):
                 alf.summary.histogram(name='summarize_grads/' + var_name +
                                       '_gradient',
                                       data=grad_values)
-        alf.summary.scalar(name='summarize_grads/' + var_name +
-                           '_gradient_norm',
-                           data=grad_values.norm())
+            alf.summary.scalar(name='summarize_grads/' + var_name +
+                               '_gradient_norm',
+                               data=grad_values.norm())
+
+
+def _is_dtensor(value):
+    try:
+        from torch.distributed.tensor import DTensor
+    except ImportError:
+        return False
+    return isinstance(value, DTensor)
+
+
+@torch.no_grad()
+def _summarize_sharded_tensor(histogram_name,
+                              norm_name,
+                              value,
+                              with_histogram,
+                              bucket_count=DEFAULT_BUCKET_COUNT):
+    """Summarize a DTensor by reducing statistics from its local shards.
+
+    All ranks in the DTensor process group must call this function in the same
+    order. Only the ALF summary-writer rank emits TensorBoard events.
+    """
+    if not dist.is_initialized():
+        raise RuntimeError("DTensor summaries require an initialized process "
+                           "group")
+    local_value = value.detach().to_local()
+
+    # Computing a local norm with a higher-precision accumulator avoids making
+    # a full-sized float copy of a bf16/fp16 shard.
+    local_norm = torch.linalg.vector_norm(local_value, dtype=torch.float64)
+    global_sum_squares = local_norm.square()
+    dist.all_reduce(global_sum_squares, op=dist.ReduceOp.SUM)
+    alf.summary.scalar(name=norm_name, data=global_sum_squares.sqrt())
+
+    if not with_histogram:
+        return
+
+    finite = torch.isfinite(local_value).all().to(torch.int32)
+    dist.all_reduce(finite, op=dist.ReduceOp.MIN)
+    if not finite.item():
+        return
+
+    if local_value.numel() == 0:
+        local_min = torch.tensor(float('inf'),
+                                 dtype=torch.float64,
+                                 device=local_value.device)
+        local_max = torch.tensor(float('-inf'),
+                                 dtype=torch.float64,
+                                 device=local_value.device)
+    else:
+        local_min = local_value.min().to(torch.float64)
+        local_max = local_value.max().to(torch.float64)
+    dist.all_reduce(local_min, op=dist.ReduceOp.MIN)
+    dist.all_reduce(local_max, op=dist.ReduceOp.MAX)
+
+    global_min = local_min.item()
+    global_max = local_max.item()
+    lower = global_min
+    upper = global_max
+    if lower == upper:
+        half_width = max(abs(lower) * 1e-6, 1e-6)
+        lower -= half_width
+        upper += half_width
+
+    counts = torch.histc(local_value.float(),
+                         bins=bucket_count,
+                         min=lower,
+                         max=upper).to(torch.float64)
+    dist.all_reduce(counts, op=dist.ReduceOp.SUM)
+    local_count_and_sum = torch.stack([
+        torch.tensor(float(local_value.numel()),
+                     dtype=torch.float64,
+                     device=local_value.device),
+        local_value.sum(dtype=torch.float64)
+    ])
+    dist.all_reduce(local_count_and_sum, op=dist.ReduceOp.SUM)
+
+    if alf.summary.should_write_summaries():
+        bucket_limits = torch.linspace(lower,
+                                       upper,
+                                       bucket_count + 1,
+                                       dtype=torch.float64,
+                                       device=local_value.device)[1:]
+        alf.summary.histogram_raw(name=histogram_name,
+                                  minimum=global_min,
+                                  maximum=global_max,
+                                  num=int(local_count_and_sum[0].item()),
+                                  value_sum=local_count_and_sum[1].item(),
+                                  sum_squares=global_sum_squares.item(),
+                                  bucket_limits=bucket_limits.cpu().tolist(),
+                                  bucket_counts=counts.cpu().tolist())
 
 
 alf.summary.histogram = _summary_wrapper(alf.summary.histogram)

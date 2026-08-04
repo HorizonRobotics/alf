@@ -188,7 +188,7 @@ def adjust_config_by_multi_process_divider(ddp_rank: int,
     # Only allow process with rank 0 to have evaluate. Enabling evaluation for
     # other parallel processes is a waste as such evaluation does not offer more
     # information.
-    if ddp_rank > 0:
+    if (ddp_rank > 0 and PerProcessContext().distributed_strategy != 'fsdp2'):
         config1('TrainerConfig.evaluate',
                 False,
                 raise_if_used=False,

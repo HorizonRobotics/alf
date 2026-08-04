@@ -153,6 +153,7 @@ class Algorithm(AlgorithmInterface):
         self._replay_buffer = None
 
         self._ddp_activated_rank = -1
+        self._distributed_strategy = 'ddp'
 
         # These 3 parameters are only set when ``set_replay_buffer()`` is called.
         self._replay_buffer_num_envs = None
@@ -333,7 +334,7 @@ class Algorithm(AlgorithmInterface):
         """
         return self._use_rollout_state
 
-    def activate_ddp(self, rank: int):
+    def activate_ddp(self, rank: int, strategy: str = 'ddp'):
         """Prepare the Algorithm with DistributedDataParallel wrapper
 
         Note that Algorithm does not need to remember the rank of the device.
@@ -341,8 +342,12 @@ class Algorithm(AlgorithmInterface):
         Args:
             rank (int): DDP wrapper needs to know on which GPU device this
                 module's parameters and buffers are supposed to be.
+            strategy: distributed implementation, ``'ddp'`` or ``'fsdp2'``.
         """
+        if strategy not in ('ddp', 'fsdp2'):
+            raise ValueError("Unknown distributed strategy: %s" % strategy)
         self._ddp_activated_rank = rank
+        self._distributed_strategy = strategy
 
     @use_rollout_state.setter
     def use_rollout_state(self, flag):
@@ -951,7 +956,11 @@ class Algorithm(AlgorithmInterface):
         return destination
 
     @common.add_method(nn.Module)
-    def load_state_dict(self, state_dict, strict=True, skip_preloded=True):
+    def load_state_dict(self,
+                        state_dict,
+                        strict=True,
+                        skip_preloded=True,
+                        assign=False):
         """Load state dictionary for the algorithm.
 
         Args:
@@ -964,6 +973,8 @@ class Algorithm(AlgorithmInterface):
             skip_preloded (bool): whether to skip the modules that support
                 pre-loading and have been pre-loaded. Currently only Algorithm
                 and its derivatives support pre-loading. (Default: ``True``)
+            assign (bool): accepted for compatibility with PyTorch's module
+                state-dict APIs. ALF preserves its existing copy semantics.
         Returns:
             namedtuple:
             - missing_keys: a list of str containing the missing keys.
@@ -1671,7 +1682,7 @@ class Algorithm(AlgorithmInterface):
 
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)
-                do_summary = alf.summary.should_record_summaries() and (
+                do_summary = alf.summary.should_compute_summaries() and (
                     is_last_mini_batch or update_counter_every_mini_batch)
 
                 with alf.summary.record_if(lambda: do_summary):
@@ -2074,7 +2085,7 @@ class Algorithm(AlgorithmInterface):
 
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)
-                do_summary = alf.summary.should_record_summaries() and (
+                do_summary = alf.summary.should_compute_summaries() and (
                     is_last_mini_batch or update_counter_every_mini_batch)
 
                 with alf.summary.record_if(lambda: do_summary):

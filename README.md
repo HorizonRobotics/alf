@@ -173,6 +173,40 @@ To launch single-node multi-gpu training, set the 'multi-gpu' argument
 python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR --distributed multi-gpu
 ```
 
+DistributedDataParallel (DDP) is used by default. To shard model parameters,
+gradients, and optimizer state with PyTorch FSDP2, add
+`--distributed_strategy fsdp2`:
+```bash
+python -m alf.bin.train --conf=CONF_FILE --root_dir=LOG_DIR \
+    --distributed multi-gpu --distributed_strategy fsdp2
+```
+
+Large models should provide a shard plan so that FSDP2 gathers one execution
+block at a time instead of the entire model. The callback receives the root
+algorithm and returns descendant modules that should form independent FSDP2
+groups. ALF applies the groups bottom-up and automatically shards all remaining
+root parameters:
+```python
+def vla_shard_plan(algorithm):
+    return [
+        *algorithm.vla.vision_model.encoder.layers,
+        *algorithm.vla.language_model.model.layers,
+    ]
+
+alf.config('make_fsdp2_performer', shard_plan=vla_shard_plan)
+```
+
+Synchronous FSDP2 evaluation divides evaluation work across all ranks and
+merges episodic metrics on rank 0. Asynchronous evaluation is not supported
+because its worker process cannot participate in FSDP2 collectives.
+
+FSDP2 parameter and gradient summaries also use every rank, while retaining
+ALF's single TensorBoard writer on rank 1. Norms are reduced from shard-local
+sums of squares, and histograms are reduced from shard-local bin counts. These
+summaries represent the full tensors without gathering model parameters onto
+one GPU. DDP summary behavior remains unchanged and is computed and written by
+rank 1 only.
+
 To launch multi-node multi-gpu training, we use torch distributed launch module. The 'local_rank' for each process can be obtained from 'PerProcessContext' class, which can be used to assign gpu for your environment if you wish. For details on how PyTorch assign 'local_rank' and 'ddp_rank', please refer to the [documentation](https://github.com/pytorch/pytorch/blob/main/torch/distributed/launch.py).  To start training, run the following command on the host machine:
 ```bash
 export NCCL_SOCKET_IFNAME=SOCKET # find in ifconfig

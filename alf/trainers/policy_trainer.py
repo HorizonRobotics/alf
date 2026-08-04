@@ -377,11 +377,14 @@ class Trainer(object):
             self._save_checkpoint()
             checkpoint_saved = True
         finally:
+            fsdp2 = getattr(self._algorithm, '_distributed_strategy',
+                            'ddp') == 'fsdp2'
             if (self._config.save_checkpoint_upon_crash
-                    and not checkpoint_saved and self._rank <= 0):
+                    and not checkpoint_saved and self._rank <= 0
+                    and not fsdp2):
                 self._save_checkpoint()
             elif (self._config.confirm_checkpoint_upon_crash
-                  and not checkpoint_saved and self._rank <= 0):
+                  and not checkpoint_saved and self._rank <= 0 and not fsdp2):
                 # Prompts for checkpoint only when running single process
                 # training (rank is -1) or master process of DDP training (rank
                 # is 0).
@@ -516,12 +519,23 @@ class Trainer(object):
         # training (rank is -1) or the master process of DDP training (rank is
         # 0). Other DDP ranks only save their local replay buffers.
         global_step = alf.summary.get_global_counter()
+        from alf.utils.distributed import (fsdp2_full_state_dict,
+                                           is_fsdp2_module)
+        fsdp2 = is_fsdp2_module(self._algorithm)
+        algorithm_state = None
+        if fsdp2:
+            # Full FSDP2 state gathering is collective even though only rank 0
+            # writes the resulting checkpoint.
+            algorithm_state = fsdp2_full_state_dict(self._algorithm)
         if self._rank <= 0:
             # Replay buffers are saved separately below as sharded per-rank
             # source files, so rank 0's full checkpoint only contains model,
             # optimizer, metrics, and trainer progress.
-            self._checkpointer.save(global_step=global_step,
-                                    including_replay_buffer=False)
+            self._checkpointer.save(
+                global_step=global_step,
+                including_replay_buffer=False,
+                state_overrides={'algorithm': algorithm_state}
+                if fsdp2 else None)
         # Every rank writes one sharded replay-buffer source file into the
         # checkpoint directory. Restore will redistribute these files across the
         # active worker count, which may differ from the save-time worker count.
@@ -588,7 +602,8 @@ class RLTrainer(Trainer):
     def __init__(self,
                  config: TrainerConfig,
                  ddp_rank: int = -1,
-                 algorithm_wrapper_ctor: Callable = None):
+                 algorithm_wrapper_ctor: Callable = None,
+                 distributed_strategy: str = 'ddp'):
         """
 
         Args:
@@ -599,6 +614,7 @@ class RLTrainer(Trainer):
                 process training.
             algorithm_wrapper_ctor: if not None, will be used to wrap
                 ``self._algorithm_ctor`` before creating ``self._algorithm``.
+            distributed_strategy: ``'ddp'`` or ``'fsdp2'``.
         """
         super().__init__(config, ddp_rank)
 
@@ -669,12 +685,17 @@ class RLTrainer(Trainer):
         self._algorithm.set_path('')
         if ddp_rank >= 0:
             # Activate the DDP training
-            self._algorithm.activate_ddp(ddp_rank)
+            self._algorithm.activate_ddp(ddp_rank, distributed_strategy)
             # Make sure the BN statistics of different processes are synced
             # https://pytorch.org/docs/stable/generated/torch.nn.SyncBatchNorm.html#torch.nn.SyncBatchNorm
             # This conversion needs to be performed before wrapping modules with DDP.
             self._algorithm = torch.nn.SyncBatchNorm.convert_sync_batchnorm(
                 self._algorithm)
+            if (distributed_strategy == 'fsdp2' and self._evaluate
+                    and self._config.async_eval):
+                raise ValueError(
+                    "FSDP2 requires synchronous evaluation because every "
+                    "rank must participate in parameter all-gathers")
 
         # Create a thread env to expose subprocess gin/alf configurations
         # which otherwise will be marked as "inoperative". Only created when
@@ -728,8 +749,16 @@ class RLTrainer(Trainer):
         else:
             time_to_checkpoint = self._trainer_progress._env_steps + checkpoint_interval
 
+        fsdp2_strategy = (getattr(self._algorithm, '_distributed_strategy',
+                                  'ddp') == 'fsdp2')
         if self._evaluate and iter_num == 0:
-            self._eval()
+            # Before the first distributed training call the FSDP2 performer
+            # does not exist and every rank still owns a full model. Evaluate
+            # only on rank 0, then synchronize before lazy sharding begins.
+            if not fsdp2_strategy or self._rank == 0:
+                self._eval()
+            if fsdp2_strategy:
+                torch.distributed.barrier()
 
         if self._evaluate:
             if self._config.num_evals is None:
@@ -763,7 +792,25 @@ class RLTrainer(Trainer):
             iter_num += 1
             self._trainer_progress.update(iter_num, total_time_steps)
 
-            if self._need_to_evaluate(iter_num):
+            need_to_evaluate = self._need_to_evaluate(iter_num)
+            from alf.utils.distributed import is_fsdp2_module
+            if is_fsdp2_module(self._algorithm):
+                # Broadcast rank 0's decision so every rank enters evaluation
+                # collectives in the same order. The performer root is
+                # unsharded for parameters not owned by nested shard-plan
+                # groups. Every rank then evaluates in lockstep, letting nested
+                # groups gather and reshard one block at a time.
+                evaluate_flag = torch.tensor(int(need_to_evaluate),
+                                             device=alf.get_default_device())
+                torch.distributed.broadcast(evaluate_flag, src=0)
+                if bool(evaluate_flag):
+                    performer = self._algorithm._fsdp2_performer
+                    performer.unshard()
+                    self._eval(distributed=True)
+                    torch.distributed.barrier()
+                    performer.reshard()
+                    self._num_evals_performed += 1
+            elif need_to_evaluate:
                 self._eval()
                 self._num_evals_performed += 1
 
@@ -837,6 +884,11 @@ class RLTrainer(Trainer):
         if not training_started:
             return
 
+        # FSDP2 ranks intentionally hold different parameter shards, so the
+        # replicated-parameter consistency check is not applicable.
+        if getattr(self._algorithm, '_distributed_strategy', 'ddp') == 'fsdp2':
+            return
+
         proc_cxt = PerProcessContext()
         if not (proc_cxt.is_distributed
                 and self._config.ddp_paras_check_interval > 0
@@ -899,10 +951,12 @@ class RLTrainer(Trainer):
 
         super()._restore_checkpoint(checkpointer)
 
-    def _eval(self):
+    def _eval(self, distributed=False):
         step_metrics = self._algorithm.get_step_metrics()
         step_metrics = dict((m.name, int(m.result())) for m in step_metrics)
-        self._evaluator.eval(self._algorithm, step_metrics)
+        self._evaluator.eval(self._algorithm,
+                             step_metrics,
+                             distributed=distributed)
 
 
 class SLTrainer(Trainer):

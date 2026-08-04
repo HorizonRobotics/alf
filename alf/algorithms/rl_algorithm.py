@@ -31,7 +31,8 @@ from alf.data_structures import (AlgStep, Experience, make_experience,
                                  BasicRLInfo)
 from alf.utils import common, dist_utils, summary_utils
 from alf.utils.summary_utils import record_time
-from alf.utils.distributed import data_distributed_when, make_ddp_performer
+from alf.utils.distributed import (data_distributed_when,
+                                   make_distributed_performer)
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
@@ -786,6 +787,12 @@ class RLAlgorithm(Algorithm):
         return steps
 
     def _unroll(self, unroll_length: int):
+        if self._distributed_strategy == 'fsdp2' and self._ddp_activated_rank != -1:
+            # FSDP parameters are sharded between calls, so every off-policy
+            # unroll must run through the FSDP root's gather/reshard hooks.
+            self._first_unroll = False
+            performer = make_distributed_performer(self, self.unroll.__func__)
+            return performer(unroll_length)
         if self._first_unroll:
             self._first_unroll = False
             if self._ddp_activated_rank != -1:
@@ -793,7 +800,8 @@ class RLAlgorithm(Algorithm):
                 # wrap self.unroll in DDP so that the parameters are synchronized across
                 # all workers before the unroll starts. Otherwise, the parameters across
                 # the workers are different for the first unroll.
-                performer = make_ddp_performer(self, self.unroll.__func__)
+                performer = make_distributed_performer(self,
+                                                       self.unroll.__func__)
                 return performer(unroll_length)
 
         return self.unroll(unroll_length)

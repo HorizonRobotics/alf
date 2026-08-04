@@ -19,6 +19,7 @@ import torch.multiprocessing as mp
 import os
 import sys
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from typing import Dict, List, Optional, Union
 
@@ -84,7 +85,10 @@ class Evaluator(object):
                                            seed=seed)
             self._evaluator = SyncEvaluator(self._env, config)
 
-    def eval(self, algorithm: RLAlgorithm, step_metric_values: Dict[str, int]):
+    def eval(self,
+             algorithm: RLAlgorithm,
+             step_metric_values: Dict[str, int],
+             distributed: bool = False):
         """Do one round of evaluation.
 
         If ``config.async_eval`` is True, this function will return once the
@@ -104,6 +108,10 @@ class Evaluator(object):
         with alf.summary.record_if(lambda: True):
             with record_time("time/evaluation"):
                 if self._async:
+                    if distributed:
+                        raise RuntimeError(
+                            "Distributed evaluation cannot run in an async "
+                            "evaluator process")
                     job = EvalJob(type="eval",
                                   step_metrics=step_metric_values,
                                   global_counter=int(
@@ -114,7 +122,9 @@ class Evaluator(object):
                     self._done_queue.get()
                     logging.info("Done sending evaluation job.")
                 else:
-                    self._evaluator.eval(algorithm, step_metric_values)
+                    self._evaluator.eval(algorithm,
+                                         step_metric_values,
+                                         distributed=distributed)
 
     def close(self):
         """Stop the ongoing evaluation and close the evaluator."""
@@ -208,7 +218,8 @@ class SyncEvaluator(object):
     def eval(self,
              algorithm: RLAlgorithm,
              step_metric_values: Dict[str, int],
-             job_queue: Optional[PeekableQueue] = None):
+             job_queue: Optional[PeekableQueue] = None,
+             distributed: bool = False):
         """Do one round of evaluation.
 
         This function will return after finishing the evaluation.
@@ -226,30 +237,39 @@ class SyncEvaluator(object):
                 job from the main process, it will stop the evaluation and
                 return immediately.
         """
-        with alf.summary.push_summary_writer(self._summary_writer):
-            logging.info("Start evaluation")
-            metrics = evaluate(self._env, algorithm,
-                               self._config.num_eval_episodes,
-                               self._config.num_eval_steps, job_queue)
-            if metrics is None:
-                return
-            common.log_metrics(metrics)
-            for metric in metrics:
-                metric.gen_summaries(
-                    train_step=alf.summary.get_global_counter(),
-                    other_steps=step_metric_values)
-            if (self._config.save_checkpoint_for_best_eval is not None
-                    and self._config.save_checkpoint_for_best_eval(metrics)):
-                logging.info("Saving the best checkpoint")
-                checkpointer = Checkpointer(
-                    ckpt_dir=os.path.join(self._config.root_dir, 'train',
-                                          'algorithm'),
-                    algorithm=algorithm,
-                    metrics=nn.ModuleList(algorithm.get_metrics()),
-                    trainer_progress=policy_trainer.Trainer.
-                    get_trainer_progress())
+        record_summaries = (not distributed or not dist.is_initialized()
+                            or dist.get_rank() == 0)
+        with alf.summary.record_if(lambda: record_summaries):
+            with alf.summary.push_summary_writer(self._summary_writer):
+                logging.info("Start evaluation")
+                metrics = evaluate(self._env, algorithm,
+                                   self._config.num_eval_episodes,
+                                   self._config.num_eval_steps, job_queue,
+                                   distributed)
+                if metrics is None:
+                    return
+                common.log_metrics(metrics)
+                for metric in metrics:
+                    metric.gen_summaries(
+                        train_step=alf.summary.get_global_counter(),
+                        other_steps=step_metric_values)
+                if (distributed and self._config.save_checkpoint_for_best_eval
+                        is not None):
+                    logging.warning(
+                        "save_checkpoint_for_best_eval is currently disabled "
+                        "during distributed FSDP2 evaluation")
+                elif (self._config.save_checkpoint_for_best_eval is not None
+                      and self._config.save_checkpoint_for_best_eval(metrics)):
+                    logging.info("Saving the best checkpoint")
+                    checkpointer = Checkpointer(
+                        ckpt_dir=os.path.join(self._config.root_dir, 'train',
+                                              'algorithm'),
+                        algorithm=algorithm,
+                        metrics=nn.ModuleList(algorithm.get_metrics()),
+                        trainer_progress=policy_trainer.Trainer.
+                        get_trainer_progress())
 
-                checkpointer.save(alf.summary.get_global_counter(), 'best')
+                    checkpointer.save(alf.summary.get_global_counter(), 'best')
 
 
 class BestEvalChecker(object):
@@ -384,14 +404,34 @@ def _worker(job_queue: mp.Queue,
         logging.exception(f'{mp.current_process().name} - {e}')
 
 
+def _merge_distributed_metrics(metrics, episode_limit):
+    """Merge completed episodic metric buffers onto rank 0."""
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    for metric in metrics:
+        buffers = getattr(metric, '_buffer', ())
+        for buffer in alf.nest.flatten(buffers):
+            size = min(int(buffer._current_pos), buffer._max_len)
+            if episode_limit is not None:
+                size = min(size, episode_limit)
+            values = buffer._buf[:size].detach().cpu()
+            gathered = [None] * world_size
+            dist.all_gather_object(gathered, values)
+            if rank == 0:
+                buffer.clear()
+                nonempty = [value for value in gathered if value.numel()]
+                if nonempty:
+                    buffer.append(torch.cat(nonempty))
+    return metrics if rank == 0 else None
+
+
 @common.mark_eval
-def evaluate(
-        env: AlfEnvironment,
-        algorithm: RLAlgorithm,
-        num_episodes: int,
-        num_steps: Union[int, Scheduler] = 0,
-        job_queue: Optional[PeekableQueue] = None
-) -> List[alf.metrics.StepMetric]:
+def evaluate(env: AlfEnvironment,
+             algorithm: RLAlgorithm,
+             num_episodes: int,
+             num_steps: Union[int, Scheduler] = 0,
+             job_queue: Optional[PeekableQueue] = None,
+             distributed: bool = False) -> List[alf.metrics.StepMetric]:
     """Perform one round of evaluation.
 
     Args:
@@ -403,6 +443,8 @@ def evaluate(
             process. If during the evaluation, the worker receives a "stop"
             job from the main process, it will stop the evaluation and
             return immediately.
+        distributed: whether all ranks evaluate in lockstep. Work is divided
+            across ranks, and rank 0 receives the merged episodic metrics.
     Returns:
         a list of metrics from the evaluation
     """
@@ -430,13 +472,18 @@ def evaluate(
                                         buffer_size=buffer_size),
     ]
 
+    distributed = distributed and dist.is_initialized()
+    rank = dist.get_rank() if distributed else 0
+    world_size = dist.get_world_size() if distributed else 1
     counter = 0
     if num_episodes > 0:
         # episode eval mode
         episode_mode = True
-        episodes_per_env = (num_episodes + batch_size - 1) // batch_size
+        local_total = num_episodes // world_size + int(rank < num_episodes %
+                                                       world_size)
+        episodes_per_env = (local_total + batch_size - 1) // batch_size
         env_episodes = torch.zeros(batch_size, dtype=torch.int32)
-        total_num = num_episodes
+        total_num = local_total
     else:
         episode_mode = False
         num_steps = as_scheduler(num_steps)
@@ -444,18 +491,35 @@ def evaluate(
         assert num_eval_steps > 0
         # adjust the ``num_eval_steps`` so that all the envs will have the same number of steps
         num_eval_steps = math.ceil(num_eval_steps / batch_size) * batch_size
-        total_num = num_eval_steps
+        if distributed:
+            num_batches = num_eval_steps // batch_size
+            local_batches = num_batches // world_size + int(
+                rank < num_batches % world_size)
+            total_num = local_batches * batch_size
+        else:
+            total_num = num_eval_steps
 
     time_step = common.get_initial_time_step(env)
 
-    while counter < total_num:
+    while True:
+        local_active = counter < total_num
+        if distributed:
+            active = torch.tensor(int(local_active),
+                                  device=alf.get_default_device())
+            dist.all_reduce(active, op=dist.ReduceOp.MAX)
+            if not bool(active):
+                break
+        elif not local_active:
+            break
+
         if episode_mode:
             # For parallel play, we cannot naively pick the first finished `num_episodes`
             # episodes to estimate the average return (or other statistics) as it can be
             # biased towards short episodes. Instead, we stick to using the first
             # episodes_per_env episodes from each environment to calculate the
             # statistics and ignore the potentially extra episodes from each environment.
-            invalid = env_episodes >= episodes_per_env
+            invalid = (env_episodes >= episodes_per_env if local_active else
+                       torch.ones(batch_size, dtype=torch.bool))
             # Force the step_type of the extra episodes to be StepType.FIRST so that
             # these time steps do not affect metrics as the metrics are only updated
             # at StepType.LAST. The metric computation uses cpu version of time_step.
@@ -473,16 +537,16 @@ def evaluate(
             time_step=time_step,
             policy_state=policy_state,
             trans_state=trans_state,
-            metrics=metrics)
+            metrics=metrics if local_active else [])
 
-        if episode_mode:
+        if episode_mode and local_active:
             time_step.step_type[invalid] = StepType.FIRST
 
             for i in range(batch_size):
                 if time_step.step_type[i] == StepType.LAST:
                     env_episodes[i] += 1
                     counter += 1
-        else:
+        elif local_active:
             counter += batch_size
 
         policy_state = policy_step.state
@@ -493,4 +557,7 @@ def evaluate(
                 logging.info("Received stop signal. Aborting evaluation.")
                 return None
     env.reset()
+    if distributed:
+        return _merge_distributed_metrics(metrics,
+                                          total_num if episode_mode else None)
     return metrics
