@@ -44,6 +44,7 @@ class TrainerConfig(object):
                  mask_out_loss_for_last_step=True,
                  sync_progress_to_envs=False,
                  num_checkpoints=10,
+                 checkpoint_start_iteration=0,
                  confirm_checkpoint_upon_crash=True,
                  save_checkpoint_upon_crash=False,
                  no_thread_env_for_conf=False,
@@ -84,6 +85,8 @@ class TrainerConfig(object):
                  priority_replay_alpha=0.7,
                  priority_replay_beta=0.4,
                  priority_replay_eps=1e-6,
+                 use_offline_buffer=False,
+                 offline_training_iters=0,
                  offline_buffer_dir=None,
                  offline_buffer_length=None,
                  offline_loss_weight=1.0,
@@ -211,6 +214,9 @@ class TrainerConfig(object):
                 needs to be synced with the main in order to use schedulers in
                 the environment.
             num_checkpoints (int): how many checkpoints to save for the training
+            checkpoint_start_iteration (int): do not save checkpoints before
+                this training iteration. This only applies when ``num_iterations``
+                is used as the termination criterion.
             confirm_checkpoint_upon_crash (bool): whether to prompt for whether
                 do checkpointing after crash.
             save_checkpoint_upon_crash (bool): whether to do checkpointing after
@@ -322,6 +328,13 @@ class TrainerConfig(object):
                 This is only useful if ``prioritized_sampling`` is enabled for
                 ``ReplayBuffer``.
             priority_replay_eps (float): minimum priority for priority replay.
+            use_offline_buffer (bool): if True, freeze the replay collected
+                before ``offline_training_iters`` as an offline replay buffer,
+                start a fresh online replay buffer at that iteration, and train
+                from an equal mixture of the two buffers thereafter.
+            offline_training_iters (int): iteration at which to freeze the
+                initially collected replay buffer. Only used when
+                ``use_offline_buffer`` is True.
             offline_buffer_dir (str|[str]): path to the offline replay buffer
                 checkpoint to be loaded. Has several scenarios:
                 - If a single string is provided and that path is to a replay buffer,
@@ -381,6 +394,22 @@ class TrainerConfig(object):
             assert priority_replay_beta >= 0.0, (
                 "importance_weight_beta should be non-negative")
         assert ml_type in ('rl', 'sl')
+        assert checkpoint_start_iteration >= 0, (
+            "checkpoint_start_iteration should be non-negative")
+        assert offline_training_iters >= 0, (
+            "offline_training_iters should be non-negative")
+        assert not (use_offline_buffer and offline_buffer_dir), (
+            "use_offline_buffer and offline_buffer_dir are mutually exclusive")
+        assert not (use_offline_buffer and async_unroll), (
+            "use_offline_buffer does not support async_unroll")
+        assert not (use_offline_buffer and whole_replay_buffer_training), (
+            "use_offline_buffer does not support whole_replay_buffer_training")
+        if use_offline_buffer:
+            assert num_iterations > 0, (
+                "use_offline_buffer requires iteration-based training")
+            assert 0 < offline_training_iters < num_iterations, (
+                "offline_training_iters must be between 0 and num_iterations "
+                "when use_offline_buffer is enabled")
         self.root_dir = root_dir
         self.conf_file = conf_file
         self.ml_type = ml_type
@@ -418,6 +447,7 @@ class TrainerConfig(object):
         self.temporally_independent_train_step = temporally_independent_train_step
         self.sync_progress_to_envs = sync_progress_to_envs
         self.num_checkpoints = num_checkpoints
+        self.checkpoint_start_iteration = checkpoint_start_iteration
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
         self.save_checkpoint_upon_crash = save_checkpoint_upon_crash
         self.no_thread_env_for_conf = no_thread_env_for_conf
@@ -461,6 +491,8 @@ class TrainerConfig(object):
         self.priority_replay_beta = as_scheduler(priority_replay_beta)
         self.priority_replay_eps = priority_replay_eps
         # offline options
+        self.use_offline_buffer = use_offline_buffer
+        self.offline_training_iters = offline_training_iters
         self.offline_buffer_dir = offline_buffer_dir
         self.offline_buffer_length = offline_buffer_length
         self.offline_loss_weight = as_scheduler(offline_loss_weight)

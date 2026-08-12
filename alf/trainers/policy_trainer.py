@@ -276,6 +276,7 @@ class Trainer(object):
         self._algorithm = None
 
         self._num_checkpoints = config.num_checkpoints
+        self._checkpoint_start_iteration = config.checkpoint_start_iteration
         self._checkpointer = None
 
         self._evaluate = config.evaluate
@@ -512,6 +513,15 @@ class Trainer(object):
         request.send_text("Evaluation requested")
 
     def _save_checkpoint(self):
+        current_iteration = int(self.current_iterations())
+        if (self._checkpoint_start_iteration > 0
+                and current_iteration < self._checkpoint_start_iteration):
+            logging.info(
+                "Skipping checkpoint at iteration %s before checkpoint start "
+                "iteration %s", current_iteration,
+                self._checkpoint_start_iteration)
+            return
+
         # Full checkpoint saving is only enabled when running single process
         # training (rank is -1) or the master process of DDP training (rank is
         # 0). Other DDP ranks only save their local replay buffers.
@@ -724,7 +734,10 @@ class RLTrainer(Trainer):
             self._num_checkpoints)
 
         if self._num_iterations:
-            time_to_checkpoint = self._trainer_progress._iter_num + checkpoint_interval
+            if iter_num < self._checkpoint_start_iteration:
+                time_to_checkpoint = self._checkpoint_start_iteration
+            else:
+                time_to_checkpoint = iter_num + checkpoint_interval
         else:
             time_to_checkpoint = self._trainer_progress._env_steps + checkpoint_interval
 

@@ -31,6 +31,7 @@ from alf.data_structures import (AlgStep, Experience, make_experience,
                                  BasicRLInfo)
 from alf.utils import common, dist_utils, summary_utils
 from alf.utils.summary_utils import record_time
+from alf.utils.schedulers import get_progress
 from alf.utils.distributed import data_distributed_when, make_ddp_performer
 from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
@@ -302,6 +303,38 @@ class RLAlgorithm(Algorithm):
         self._remaining_unroll_length_fraction = 0
         self._ensure_rollout_summary = alf.summary.EnsureSummary()
         self._offline_replay_buffer = None
+
+    def _maybe_activate_collected_offline_buffer(self):
+        """Freeze initial replay at the configured online-training boundary."""
+        config = self._config
+        if (not config.use_offline_buffer or self._replay_buffer is None
+                or get_progress("iterations") < config.offline_training_iters):
+            return
+
+        # A populated offline buffer means this split was restored from a
+        # checkpoint. In that case, only the runtime hybrid-training flag needs
+        # to be restored; moving the online buffer again would lose its data.
+        if (self._offline_replay_buffer is not None
+                and self._offline_replay_buffer.total_size > 0):
+            self._has_offline = True
+            return
+
+        if self._replay_buffer.total_size == 0:
+            return
+
+        exp_spec = self._replay_buffer.data_spec
+        self._offline_replay_buffer = self._replay_buffer
+        self._offline_replay_buffer._alf_collected_offline_buffer = True
+        self._offline_experience_spec = self._experience_spec
+        self._replay_buffer = self._create_replay_buffer(
+            exp_spec, f'{self._name}_replay_buffer',
+            getattr(self, '_replay_buffer_mp_context', None))
+        self._has_offline = True
+        logging.info(
+            "Froze %s collected samples as offline replay at iteration %s; "
+            "online replay now starts empty.",
+            int(self._offline_replay_buffer.total_size),
+            int(get_progress("iterations")))
 
     def is_rl(self):
         """Always return True for RLAlgorithm."""
@@ -812,6 +845,10 @@ class RLAlgorithm(Algorithm):
 
         if not config.update_counter_every_mini_batch:
             alf.summary.increment_global_counter()
+
+        # This must happen before resolving and performing this iteration's
+        # unroll so the boundary iteration's rollout enters the online buffer.
+        self._maybe_activate_collected_offline_buffer()
 
         requested_unroll_length = config.unroll_length
         unroll_length = (self._remaining_unroll_length_fraction +

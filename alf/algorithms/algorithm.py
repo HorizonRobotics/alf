@@ -389,6 +389,16 @@ class Algorithm(AlgorithmInterface):
         self._replay_buffer_max_length = max_length
         self._prioritized_sampling = prioritized_sampling
 
+    def _create_replay_buffer(self, exp_spec, name, mp_context=None):
+        return ReplayBuffer(
+            data_spec=exp_spec,
+            num_environments=self._replay_buffer_num_envs,
+            max_length=self._replay_buffer_max_length,
+            prioritized_sampling=self._prioritized_sampling,
+            num_earliest_frames_ignored=self._num_earliest_frames_ignored,
+            mp_context=mp_context,
+            name=name)
+
     def _set_replay_buffer(self, sample_exp, mp_context=None):
         """Initialize the replay buffer for the very first time given a
         sample experience which is used to infer the specs for the buffer
@@ -416,14 +426,18 @@ class Algorithm(AlgorithmInterface):
                                         is not None)
 
         exp_spec = dist_utils.to_distribution_param_spec(self._experience_spec)
-        self._replay_buffer = ReplayBuffer(
-            data_spec=exp_spec,
-            num_environments=self._replay_buffer_num_envs,
-            max_length=self._replay_buffer_max_length,
-            prioritized_sampling=self._prioritized_sampling,
-            num_earliest_frames_ignored=self._num_earliest_frames_ignored,
-            mp_context=mp_context,
-            name=f'{self._name}_replay_buffer')
+        self._replay_buffer = self._create_replay_buffer(
+            exp_spec, f'{self._name}_replay_buffer', mp_context)
+        self._replay_buffer_mp_context = mp_context
+
+        # Construct this lazily alongside the online buffer so that it exists
+        # before checkpoint restoration. It remains empty and inactive until
+        # the offline/online boundary is reached.
+        if self._config and self._config.use_offline_buffer:
+            self._offline_replay_buffer = self._create_replay_buffer(
+                exp_spec, f'{self._name}_offline_replay_buffer', mp_context)
+            self._offline_replay_buffer._alf_collected_offline_buffer = True
+            self._offline_experience_spec = self._experience_spec
         self._observers.append(lambda exp: self._replay_buffer.add_batch(
             exp, exp.env_id))
 
@@ -1499,6 +1513,12 @@ class Algorithm(AlgorithmInterface):
         """
         config: TrainerConfig = self._config
 
+        # In collected-buffer (RLPD) mode, iteration 0 only creates the fixed
+        # dataset. Do not perform an offline-only optimizer update before the
+        # boundary activates the 50/50 offline/online training path.
+        if config.use_offline_buffer and not self.has_offline:
+            return 0
+
         # returns 0 if haven't started training yet, when ``_replay_buffer`` is
         # not None and the number of samples in the buffer is less than
         # ``initial_collect_steps``; throughput will be 0 in this phase.
@@ -1506,8 +1526,8 @@ class Algorithm(AlgorithmInterface):
         # required here since in the case of offline pre-training when online RL
         # training is not started yet, ``_replay_buffer`` will be None since it
         # is only lazily created later when online RL training started.
-        if (self._replay_buffer and self._replay_buffer.total_size
-                < config.initial_collect_steps):
+        if (not self.has_offline and self._replay_buffer and
+                self._replay_buffer.total_size < config.initial_collect_steps):
 
             if self._replay_buffer.num_environments * self._replay_buffer.max_length < config.initial_collect_steps:
                 common.warning_once(
@@ -1518,13 +1538,15 @@ class Algorithm(AlgorithmInterface):
                     f"the initial_collect_steps.")
             return 0
 
-        def _replay():
+        def _replay(override_mini_batch_size=None):
             # a local function to sample batch of experience from the
             # ``_replay_buffer`` for training.
             # TODO: If this function can be called asynchronously, and using
             # prioritized replay, then make sure replay and train below is atomic.
             with record_time("time/replay"):
-                mini_batch_size = config.mini_batch_size
+                mini_batch_size = override_mini_batch_size
+                if mini_batch_size is None:
+                    mini_batch_size = config.mini_batch_size
                 if mini_batch_size is None:
                     mini_batch_size = self._replay_buffer.num_environments
                 if config.whole_replay_buffer_training:
@@ -1557,6 +1579,18 @@ class Algorithm(AlgorithmInterface):
                     whole_replay_buffer_training)
         else:
             # hybrid training scheme
+            hybrid_loss_scale = None
+            hybrid_mini_batch_size = config.mini_batch_size
+            if config.use_offline_buffer:
+                total_mini_batch_size = hybrid_mini_batch_size
+                if total_mini_batch_size is None:
+                    total_mini_batch_size = self._replay_buffer.num_environments
+                assert total_mini_batch_size % 2 == 0, (
+                    "mini_batch_size must be even for a 50/50 offline/online "
+                    "replay mixture")
+                hybrid_mini_batch_size = total_mini_batch_size // 2
+                hybrid_loss_scale = 0.5
+
             global_step = alf.summary.get_global_counter()
             if ((global_step >= self._rl_train_after_update_steps) and
                 (global_step % self._rl_train_every_update_steps == 0)):
@@ -1572,12 +1606,12 @@ class Algorithm(AlgorithmInterface):
 
             if self._RL_train:
                 experience, batch_info, num_updates, mini_batch_size = _replay(
-                )
+                    hybrid_mini_batch_size)
             else:
                 experience = None
                 batch_info = None
                 num_updates = 1
-                mini_batch_size = config.mini_batch_size
+                mini_batch_size = hybrid_mini_batch_size
 
             with record_time("time/offline_replay"):
                 offline_experience, offline_batch_info = self._offline_replay_buffer.get_batch(
@@ -1591,7 +1625,7 @@ class Algorithm(AlgorithmInterface):
                     offline_batch_info, num_updates, mini_batch_size,
                     config.mini_batch_length,
                     (config.update_counter_every_mini_batch
-                     and update_global_counter))
+                     and update_global_counter), hybrid_loss_scale)
 
     def _train_experience(self,
                           experience,
@@ -2031,11 +2065,16 @@ class Algorithm(AlgorithmInterface):
 
         return mini_batch_list, mini_batch_info_list
 
-    def _train_hybrid_experience(self, experience, batch_info,
-                                 offline_experience, offline_batch_info,
-                                 num_updates, mini_batch_size,
+    def _train_hybrid_experience(self,
+                                 experience,
+                                 batch_info,
+                                 offline_experience,
+                                 offline_batch_info,
+                                 num_updates,
+                                 mini_batch_size,
                                  mini_batch_length,
-                                 update_counter_every_mini_batch):
+                                 update_counter_every_mini_batch,
+                                 loss_scale=None):
         """Train using both experience (if available) and offline_experience.
         We assume that experience can be None.
         """
@@ -2060,6 +2099,7 @@ class Algorithm(AlgorithmInterface):
                  self._offline_replay_buffer)
 
         indices = None
+        grad_step = 0
         for u in range(num_updates):
             if mini_batch_size < batch_size:
                 # here we use the cpu version of torch.randperm(n) to generate
@@ -2071,6 +2111,8 @@ class Algorithm(AlgorithmInterface):
                     torch.randperm(batch_size, device='cpu'))
 
             for b in range(0, batch_size, mini_batch_size):
+                alf.summary.set_grad_step_counter(grad_step)
+                grad_step += 1
 
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)
@@ -2098,8 +2140,9 @@ class Algorithm(AlgorithmInterface):
                          binfo,
                          offline_batch,
                          offline_binfo,
-                         weight=alf.nest.get_nest_size(offline_batch, 1) /
-                         mini_batch_size)
+                         weight=(loss_scale if loss_scale is not None else
+                                 alf.nest.get_nest_size(offline_batch, 1) /
+                                 mini_batch_size))
                     if do_summary:
                         if exp:
                             self.summarize_train(exp, train_info, loss_info,
@@ -2173,9 +2216,10 @@ class Algorithm(AlgorithmInterface):
                 loss=offline_loss_info.loss *
                 self._config.offline_loss_weight())
 
-            # If the weight becomes 0, we'll switch from hybrid to online
-            # updates and release the offline buffer
-            if offline_loss_weight == 0:
+            # Disk-loaded offline buffers can be released when their weight
+            # reaches zero. A collected fixed buffer must remain checkpointable.
+            if (offline_loss_weight == 0
+                    and not self._config.use_offline_buffer):
                 self._has_offline = False
                 self._offline_replay_buffer = None
 

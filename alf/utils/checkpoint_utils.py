@@ -397,8 +397,12 @@ class Checkpointer(object):
         if not isinstance(module, nn.Module):
             return
         for path, child in module.named_modules():
+            is_collected_offline = getattr(child,
+                                           "_alf_collected_offline_buffer",
+                                           False)
             if (child.__class__.__name__ == "ReplayBuffer"
-                    and not Checkpointer._is_offline_replay_buffer_path(path)):
+                    and (not Checkpointer._is_offline_replay_buffer_path(path)
+                         or is_collected_offline)):
                 yield path, child
 
     @staticmethod

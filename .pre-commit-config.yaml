@@ -55,4 +55,4 @@ repos:
     rev: v2.3.0
     hooks:
       - id: codespell
-        args: [ "--skip", "*.hook", "--ignore-words-list", "ans,nd,Bu,astroid,hart" ]
+        args: [ "--skip", "*.hook", "--ignore-words-list", "ans,nd,Bu,astroid,hart,assertIn" ]
