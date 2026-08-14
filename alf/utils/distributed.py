@@ -96,7 +96,8 @@ class _MethodPerformer(torch.nn.Module):
     def __init__(self,
                  module: torch.nn.Module,
                  perform: Callable[..., Any],
-                 prepare_for_ddp: bool = True):
+                 prepare_for_ddp: bool = True,
+                 clone_view_outputs: bool = False):
         """Constructs a _MethodPerformer.
 
         Args:
@@ -111,12 +112,15 @@ class _MethodPerformer(torch.nn.Module):
             prepare_for_ddp: inspect the state dict for values DDP must ignore.
                 FSDP2 must skip this because ALF's state dict lazily initializes
                 optimizers, which must happen after parameters are sharded.
+            clone_view_outputs: clone gradient-bearing view outputs so downstream
+                in-place operations cannot remove FSDP2's pre-backward hooks.
 
         """
         super().__init__()
 
         self._wrapped_module = module  # Register and inherit the parameters
         self._perform = functools.partial(perform, self._wrapped_module)
+        self._clone_view_outputs = clone_view_outputs
 
         # DDP will panic if the wrapped module has member in its state_dict()
         # that is not a Tensor. Here such state_dict members are picked and
@@ -155,7 +159,13 @@ class _MethodPerformer(torch.nn.Module):
         # are not within the optimizer can be added to ignore list.
 
     def forward(self, *args, **kwargs):
-        return self._perform(*args, **kwargs)
+        output = self._perform(*args, **kwargs)
+        if self._clone_view_outputs:
+            output = alf.nest.map_structure(
+                lambda x: x.clone()
+                if isinstance(x, torch.Tensor) and x.requires_grad and x._base is not None else x,
+                output)
+        return output
 
     def set_method(self, perform: Callable[..., Any]):
         """Change the method dispatched by :meth:`forward`.
@@ -267,7 +277,8 @@ def make_fsdp2_performer(
 
     performer = _MethodPerformer(module=module,
                                  perform=method,
-                                 prepare_for_ddp=False)
+                                 prepare_for_ddp=False,
+                                 clone_view_outputs=True)
     parameters_before_sharding = {
         parameter: name
         for name, parameter in module.named_parameters()

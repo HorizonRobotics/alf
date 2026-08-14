@@ -210,8 +210,7 @@ def global_norm(tensors):
         return torch.zeros((), dtype=torch.float32)
     return torch.sqrt(
         sum([
-            math_ops.square(torch.norm(torch.reshape(t, [-1])))
-            for t in tensors
+            math_ops.square(torch.norm(t)) for t in tensors
         ]))
 
 
