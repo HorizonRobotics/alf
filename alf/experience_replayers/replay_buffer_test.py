@@ -21,6 +21,7 @@ import torch
 import alf
 from alf import data_structures as ds
 from alf.utils.data_buffer import RingBuffer
+from alf.utils import schedulers
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.algorithms.data_transformer import HindsightExperienceTransformer
 
@@ -479,6 +480,29 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(
             info.positions[:16],
             torch.tensor([28] * 4 + [29] * 4 + [30] * 4 + [31] * 4))
+
+    def test_recent_data_ratio_schedule(self):
+        self.addCleanup(schedulers.update_progress, "iterations",
+                        schedulers.get_progress("iterations"))
+        replay_buffer = ReplayBuffer(
+            data_spec=self.data_spec,
+            num_environments=1,
+            max_length=101,
+            recent_data_ratio=schedulers.StepScheduler(
+                "iterations", [(50, 0.0), (51, 0.5)]),
+            recent_data_steps=10)
+        for t in range(101):
+            replay_buffer.add_batch(get_exp_batch([0], self.dim, t=t, x=t))
+
+        # Progress is the number of completed iterations.
+        schedulers.update_progress("iterations", 49)
+        _, info = replay_buffer.get_batch(100, 2)
+        self.assertEqual(info.positions, torch.arange(100))
+
+        schedulers.update_progress("iterations", 50)
+        _, info = replay_buffer.get_batch(100, 2)
+        self.assertTrue((info.positions[:50] >= 90).all())
+        self.assertEqual((info.positions >= 90).sum(), 55)
 
     def test_num_earliest_frames_ignored_uniform(self):
         num_envs = 4

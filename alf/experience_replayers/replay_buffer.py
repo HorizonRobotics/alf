@@ -26,6 +26,7 @@ from alf.nest.utils import convert_device
 from alf.utils.common import warning_once
 from alf.utils.data_buffer import atomic, RingBuffer
 from alf.utils import checkpoint_utils
+from alf.utils.schedulers import as_scheduler
 
 from .segment_tree import SumSegmentTree, MaxSegmentTree
 
@@ -90,8 +91,9 @@ class ReplayBuffer(RingBuffer):
             recent_data_steps (int): the most recent so many steps of data is
                 considered as recent data for ``get_batch()``. Note that this
                 quantity is per environment.
-            recent_data_ratio (float): ``recent_data_ratio * batch_size`` samples
-                in the batch are sampled from recent data for ``get_batch()``.
+            recent_data_ratio (float|Scheduler): ``recent_data_ratio * batch_size``
+                samples in the batch are sampled from recent data for
+                ``get_batch()``. Schedules are evaluated for each batch.
             with_replacement (bool): If False, sample without replacement whenever
                 poissible for ``get_batch()``. If True, a batch may contains
                 duplicated samples.
@@ -161,7 +163,7 @@ class ReplayBuffer(RingBuffer):
         self._gamma = gamma
         self._reward_clip = reward_clip
         self._recent_data_steps = recent_data_steps
-        self._recent_data_ratio = recent_data_ratio
+        self._recent_data_ratio = as_scheduler(recent_data_ratio)
         self._with_replacement = with_replacement
         if self._keep_episodic_info:
             # _indexed_pos records for each timestep of experience in the
@@ -394,17 +396,17 @@ class ReplayBuffer(RingBuffer):
         """
         with alf.device(self._device):
             recent_batch_size = 0
-            if self._recent_data_ratio > 0:
+            recent_data_ratio = self._recent_data_ratio()
+            if recent_data_ratio > 0:
                 d = batch_length - 1 + self._num_earliest_frames_ignored
                 avg_size = self.total_size / float(self._num_envs) - d
-                if (avg_size * self._recent_data_ratio
-                        > self._recent_data_steps):
+                if avg_size * recent_data_ratio > self._recent_data_steps:
                     # If this condition is False, regular sampling without considering
                     # recent data will get enough samples from recent data. So
                     # we don't need to have a separate step just for sampling from
                     # the recent data.
                     recent_batch_size = math.ceil(batch_size *
-                                                  self._recent_data_ratio)
+                                                  recent_data_ratio)
 
             normal_batch_size = batch_size - recent_batch_size
             if self._prioritized_sampling:
