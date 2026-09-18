@@ -366,6 +366,15 @@ class Checkpointer(object):
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
         return os.path.isfile(f_path)
 
+    def has_replay_buffer_checkpoint(self, global_step="latest"):
+        if global_step == "latest":
+            global_step = self._get_latest_checkpoint_step()
+            if global_step is None:
+                return False
+        f_path = os.path.join(
+            self._ckpt_dir, "ckpt-{0}-replay_buffer".format(global_step))
+        return os.path.exists(f_path)
+
     @staticmethod
     def _separate_state(state):
         model_state = {}

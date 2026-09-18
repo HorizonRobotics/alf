@@ -44,6 +44,7 @@ class TrainerConfig(object):
                  mask_out_loss_for_last_step=True,
                  sync_progress_to_envs=False,
                  num_checkpoints=10,
+                 reset_trainer_progress: bool = False,
                  confirm_checkpoint_upon_crash=True,
                  save_checkpoint_upon_crash=False,
                  no_thread_env_for_conf=False,
@@ -211,6 +212,9 @@ class TrainerConfig(object):
                 needs to be synced with the main in order to use schedulers in
                 the environment.
             num_checkpoints (int): how many checkpoints to save for the training
+            reset_trainer_progress: whether to reset trainer progress, step
+                metrics, and the summary global counter after loading a
+                checkpoint.
             confirm_checkpoint_upon_crash (bool): whether to prompt for whether
                 do checkpointing after crash.
             save_checkpoint_upon_crash (bool): whether to do checkpointing after
@@ -418,6 +422,7 @@ class TrainerConfig(object):
         self.temporally_independent_train_step = temporally_independent_train_step
         self.sync_progress_to_envs = sync_progress_to_envs
         self.num_checkpoints = num_checkpoints
+        self.reset_trainer_progress = reset_trainer_progress
         self.confirm_checkpoint_upon_crash = confirm_checkpoint_upon_crash
         self.save_checkpoint_upon_crash = save_checkpoint_upon_crash
         self.no_thread_env_for_conf = no_thread_env_for_conf

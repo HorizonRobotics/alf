@@ -14,12 +14,15 @@
 
 import functools
 import tempfile
+from unittest import mock
+
 import torch
 
 import alf
 from alf.algorithms.hypernetwork_algorithm import HyperNetwork
 from alf.algorithms.rl_algorithm_test import MyEnv, MyAlg
-from alf.trainers.policy_trainer import RLTrainer, TrainerConfig, play
+from alf.trainers.policy_trainer import (RLTrainer, Trainer, TrainerConfig,
+                                         TrainerProgress, play)
 from alf.trainers.policy_trainer import SLTrainer
 from alf.utils import common, datagen
 
@@ -32,6 +35,44 @@ env_load.batched = True
 
 
 class TrainerTest(alf.test.TestCase):
+
+    def test_reset_progress_loads_before_first_train_iter(self):
+        progress = TrainerProgress()
+        progress.set_termination_criterion(num_iterations=100)
+        metric = mock.Mock()
+        algorithm = mock.Mock(loaded=False)
+        algorithm.is_rl.return_value = True
+        algorithm.get_metrics.return_value = [metric]
+        algorithm.train_iter.side_effect = lambda: self.assertTrue(
+            algorithm.loaded)
+
+        def load(**kwargs):
+            algorithm.loaded = True
+            progress._iter_num.fill_(50)
+            progress._env_steps.fill_(1000)
+            return 50
+
+        checkpointer = mock.Mock()
+        checkpointer.has_checkpoint.return_value = True
+        checkpointer.has_replay_buffer_checkpoint.return_value = False
+        checkpointer.load.side_effect = load
+        trainer = Trainer.__new__(Trainer)
+        trainer._algorithm = algorithm
+        trainer._config = mock.Mock(reset_trainer_progress=True)
+        trainer._trainer_progress = progress
+        trainer._rank = -1
+        trainer._root_dir = ""
+
+        trainer._restore_checkpoint(checkpointer)
+
+        self.assertEqual(int(progress._iter_num), 0)
+        self.assertEqual(int(progress._env_steps), 0)
+        self.assertEqual(alf.summary.get_global_counter(), 0)
+        metric.reset.assert_called_once()
+        algorithm.train_iter.assert_not_called()
+
+        algorithm.train_iter()
+        algorithm.train_iter.assert_called_once()
 
     def test_rl_trainer(self):
         with tempfile.TemporaryDirectory() as root_dir:

@@ -568,10 +568,12 @@ class Trainer(object):
             Args:
                 checkpointer (Checkpointer):
         """
-        if checkpointer.has_checkpoint():
+        has_checkpoint = checkpointer.has_checkpoint()
+        if has_checkpoint and checkpointer.has_replay_buffer_checkpoint():
             # Some objects (e.g. ReplayBuffer) are constructed lazily in algorithm.
             # They only appear after one training iteration. So we need to run
-            # train_iter() once before loading the checkpoint
+            # train_iter() once before loading a saved replay buffer. The dummy
+            # data are replaced by the replay buffer checkpoint during loading.
             self._algorithm.train_iter()
         try:
             context = PerProcessContext()
@@ -581,7 +583,15 @@ class Trainer(object):
             recovered_global_step = checkpointer.load(
                 replay_buffer_rank=replay_buffer_rank,
                 replay_buffer_world_size=context.num_processes)
-            self._trainer_progress.update()
+            if recovered_global_step != -1 and self._config.reset_trainer_progress:
+                self._trainer_progress.update(iter_num=0, env_steps=0)
+                if self._algorithm.is_rl():
+                    for metric in self._algorithm.get_metrics():
+                        metric.reset()
+                recovered_global_step = 0
+                logging.info("Trainer progress reset after loading checkpoint.")
+            else:
+                self._trainer_progress.update()
         except RuntimeError as e:
             raise RuntimeError(
                 ("Checkpoint loading failed from the provided root_dir={}. "
