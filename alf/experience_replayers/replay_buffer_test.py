@@ -88,6 +88,52 @@ class ReplayBufferTest(parameterized.TestCase, alf.test.TestCase):
             discount=alf.TensorSpec(shape=(), dtype=torch.float32),
             reward=alf.TensorSpec(shape=(), dtype=torch.float32)))
 
+    @parameterized.product(sampling=[(False, 0.), (False, .5), (True, 0.)],
+                           with_replacement=[False, True])
+    def test_gather_sampled_indices(self, sampling, with_replacement):
+        prioritized, recent_ratio = sampling
+        replay = ReplayBuffer(self.data_spec, num_environments=2, max_length=12,
+                               prioritized_sampling=prioritized,
+                               recent_data_steps=3, recent_data_ratio=recent_ratio,
+                               with_replacement=with_replacement, keep_episodic_info=True,
+                               record_episodic_return=True)
+        # Include completed episodes and circular-buffer wraparound.
+        for t in range(20):
+            kind = (ds.StepType.FIRST if t % 4 == 0 else
+                    ds.StepType.LAST if t % 4 == 3 else ds.StepType.MID)
+            replay.add_batch(get_exp_batch([0, 1], self.dim, kind, t / 10))
+
+        torch.manual_seed(31)
+        expected, expected_info = replay.get_batch(11, 2, convert_to_default_device=False)
+        expected_rng = torch.get_rng_state()
+        torch.manual_seed(31)
+        info = replay.sample_batch_info(11, 2)
+        self.assertEqual(info.replay_buffer, replay)
+        for actual, reference in zip(alf.nest.flatten(info), alf.nest.flatten(expected_info)):
+            if isinstance(actual, torch.Tensor):
+                self.assertEqual(actual.device.type, "cpu")
+                self.assertTensorEqual(actual, reference)
+
+        # Gathering in a different order must still use the original samples
+        # and importance weights, even if training updates replay priorities.
+        if prioritized:
+            replay.update_priority(info.env_ids, info.positions, torch.ones(11) * 7)
+        order = torch.tensor([8, 3, 0, 10, 4, 1, 5, 9, 7, 6, 2])
+        for start in range(0, 11, 3):
+            selected = order[start:start + 3]
+            mini_info = alf.nest.map_structure(
+                lambda x: x[selected] if isinstance(x, torch.Tensor) else x, info)
+            batch, returned_info = replay.get_batch_from_info(
+                mini_info, 2, convert_to_default_device=False)
+            self.assertIs(returned_info.replay_buffer, replay)
+            for actual, reference in zip(alf.nest.flatten(batch), alf.nest.flatten(expected)):
+                self.assertTensorEqual(actual, reference[selected])
+            for actual, reference in zip(alf.nest.flatten(returned_info),
+                                         alf.nest.flatten(expected_info)):
+                if isinstance(actual, torch.Tensor):
+                    self.assertTensorEqual(actual, reference[selected])
+        self.assertTensorEqual(torch.get_rng_state(), expected_rng)
+
     def test_replay_with_hindsight_relabel(self):
         self.max_length = 8
         torch.manual_seed(0)

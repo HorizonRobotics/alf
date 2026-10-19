@@ -1509,6 +1509,8 @@ class Algorithm(AlgorithmInterface):
                 ``config.update_counter_every_mini_batch=True``.
         """
         config: TrainerConfig = self._config
+        if config.replay_buffer_streaming:
+            assert not config.whole_replay_buffer_training and not self.has_offline
 
         # returns 0 if haven't started training yet, when ``_replay_buffer`` is
         # not None and the number of samples in the buffer is less than
@@ -1538,7 +1540,14 @@ class Algorithm(AlgorithmInterface):
                 mini_batch_size = config.mini_batch_size
                 if mini_batch_size is None:
                     mini_batch_size = self._replay_buffer.num_environments
-                if config.whole_replay_buffer_training:
+                if config.replay_buffer_streaming:
+                    assert config.mini_batch_length is not None
+                    batch_info = self._replay_buffer.sample_batch_info(
+                        mini_batch_size * config.num_updates_per_train_iter,
+                        config.mini_batch_length)
+                    experience = None
+                    num_updates = 1
+                elif config.whole_replay_buffer_training:
                     experience, batch_info = self._replay_buffer.gather_all(
                         ignore_earliest_frames=True)
                     num_updates = config.num_updates_per_train_iter
@@ -1612,14 +1621,20 @@ class Algorithm(AlgorithmInterface):
                           mini_batch_length,
                           update_counter_every_mini_batch,
                           whole_replay_buffer_training: bool = False):
-        """Train using experience."""
-        (experience, processed_exp_spec, batch_info, length, mini_batch_length,
-         batch_size) = self._prepare_experience_data(
-             experience, self.experience_spec, batch_info, mini_batch_length,
-             self._replay_buffer, whole_replay_buffer_training)
+        """Train using experience, or gather sampled indices one mini-batch at a time."""
+        streaming = experience is None
+        if streaming:
+            batch_size = batch_info.positions.shape[0]
+            batch_device = batch_info.positions.device
+        else:
+            (experience, processed_exp_spec, batch_info, length, mini_batch_length,
+             batch_size) = self._prepare_experience_data(
+                 experience, self.experience_spec, batch_info, mini_batch_length,
+                 self._replay_buffer, whole_replay_buffer_training)
+            batch_device = experience.step_type.device
 
-        if self._processed_experience_spec is None:
-            self._processed_experience_spec = processed_exp_spec
+            if self._processed_experience_spec is None:
+                self._processed_experience_spec = processed_exp_spec
 
         if whole_replay_buffer_training:
             # Special treatment for whole_replay_buffer_training.
@@ -1675,7 +1690,7 @@ class Algorithm(AlgorithmInterface):
         for u in range(num_updates):
             if mini_batch_size < batch_size:
                 indices = torch.randperm(batch_size,
-                                         device=experience.step_type.device)
+                                         device=batch_device)
             for b in range(0, batch_size, mini_batch_size):
                 alf.summary.set_grad_step_counter(grad_step)
                 grad_step += 1
@@ -1686,15 +1701,36 @@ class Algorithm(AlgorithmInterface):
                     is_last_mini_batch or update_counter_every_mini_batch)
 
                 with alf.summary.record_if(lambda: do_summary):
+                    if streaming:
+                        selected = (indices[b:b + mini_batch_size]
+                                    if indices is not None else slice(b, b + mini_batch_size))
+                        info = alf.nest.map_structure(
+                            lambda x: x[selected] if isinstance(x, torch.Tensor) else x,
+                            batch_info)
+                        with record_time("time/replay_gather"):
+                            batch, info = self._replay_buffer.get_batch_from_info(
+                                info, mini_batch_length, convert_to_default_device=False)
+                        (batch, processed_exp_spec, info, _, _,
+                         current_batch_size) = self._prepare_experience_data(
+                             batch, self.experience_spec, info, mini_batch_length,
+                             self._replay_buffer)
+                        if self._processed_experience_spec is None:
+                            self._processed_experience_spec = processed_exp_spec
+                        batch_indices, batch_start = None, 0
+                    else:
+                        batch, info = experience, batch_info
+                        batch_indices, batch_start = indices, b
+                        current_batch_size = batch_size
                     mini_batch_list, mini_batch_info_list = \
                         self._extract_mini_batch_and_info_from_experience(
-                                                indices,
-                                                [experience],
-                                                [batch_info],
-                                                batch_size,
-                                                b,
+                                                batch_indices,
+                                                [batch],
+                                                [info],
+                                                current_batch_size,
+                                                batch_start,
                                                 mini_batch_size,
                                                 update_counter_every_mini_batch)
+                    del batch, info
 
                     exp, train_info, loss_info, params = self._update(
                         mini_batch_list[0],
@@ -1706,6 +1742,7 @@ class Algorithm(AlgorithmInterface):
                                              params)
                     # These are no longer used, release them to reduce memory usage.
                     del exp, train_info, loss_info, params
+                    del mini_batch_list, mini_batch_info_list
 
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
@@ -2027,7 +2064,7 @@ class Algorithm(AlgorithmInterface):
                                                experience)
                 if batch_info:
                     binfo = alf.nest.map_structure(
-                        lambda x: x[batch_indices]
+                        lambda x: alf.nest.utils.convert_device(x[batch_indices])
                         if isinstance(x, torch.Tensor) else x, batch_info)
                 else:
                     binfo = None

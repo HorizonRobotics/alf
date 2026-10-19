@@ -374,9 +374,11 @@ class ReplayBuffer(RingBuffer):
                     # Populate default values for steps which did not end, and also LAST steps
                     self._set_default_return(env_ids)
 
+    @alf.configurable
     @atomic
     @torch.no_grad()
-    def get_batch(self, batch_size, batch_length):
+    def get_batch(self, batch_size, batch_length,
+                  convert_to_default_device: bool = True):
         """Randomly get ``batch_size`` trajectories from the buffer.
 
         Note: The environments where the samples are from are ordered in the
@@ -385,6 +387,9 @@ class ReplayBuffer(RingBuffer):
         Args:
             batch_size (int): get so many trajectories
             batch_length (int): the length of each trajectory
+            convert_to_default_device (bool): convert samples and batch info to
+                the default ALF device. If False, keep them on the buffer device
+                so training can transfer one mini-batch at a time.
         Returns:
             tuple:
                 - nested Tensors: The samples. Its shapes are [batch_size, batch_length, ...]
@@ -393,6 +398,19 @@ class ReplayBuffer(RingBuffer):
                     - positions: starting position in the replay buffer for each sequence.
                     - importance_weights: priority divided by the average of all
                         non-zero priorities in the buffer.
+        """
+        info = self.sample_batch_info(batch_size, batch_length)
+        return self.get_batch_from_info(info, batch_length,
+                                         convert_to_default_device)
+
+    @atomic
+    @torch.no_grad()
+    def sample_batch_info(self, batch_size, batch_length):
+        """Sample indices and weights without copying the experience tensors.
+
+        Returns BatchInfo on the buffer device. Sampling the full training
+        batch here preserves stratified/recent/prioritized sampling when its
+        experience is subsequently gathered one mini-batch at a time.
         """
         with alf.device(self._device):
             recent_batch_size = 0
@@ -423,29 +441,38 @@ class ReplayBuffer(RingBuffer):
                 info = alf.nest.map_structure(lambda *x: torch.cat(x),
                                               recent_info, info)
 
-            start_pos = info.positions
             env_ids = info.env_ids
-
-            idx = start_pos.reshape(-1, 1)  # [B, 1]
-            idx = self.circular(
-                idx + torch.arange(batch_length).unsqueeze(0))  # [B, T]
-            out_env_ids = env_ids.reshape(-1,
-                                          1).expand(batch_size,
-                                                    batch_length)  # [B, T]
-            result = alf.nest.map_structure(lambda b: b[(out_env_ids, idx)],
-                                            self._buffer)
-
+            if self._keep_episodic_info and self._record_episodic_return:
+                disc_ret = self._episodic_discounted_return[
+                    env_ids, self.circular(info.positions)]
+                info = info._replace(discounted_return=disc_ret)
             if alf.summary.should_record_summaries():
+                # Only rewards are needed for this full-batch summary.
+                idx = self.circular(info.positions[:, None] +
+                                    torch.arange(batch_length))
+                rewards = self._buffer.reward[env_ids[:, None], idx]
                 alf.summary.scalar(
                     "replayer/" + self._name + ".original_reward_mean",
-                    torch.mean(result.reward[:-1]))
+                    torch.mean(rewards[:-1]))
+        return info._replace(replay_buffer=self)
 
-        if self._keep_episodic_info and self._record_episodic_return:
-            # info elements have shape [B], and needs to be device-converted.
-            # Taking first timestep's return, to lowerbound training value.
-            disc_ret = self._episodic_discounted_return[(env_ids, idx[:, 0])]
-            info = info._replace(discounted_return=disc_ret)
-        if alf.get_default_device() != self._device:
+    @atomic
+    @torch.no_grad()
+    def get_batch_from_info(self, batch_info, batch_length,
+                            convert_to_default_device=True):
+        """Gather previously sampled sequences without resampling their indices.
+
+        ``batch_info`` must be on the buffer device. Its positions must not be
+        overwritten between sampling and gathering (as in synchronous training).
+        """
+        with alf.device(self._device):
+            idx = self.circular(batch_info.positions[:, None] +
+                                torch.arange(batch_length))
+            env_ids = batch_info.env_ids[:, None]
+            result = alf.nest.map_structure(lambda b: b[env_ids, idx],
+                                            self._buffer)
+        info = batch_info._replace(replay_buffer=())
+        if convert_to_default_device and alf.get_default_device() != self._device:
             result, info = convert_device((result, info))
         info = info._replace(replay_buffer=self)
         return result, info

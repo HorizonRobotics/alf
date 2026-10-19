@@ -80,6 +80,7 @@ class TrainerConfig(object):
                  mini_batch_length=None,
                  mini_batch_size=None,
                  whole_replay_buffer_training=True,
+                 replay_buffer_streaming=False,
                  replay_buffer_length=1024,
                  priority_replay=False,
                  priority_replay_alpha=0.7,
@@ -302,6 +303,10 @@ class TrainerConfig(object):
                 sample in the minibatch. Only used by ``OffPolicyAlgorithm``.
             whole_replay_buffer_training (bool): whether use all data in replay
                 buffer to perform one update. Only used by ``OffPolicyAlgorithm``.
+            replay_buffer_streaming (bool): sample all replay indices once, but
+                gather and preprocess only the current mini-batch. Requires
+                synchronous replay with mini-batch-local preprocessing, no
+                offline buffer, and whole_replay_buffer_training=False.
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean. Only used by
                 ``OffPolicyAlgorithm``.
@@ -458,6 +463,7 @@ class TrainerConfig(object):
         self.mini_batch_length = mini_batch_length
         self.mini_batch_size = mini_batch_size
         self.whole_replay_buffer_training = whole_replay_buffer_training
+        self.replay_buffer_streaming = replay_buffer_streaming
         self.clear_replay_buffer = clear_replay_buffer
         self.clear_replay_buffer_but_keep_one_step = clear_replay_buffer_but_keep_one_step
         self.replay_buffer_length = replay_buffer_length
