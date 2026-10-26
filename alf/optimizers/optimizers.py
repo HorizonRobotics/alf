@@ -125,9 +125,8 @@ def wrap_optimizer(cls):
 
         Args:
             gradient_clipping (float): If not None, serve as a positive threshold
-            clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
-                to clip gradient. If False, use `tensor_utils.clip_by_norms` for
-                each grad.
+            clip_by_global_norm (bool): If True, clip gradients by their global
+                norm. If False, use `tensor_utils.clip_by_norms` for each grad.
             ignore_param_not_requiring_grad (bool): if True, not to
                 add parameters that do not require gradients to the optimizer.
                 This could save optimizer memory epsecially if we want to finetune
@@ -354,16 +353,29 @@ def wrap_optimizer(cls):
             params.extend(param_group["params"])
 
         self._grad_counter += 1
+        if (self._grad_accumulation_steps > 1
+                and self._grad_counter % self._grad_accumulation_steps != 0):
+            self._grad_stepped = False
+            return
+
+        grads = [p.grad for p in params if p.grad is not None]
+        # Batch ordinary dense gradients, but leave FSDP2 DTensors and other
+        # tensor subclasses on the existing path to preserve their dispatch.
+        use_foreach = bool(grads) and all(
+            type(g) is torch.Tensor and g.layout == torch.strided
+            and g.device.type in ('cpu', 'cuda') for g in grads)
         if self._grad_accumulation_steps > 1:
-            if self._grad_counter % self._grad_accumulation_steps == 0:
-                # Need to scale the grad by 1/self._grad_accumulation_steps
-                for p in params:
-                    if p.grad is not None:
-                        p.grad.mul_(1.0 / self._grad_accumulation_steps)
+            if use_foreach:
+                grouped_grads = {}
+                for grad in grads:
+                    grouped_grads.setdefault((grad.device, grad.dtype),
+                                             []).append(grad)
+                for group in grouped_grads.values():
+                    torch._foreach_mul_(group,
+                                        1.0 / self._grad_accumulation_steps)
             else:
-                # Do nothing while the grad is still being accumulated
-                self._grad_stepped = False
-                return
+                for grad in grads:
+                    grad.mul_(1.0 / self._grad_accumulation_steps)
 
         if self._lr_scheduler is not None:
             lr = float(self._lr_scheduler())
@@ -385,10 +397,16 @@ def wrap_optimizer(cls):
                     self._norms[param] = param.norm()
 
         if self._gradient_clipping is not None:
-            grads = alf.nest.map_structure(lambda p: p.grad, params)
             if self._clip_by_global_norm:
-                _, global_norm = tensor_utils.clip_by_global_norm(
-                    grads, self._gradient_clipping, in_place=True)
+                if use_foreach:
+                    # One norm across all dtype/device groups. Native clipping
+                    # clamps the scale on-device instead of synchronizing a
+                    # CUDA scalar for the old Python `if scale < 1` branch.
+                    global_norm = torch.nn.utils.clip_grad_norm_(
+                        params, self._gradient_clipping, foreach=True)
+                else:
+                    _, global_norm = tensor_utils.clip_by_global_norm(
+                        grads, self._gradient_clipping, in_place=True)
                 if alf.summary.should_record_summaries():
                     alf.summary.scalar("global_grad_norm/%s" % self.name,
                                        global_norm)

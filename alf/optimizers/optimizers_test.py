@@ -14,8 +14,11 @@
 
 from absl.testing import parameterized
 import copy
+import os
+import tempfile
 import torch
 import torch.nn as nn
+from unittest import mock
 
 import alf
 from alf.algorithms.hypernetwork_algorithm import regression_loss
@@ -23,6 +26,172 @@ from alf.algorithms.particle_vi_algorithm import ParVIAlgorithm
 from alf.optimizers import Adam, AdamTF
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, tensor_utils
+
+
+class GradientBatchingTest(parameterized.TestCase, alf.test.TestCase):
+
+    @parameterized.product(
+        device=('cpu', 'cuda'),
+        dtype=(torch.float32, torch.float64, torch.bfloat16),
+        accumulation=(1, 3),
+        clip_norm=(None, 0.5, 100.0))
+    def test_matches_unbatched_updates(self, device, dtype, accumulation,
+                                       clip_norm):
+        if device == 'cuda' and not torch.cuda.is_available():
+            self.skipTest('CUDA is required')
+        params = [
+            nn.Parameter(torch.ones(2, device=device, dtype=d))
+            for d in (torch.float32, dtype)
+        ]
+        unused = nn.Parameter(torch.ones(2, device=device))
+        reference = [p.detach().clone() for p in params]
+        opt = alf.optimizers.SGD(lr=0.1,
+                                 grad_accumulation_steps=accumulation,
+                                 gradient_clipping=clip_norm,
+                                 clip_by_global_norm=True,
+                                 foreach=False)
+        # Clipping must use one global norm, not one norm per optimizer group.
+        opt.add_param_group({'params': [params[0], unused]})
+        opt.add_param_group({'params': [params[1]]})
+        tolerance = 1e-2 if dtype == torch.bfloat16 else 1e-5
+        for cycle in range(2):
+            expected_grads = [torch.zeros_like(p) for p in params]
+            for microstep in range(accumulation):
+                opt.zero_grad(set_to_none=True)
+                gradients = [
+                    p.new_tensor([3., 4.]) * (cycle + microstep + i + 1)
+                    for i, p in enumerate(params)
+                ]
+                sum((p * g).sum() for p, g in zip(params, gradients)).backward()
+                for total, grad in zip(expected_grads, gradients):
+                    total.add_(grad)
+                opt.step()
+                if microstep + 1 < accumulation:
+                    self.assertFalse(opt._grad_stepped)
+                    for actual, expected in zip(params, reference):
+                        torch.testing.assert_close(actual, expected)
+                    for actual, expected in zip(params, expected_grads):
+                        torch.testing.assert_close(actual.grad, expected)
+            for grad in expected_grads:
+                grad.mul_(1.0 / accumulation)
+            if clip_norm is not None:
+                tensor_utils.clip_by_global_norm(
+                    expected_grads, clip_norm, in_place=True)
+            for actual, expected, grad in zip(params, reference, expected_grads):
+                expected.add_(grad, alpha=-0.1)
+                torch.testing.assert_close(actual.grad, grad,
+                                           rtol=tolerance, atol=tolerance)
+                torch.testing.assert_close(actual, expected,
+                                           rtol=tolerance, atol=tolerance)
+            self.assertTrue(opt._grad_stepped)
+            self.assertIsNone(unused.grad)
+            torch.testing.assert_close(unused, torch.ones_like(unused))
+
+    def test_foreach_only_at_update_boundary(self):
+        param = nn.Parameter(torch.ones(2, device='cpu'))
+        opt = alf.optimizers.SGD(lr=0.1, grad_accumulation_steps=2,
+                                 gradient_clipping=0.5,
+                                 clip_by_global_norm=True, foreach=False)
+        opt.add_param_group({'params': [param]})
+        with mock.patch('torch._foreach_mul_', wraps=torch._foreach_mul_) as mul, \
+                mock.patch('torch.nn.utils.clip_grad_norm_',
+                           wraps=torch.nn.utils.clip_grad_norm_) as clip:
+            param.sum().backward()
+            opt.step()
+            mul.assert_not_called()
+            clip.assert_not_called()
+            opt.zero_grad(set_to_none=True)
+            param.sum().backward()
+            opt.step()
+            self.assertGreaterEqual(mul.call_count, 2)  # averaging and clipping
+            clip.assert_called_once()
+            self.assertTrue(clip.call_args.kwargs['foreach'])
+
+    @parameterized.parameters(False, True)
+    def test_missing_or_zero_gradients(self, zero_gradients):
+        param = nn.Parameter(torch.ones(2, device='cpu'))
+        opt = alf.optimizers.SGD(lr=0.1, grad_accumulation_steps=2,
+                                 gradient_clipping=0.5,
+                                 clip_by_global_norm=True, foreach=False)
+        opt.add_param_group({'params': [param]})
+        for _ in range(2):
+            opt.zero_grad(set_to_none=True)
+            if zero_gradients:
+                (param.sum() * 0).backward()
+            opt.step()
+        torch.testing.assert_close(param, torch.ones_like(param))
+
+    def test_adamw8bit_accumulation(self):
+        if not torch.cuda.is_available():
+            self.skipTest('CUDA is required for AdamW8bit')
+        import bitsandbytes as bnb
+
+        param = nn.Parameter(torch.ones(8192, device='cuda'))
+        reference = nn.Parameter(param.detach().clone())
+        opt = alf.optimizers.AdamW8bit(lr=0.01, grad_accumulation_steps=3,
+                                       gradient_clipping=0.5,
+                                       clip_by_global_norm=True)
+        opt.add_param_group({'params': [param]})
+        reference_opt = bnb.optim.AdamW8bit([reference], lr=0.01)
+        for cycle in range(2):
+            expected_grad = torch.zeros_like(reference)
+            for microstep in range(3):
+                opt.zero_grad(set_to_none=True)
+                grad = torch.linspace(-1, 2, param.numel(), device='cuda')
+                grad.mul_(cycle + microstep + 1)
+                (param * grad).sum().backward()
+                expected_grad.add_(grad)
+                opt.step()
+            reference.grad = expected_grad / 3
+            tensor_utils.clip_by_global_norm(
+                [reference.grad], 0.5, in_place=True)
+            reference_opt.step()
+            torch.testing.assert_close(param, reference, rtol=1e-4, atol=1e-5)
+
+    def test_sparse_accumulation_keeps_existing_path(self):
+        param = nn.Parameter(torch.ones(3, device='cpu'))
+        opt = alf.optimizers.SGD(lr=0.1, grad_accumulation_steps=2,
+                                 foreach=False)
+        opt.add_param_group({'params': [param]})
+        with mock.patch('torch._foreach_mul_') as mul:
+            for _ in range(2):
+                opt.zero_grad(set_to_none=True)
+                grad = torch.sparse_coo_tensor([[1]], [2.], (3,), device='cpu')
+                param.grad = grad if param.grad is None else param.grad + grad
+                opt.step()
+            mul.assert_not_called()
+        torch.testing.assert_close(param, torch.tensor([1., 0.8, 1.], device='cpu'))
+
+    def test_dtensor_keeps_existing_path(self):
+        import torch.distributed as dist
+        from torch.distributed.device_mesh import init_device_mesh
+        from torch.distributed.tensor import DTensor, Shard
+
+        with tempfile.TemporaryDirectory() as directory:
+            dist.init_process_group(
+                'gloo', init_method='file://' + os.path.join(directory, 'init'),
+                rank=0, world_size=1)
+            try:
+                mesh = init_device_mesh('cpu', (1,))
+                param = nn.Parameter(DTensor.from_local(
+                    torch.ones(2, device='cpu'), mesh, [Shard(0)]))
+                opt = alf.optimizers.SGD(lr=0.1, grad_accumulation_steps=2,
+                                         gradient_clipping=0.5,
+                                         clip_by_global_norm=True, foreach=False)
+                opt.add_param_group({'params': [param]})
+                with mock.patch('torch.nn.utils.clip_grad_norm_') as clip, \
+                        mock.patch('torch._foreach_mul_') as mul:
+                    for _ in range(2):
+                        opt.zero_grad(set_to_none=True)
+                        param.sum().backward()
+                        opt.step()
+                    clip.assert_not_called()
+                    mul.assert_not_called()
+                expected = torch.full((2,), 1 - 0.1 * 0.5 / 2**0.5,
+                                      device='cpu')
+                torch.testing.assert_close(param.full_tensor(), expected)
+            finally:
+                dist.destroy_process_group()
 
 
 class LRBatchEnsemble(nn.Module):
