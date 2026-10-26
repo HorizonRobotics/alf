@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from typing import Any, Callable, Iterable, Optional
+from contextlib import ExitStack
 import functools
 
 from absl import logging
@@ -456,6 +457,40 @@ def load_fsdp2_full_state_dict(module: torch.nn.Module,
         _restore_alf_optimizers(hidden)
 
 
+def ddp_grad_accumulation(method):
+    """Skip DDP synchronization until an optimizer is due to step.
+
+    Decorate a complete minibatch update so no_sync() covers both forward and
+    backward. With different optimizer cadences, synchronize whenever any of
+    them steps. Ordinary optimizers are treated as stepping every minibatch.
+    """
+
+    @functools.wraps(method)
+    def wrapped(module, *args, **kwargs):
+        if (getattr(module, '_ddp_activated_rank', -1) == -1
+                or getattr(module, '_distributed_strategy', 'ddp') != 'ddp'):
+            return method(module, *args, **kwargs)
+
+        optimizers = module.optimizers()
+        if not optimizers or any(
+                (getattr(opt, '_grad_counter', 0) + 1) %
+                getattr(opt, '_grad_accumulation_steps', 1) == 0
+                for opt in optimizers):
+            return method(module, *args, **kwargs)
+
+        with ExitStack() as stack:
+            module._ddp_no_sync_stack = stack
+            try:
+                performers = getattr(module, '_ddp_performer_map', {})
+                for performer in performers.values():
+                    stack.enter_context(performer.no_sync())
+                return method(module, *args, **kwargs)
+            finally:
+                del module._ddp_no_sync_stack
+
+    return wrapped
+
+
 def data_distributed(method):
     """This decorator makes a target method of a module capable of being data
     distributed via DDP.
@@ -544,6 +579,10 @@ def data_distributed_when(cond: Optional[Callable[[torch.nn.Module],
                     performer = make_ddp_performer(module_to_wrap, method)
                     module_to_wrap._ddp_performer_map[
                         method.__name__] = performer
+                    # The first accumulating update can create DDP lazily.
+                    stack = getattr(module_to_wrap, '_ddp_no_sync_stack', None)
+                    if stack is not None:
+                        stack.enter_context(performer.no_sync())
             else:
                 performer = make_distributed_performer(module_to_wrap, method)
             return performer(*args[1:], **kwargs)

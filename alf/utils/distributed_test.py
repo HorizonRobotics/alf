@@ -18,15 +18,18 @@ import math
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
 import alf
-from alf.data_structures import StepType, TimeStep
+from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.config import TrainerConfig
+from alf.data_structures import Experience, LossInfo, StepType, TimeStep
 from alf.metrics import AverageReturnMetric
-from alf.utils import common, summary_utils
+from alf.utils import common, distributed, summary_utils
 from alf.utils.distributed import (FSDP2_OPTIMIZER_STATE, data_distributed,
                                    fsdp2_full_state_dict,
                                    load_fsdp2_full_state_dict)
@@ -549,6 +552,135 @@ def _fsdp2_summary_worker(rank, world_size, init_file, summary_dir):
         dist.barrier()
     finally:
         dist.destroy_process_group()
+
+
+class _AccumulationAlgorithm(Algorithm):
+
+    def __init__(self, rank, accumulation_steps, freeze_second=False):
+        super().__init__(is_on_policy=False, config=TrainerConfig(root_dir=''))
+        torch.manual_seed(1234)
+        self.layers = torch.nn.ModuleList([
+            torch.nn.Linear(4, 2, bias=False) for _ in accumulation_steps
+        ])
+        for layer, steps in zip(self.layers, accumulation_steps):
+            optimizer = (alf.optimizers.SGD(lr=0.01, momentum=0.9,
+                                             grad_accumulation_steps=steps)
+                         if steps is not None else
+                         torch.optim.SGD(layer.parameters(), lr=0.01))
+            self.add_optimizer(optimizer, [layer])
+        self.activate_ddp(rank)
+        self._replay_buffer = None
+        self._offline_replay_buffer = None
+        self._RL_train = True
+        self._pre_train = False
+        self.use_second = True
+        self.freeze_second = freeze_second
+        self.fail_forward = False
+
+    def _collect_train_info_parallelly(self, experience):
+        if self.fail_forward:
+            raise RuntimeError('test forward failure')
+        if self.freeze_second:
+            # Match SAC freezing the critic inside the first DDP forward.
+            self.layers[1].requires_grad_(False)
+        inputs = experience.time_step.observation
+        loss = self.layers[0](inputs).square().mean(dim=-1)
+        if self.use_second:
+            loss = loss + self.layers[1](inputs).square().mean(dim=-1)
+        return LossInfo(loss=loss)
+
+    def _collect_train_info_offline(self, experience, pre_train):
+        return self._collect_train_info_parallelly(experience)
+
+
+def _count_allreduces(state, bucket):
+    state['calls'] += 1
+    future = dist.all_reduce(bucket.buffer(), async_op=True).get_future()
+    return future.then(lambda result: result.value()[0] / dist.get_world_size())
+
+
+def _accumulation_worker(rank, world_size, init_file, steps, freeze_second,
+                         hybrid):
+    torch.set_num_threads(1)
+    alf.set_default_device('cpu')
+    dist.init_process_group(backend='gloo',
+                            init_method='file://' + init_file,
+                            rank=rank,
+                            world_size=world_size,
+                            timeout=datetime.timedelta(seconds=60))
+    try:
+        model = _AccumulationAlgorithm(rank, steps, freeze_second)
+        reference = _AccumulationAlgorithm(rank, steps, freeze_second)
+        counts = {model: {'calls': 0}, reference: {'calls': 0}}
+        make_performer = distributed.make_ddp_performer
+
+        def make_counted_performer(module, method):
+            performer = make_performer(module, method,
+                                       find_unused_parameters=True)
+            performer.register_comm_hook(counts[module], _count_allreduces)
+            return performer
+
+        expected_syncs = 0
+        update = Algorithm._hybrid_update if hybrid else Algorithm._update
+        with mock.patch.object(distributed, 'make_ddp_performer',
+                               make_counted_performer):
+            for index in range(12):
+                # Include parameters unused on a synchronization minibatch.
+                model.use_second = reference.use_second = index % 3 != 2
+                inputs = torch.arange(24, dtype=torch.float32).reshape(2, 3, 4)
+                inputs = inputs / 24 + rank + index / 12
+                experience = Experience(time_step=TimeStep(observation=inputs))
+                sync = any((index + 1) % (step or 1) == 0 for step in steps)
+                expected_syncs += sync
+
+                args = ((experience, None, experience, None, 1.) if hybrid else
+                        (experience, None, 1.))
+                update(model, *args)
+                # Bypass only the new accumulation decorator: the reference
+                # still performs real DDP synchronization on every backward.
+                update.__wrapped__(reference, *args)
+
+                assert counts[model]['calls'] == expected_syncs
+                assert counts[reference]['calls'] == index + 1
+                assert not hasattr(model, '_ddp_no_sync_stack')
+                for performer in model._ddp_performer_map.values():
+                    assert performer.require_backward_grad_sync
+                for actual, expected in zip(model.parameters(),
+                                             reference.parameters()):
+                    torch.testing.assert_close(actual, expected)
+
+            # An exception must not leave the lazy DDP wrapper in no_sync().
+            model.fail_forward = True
+            try:
+                update(model, *args)
+            except RuntimeError as error:
+                assert str(error) == 'test forward failure'
+            else:
+                raise AssertionError('expected a forward failure')
+            assert not hasattr(model, '_ddp_no_sync_stack')
+            for performer in model._ddp_performer_map.values():
+                assert performer.require_backward_grad_sync
+    finally:
+        dist.destroy_process_group()
+
+
+@unittest.skipUnless(dist.is_gloo_available(), 'Gloo is required')
+class DDPAccumulationTest(unittest.TestCase):
+
+    def test_accumulation(self):
+        for steps, frozen, hybrid in [((1, 1), False, False),
+                                      ((3, 3), False, False),
+                                      ((6, 6), True, False),
+                                      ((2, 3), False, False),
+                                      ((3, None), False, False),
+                                      ((3, 3), False, True)]:
+            with self.subTest(steps=steps, frozen=frozen, hybrid=hybrid):
+                with tempfile.TemporaryDirectory() as directory:
+                    mp.spawn(_accumulation_worker,
+                             args=(2, os.path.join(directory, 'init'), steps,
+                                   frozen, hybrid),
+                             nprocs=2,
+                             join=True)
 
 
 @unittest.skipUnless(torch.cuda.device_count() >= 2,

@@ -37,7 +37,7 @@ from alf.utils.checkpoint_utils import (is_checkpoint_enabled,
 from alf.utils import common, dist_utils, spec_utils, summary_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
-from alf.utils.distributed import data_distributed_when
+from alf.utils.distributed import data_distributed_when, ddp_grad_accumulation
 from alf.utils import tensor_utils
 from .algorithm_interface import AlgorithmInterface
 from .config import TrainerConfig
@@ -1963,6 +1963,7 @@ class Algorithm(AlgorithmInterface):
             assert batch_info is None or batch_info.importance_weights == (), (
                 "Priority replay is enabled. But priority is not calculated.")
 
+    @ddp_grad_accumulation
     def _update(self, experience, batch_info, weight):
         """
             experience (Experience): experience from the online buffer used for
@@ -2161,6 +2162,7 @@ class Algorithm(AlgorithmInterface):
         train_steps = 2 * batch_size * mini_batch_length * num_updates
         return train_steps
 
+    @ddp_grad_accumulation
     def _hybrid_update(self, experience, batch_info, offline_experience,
                        offline_batch_info, weight):
         """
