@@ -13,7 +13,10 @@
 # limitations under the License.
 
 import functools
+import datetime
+import os
 import tempfile
+from types import SimpleNamespace
 from unittest import mock
 
 import torch
@@ -34,7 +37,59 @@ def env_load(env_name, batch_size):
 env_load.batched = True
 
 
+def _checkpoint_request_worker(rank, init_file):
+    alf.set_default_device('cpu')
+    torch.distributed.init_process_group(
+        'gloo', init_method='file://' + init_file, rank=rank, world_size=2,
+        timeout=datetime.timedelta(seconds=30))
+    try:
+        trainer = Trainer.__new__(Trainer)
+        trainer._algorithm = SimpleNamespace(
+            _distributed_strategy='fsdp2', _fsdp2_performer=object())
+        # HTTP targets rank 0; SIGUSR2 can target either rank. Both workers
+        # must take the save branch together, and a cleared request stays clear.
+        for requesting_rank in (None, 0, None, 1, None):
+            trainer._checkpoint_requested = rank == requesting_rank
+            requested = trainer._sync_checkpoint_request()
+            assert requested == (requesting_rank is not None)
+            assert not trainer._checkpoint_requested
+    finally:
+        torch.distributed.destroy_process_group()
+
+
 class TrainerTest(alf.test.TestCase):
+
+    def test_fsdp2_checkpoint_requests_are_collective(self):
+        with tempfile.TemporaryDirectory() as directory:
+            torch.multiprocessing.spawn(
+                _checkpoint_request_worker,
+                args=(os.path.join(directory, 'init'),), nprocs=2, join=True)
+
+    def test_ddp_checkpoint_request_does_not_add_collectives(self):
+        trainer = Trainer.__new__(Trainer)
+        trainer._algorithm = SimpleNamespace(_distributed_strategy='ddp')
+        trainer._checkpoint_requested = True
+        with mock.patch('torch.distributed.all_reduce') as all_reduce:
+            self.assertTrue(trainer._sync_checkpoint_request())
+        all_reduce.assert_not_called()
+        self.assertFalse(trainer._checkpoint_requested)
+
+    def test_fsdp2_late_checkpoint_request_waits_for_next_collective(self):
+        trainer = Trainer.__new__(Trainer)
+        trainer._algorithm = SimpleNamespace(
+            _distributed_strategy='fsdp2', _fsdp2_performer=object())
+        trainer._checkpoint_requested = False
+
+        def request_during_collective(*args, **kwargs):
+            trainer._request_checkpoint(None, None)
+
+        with mock.patch('torch.distributed.all_reduce',
+                        side_effect=request_during_collective):
+            self.assertFalse(trainer._sync_checkpoint_request())
+        self.assertTrue(trainer._checkpoint_requested)
+        with mock.patch('torch.distributed.all_reduce'):
+            self.assertTrue(trainer._sync_checkpoint_request())
+        self.assertFalse(trainer._checkpoint_requested)
 
     def test_reset_progress_loads_before_first_train_iter(self):
         progress = TrainerProgress()

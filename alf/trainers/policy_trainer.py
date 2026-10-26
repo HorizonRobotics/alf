@@ -514,6 +514,24 @@ class Trainer(object):
         self._evaluation_requested = True
         request.send_text("Evaluation requested")
 
+    def _sync_checkpoint_request(self):
+        from alf.utils.distributed import is_fsdp2_module
+        requested = self._checkpoint_requested
+        if requested:
+            self._checkpoint_requested = False
+        if is_fsdp2_module(self._algorithm):
+            # HTTP requests arrive only on rank 0, while a signal can arrive on
+            # any worker. All ranks must agree before entering checkpoint
+            # all-gathers, or one saves while the others continue training.
+            requested = torch.tensor(int(requested),
+                                     device=alf.get_default_device())
+            torch.distributed.all_reduce(requested,
+                                         op=torch.distributed.ReduceOp.MAX)
+        # Branch on this synchronized snapshot, not the mutable request flag:
+        # a new HTTP/signal request after the collective belongs to the next
+        # iteration and must not send just one rank into checkpoint saving.
+        return bool(requested)
+
     def _save_checkpoint(self):
         # Full checkpoint saving is only enabled when running single process
         # training (rank is -1) or the master process of DDP training (rank is
@@ -830,15 +848,15 @@ class RLTrainer(Trainer):
             self._check_dpp_paras_consistency(iter_num,
                                               training_setting_summarized)
 
+            checkpoint_requested = self._sync_checkpoint_request()
             if ((self._num_iterations and iter_num >= time_to_checkpoint)
                     or (not self._num_iterations and self._num_env_steps
                         and total_time_steps >= time_to_checkpoint)):
                 self._save_checkpoint()
                 time_to_checkpoint += checkpoint_interval
-            elif self._checkpoint_requested:
+            elif checkpoint_requested:
                 logging.info("Saving checkpoint upon request...")
                 self._save_checkpoint()
-                self._checkpoint_requested = False
 
             if self._video_clip_requested:
                 common.warning_once("Saving video-clip upon request...")
@@ -1031,13 +1049,13 @@ class SLTrainer(Trainer):
                     self._algorithm.eval_uncertainty()
                 break
 
+            checkpoint_requested = self._sync_checkpoint_request()
             if self._num_epochs and epoch_num >= time_to_checkpoint:
                 self._save_checkpoint()
                 time_to_checkpoint += checkpoint_interval
-            elif self._checkpoint_requested:
+            elif checkpoint_requested:
                 logging.info("Saving checkpoint upon request...")
                 self._save_checkpoint()
-                self._checkpoint_requested = False
 
     def _restore_checkpoint(self):
         checkpointer = Checkpointer(ckpt_dir=os.path.join(
