@@ -27,6 +27,22 @@ from alf.experience_replayers.replay_buffer import ReplayBuffer
 FSDP2_OPTIMIZER_STATE = '_fsdp2_optimizer_state'
 
 
+def _shard_optimizer_state(state, parameter):
+    """Give optimizer buffers the same layout as their FSDP2 parameter."""
+    from torch.distributed.tensor import DTensor, distribute_tensor
+    from torch.utils._pytree import tree_map_only
+
+    def shard(value):
+        # Adam moments (and SGD momentum) must be DTensors, not just stored
+        # under a DTensor key. Scalar step counters stay ordinary tensors.
+        if isinstance(value, DTensor) or value.ndim == 0:
+            return value
+        return distribute_tensor(value.to(parameter.device),
+                                 parameter.device_mesh, parameter.placements)
+
+    return tree_map_only(torch.Tensor, shard, state)
+
+
 def _hide_alf_optimizers(module):
     """Temporarily hide optimizer lists from ALF's custom state_dict.
 
@@ -338,8 +354,22 @@ def make_fsdp2_performer(
             for parameter, state in list(optimizer.state.items()):
                 replacement = replacements.get(parameter)
                 if replacement is not None and replacement is not parameter:
-                    optimizer.state[replacement] = state
+                    # A checkpoint can populate Adam before lazy wrapping.
+                    # Rebinding keys alone leaves full Tensor moments beside
+                    # DTensor gradients and breaks the next optimizer step.
+                    optimizer.state[replacement] = _shard_optimizer_state(
+                        state, replacement)
                     del optimizer.state[parameter]
+
+    # Checkpoint loading also caches Parameters as dictionary keys on nested
+    # Algorithms. Optimizer rebinding alone leaves those full-sized weights
+    # alive alongside the shards. Refresh every existing map while parameters
+    # are sharded; doing this inside forward would cache temporary full weights.
+    for child in module.modules():
+        if hasattr(child, '_param_to_name'):
+            child._param_to_name = {
+                parameter: name for name, parameter in child.named_parameters()
+            }
     return performer
 
 
@@ -424,8 +454,7 @@ def load_fsdp2_full_state_dict(module: torch.nn.Module,
         raise ValueError("The module has not been wrapped with FSDP2")
 
     from torch.distributed.checkpoint.state_dict import (StateDictOptions,
-                                                         set_model_state_dict,
-                                                         set_state_dict)
+                                                         set_model_state_dict)
 
     state_dict = state_dict.copy()
     optimizer_state = state_dict.pop(FSDP2_OPTIMIZER_STATE, None)
@@ -443,15 +472,37 @@ def load_fsdp2_full_state_dict(module: torch.nn.Module,
     hidden = _hide_alf_optimizers(module)
     hidden_replay_buffers = _hide_replay_buffers(module)
     try:
-        if optimizer_state is None:
-            return set_model_state_dict(module._fsdp2_performer,
-                                        model_state,
-                                        options=options)
-        return set_state_dict(module._fsdp2_performer,
-                              optimizers,
-                              model_state_dict=model_state,
-                              optim_state_dict=optimizer_state,
-                              options=options)
+        if optimizer_state is not None:
+            # get_state_dict() concatenates groups in optimizer order, matching
+            # ALF's ordered optimizer checkpoints. Split them so an empty
+            # optimizer does not receive the other optimizers' groups.
+            offset = 0
+            for optimizer in optimizers:
+                count = len(optimizer.param_groups)
+                groups = optimizer_state['param_groups'][offset:offset + count]
+                offset += count
+                state = {
+                    name: optimizer_state['state'][name]
+                    for group in groups for name in group['params']
+                    if name in optimizer_state['state']
+                }
+                # DCP initializes local moments with a dummy optimizer step.
+                # Frozen critics have no moments, and ALF's grad accumulation
+                # can skip that step, leaving DCP unable to infer the device.
+                # Shard saved buffers directly instead: this also preserves
+                # pre-freeze moments and does not advance accumulation counters.
+                for saved_group, group in zip(groups, optimizer.param_groups):
+                    for name, parameter in zip(saved_group['params'],
+                                               group['params']):
+                        if name in state:
+                            state[name] = _shard_optimizer_state(
+                                state[name], parameter)
+                # Optimizer.load_state_dict accepts these FQN keys in place of
+                # numeric parameter IDs and maps them in param-group order.
+                optimizer.load_state_dict(dict(state=state, param_groups=groups))
+        return set_model_state_dict(module._fsdp2_performer,
+                                    model_state,
+                                    options=options)
     finally:
         _restore_replay_buffers(hidden_replay_buffers)
         _restore_alf_optimizers(hidden)

@@ -14,10 +14,12 @@
 
 import copy
 import datetime
+import gc
 import math
 import os
 import tempfile
 import unittest
+import weakref
 from unittest import mock
 
 import torch
@@ -681,6 +683,214 @@ class DDPAccumulationTest(unittest.TestCase):
                                    frozen, hybrid),
                              nprocs=2,
                              join=True)
+
+
+@unittest.skipUnless(torch.cuda.is_available(), 'CUDA is required for FSDP2')
+class FSDP2ParameterReferencesTest(unittest.TestCase):
+
+    def _check_parameter_references(self, shard_blocks):
+        from torch.distributed.tensor import DTensor
+
+        torch.cuda.set_device(0)
+        with tempfile.TemporaryDirectory() as directory:
+            dist.init_process_group(
+                backend='nccl',
+                init_method='file://' + os.path.join(directory, 'init'),
+                rank=0,
+                world_size=1)
+            try:
+                model = Algorithm(name='root')
+                model.child = Algorithm(name='child')
+                model.child.backbone = Algorithm(name='backbone')
+                model.child.backbone.linear = torch.nn.Linear(
+                    16, 16, bias=False, device='cuda').requires_grad_(False)
+                model.child.head = torch.nn.Linear(
+                    16, 4, bias=False, device='cuda')
+                optimizer = alf.optimizers.SGD(lr=0.01)
+                model.add_optimizer(optimizer, [model.child])
+                # Loading creates parameter-name maps on every nested Algorithm,
+                # even when the backbone is frozen and has no optimizer state.
+                model.load_state_dict(model.state_dict())
+                original_refs = [weakref.ref(p) for p in model.parameters()]
+
+                def forward(module, inputs):
+                    return module.child.head(
+                        module.child.backbone.linear(inputs))
+
+                inputs = torch.ones(2, 16, device='cuda')
+                with torch.no_grad():
+                    expected = forward(model, inputs)
+                shard_plan = None
+                if shard_blocks:
+                    shard_plan = lambda m: [m.child.backbone.linear]
+                performer = distributed.make_fsdp2_performer(
+                    model, forward, shard_plan=shard_plan)
+
+                gc.collect()
+                # Checking weakrefs catches retained full weights independently
+                # of allocator caching, even on a single-GPU test machine.
+                self.assertTrue(all(ref() is None for ref in original_refs))
+                for child in (model, model.child, model.child.backbone):
+                    self.assertEqual(child._param_to_name, {
+                        p: name for name, p in child.named_parameters()
+                    })
+                    self.assertTrue(all(isinstance(p, DTensor)
+                                        for p in child._param_to_name))
+                optimizer_params = [p for group in optimizer.param_groups
+                                    for p in group['params']]
+                self.assertEqual(set(optimizer_params), set(model.parameters()))
+                outputs = performer(inputs)
+                torch.testing.assert_close(outputs, expected)
+                outputs.sum().backward()
+                optimizer.step()
+                self.assertIsNone(model.child.backbone.linear.weight.grad)
+                self.assertIsNotNone(model.child.head.weight.grad)
+            finally:
+                dist.destroy_process_group()
+
+    def test_root_sharding_releases_original_parameters(self):
+        self._check_parameter_references(shard_blocks=False)
+
+    def test_nested_sharding_releases_original_parameters(self):
+        self._check_parameter_references(shard_blocks=True)
+
+
+@unittest.skipUnless(torch.cuda.is_available(), 'CUDA is required for FSDP2')
+class FSDP2OptimizerResumeTest(unittest.TestCase):
+
+    def setUp(self):
+        torch.cuda.set_device(0)
+        self.directory = tempfile.TemporaryDirectory()
+        dist.init_process_group(
+            backend='nccl',
+            init_method='file://' + os.path.join(self.directory.name, 'init'),
+            rank=0,
+            world_size=1)
+
+    def tearDown(self):
+        dist.destroy_process_group()
+        self.directory.cleanup()
+
+    def _make_model(self, optimizer_ctor=alf.optimizers.AdamW,
+                    grad_accumulation_steps=1):
+        model = Algorithm(name='resume_test')
+        model.actor = torch.nn.Linear(4, 4, device='cuda')
+        model.critic = torch.nn.Linear(4, 1, device='cuda')
+        model.add_optimizer(optimizer_ctor(
+            lr=0.01, grad_accumulation_steps=grad_accumulation_steps),
+                            [model.actor])
+        model.add_optimizer(optimizer_ctor(
+            lr=0.02, grad_accumulation_steps=grad_accumulation_steps),
+                            [model.critic])
+        model._setup_optimizers()
+        return model
+
+    @staticmethod
+    def _forward(model, inputs):
+        return model.critic(model.actor(inputs))
+
+    def _wrap(self, model):
+        model.activate_ddp(0, strategy='fsdp2')
+        return distributed.make_distributed_performer(model, self._forward)
+
+    def _step(self, model, forward):
+        for optimizer in model.optimizers():
+            optimizer.zero_grad()
+        forward(torch.ones(2, 4, device='cuda')).square().mean().backward()
+        for optimizer in model.optimizers():
+            optimizer.step()
+
+    def test_adam_state_created_before_sharding(self):
+        from torch.distributed.tensor import DTensor
+
+        model = self._make_model()
+        self._step(model, lambda x: self._forward(model, x))
+        reference = self._make_model()
+        reference.load_state_dict(copy.deepcopy(model.state_dict()))
+        performer = self._wrap(model)
+
+        for optimizer in model.optimizers():
+            for parameter, state in optimizer.state.items():
+                self.assertIsInstance(parameter, DTensor)
+                for name in ('exp_avg', 'exp_avg_sq'):
+                    self.assertIsInstance(state[name], DTensor)
+                    self.assertEqual(state[name].placements,
+                                     parameter.placements)
+                self.assertNotIsInstance(state['step'], DTensor)
+
+        self._step(model, performer)
+        self._step(reference, lambda x: self._forward(reference, x))
+        for actual, expected in zip(model.parameters(), reference.parameters()):
+            torch.testing.assert_close(actual.full_tensor(), expected)
+
+    def _check_frozen_optimizer_restore(self, trained_critic,
+                                        grad_accumulation_steps=1):
+        from torch.distributed.tensor import DTensor
+
+        model = self._make_model(grad_accumulation_steps=grad_accumulation_steps)
+        performer = self._wrap(model)
+        if trained_critic:
+            for _ in range(grad_accumulation_steps):
+                self._step(model, performer)
+        model.critic.requires_grad_(False)
+        for _ in range(grad_accumulation_steps):
+            self._step(model, performer)
+        saved = copy.deepcopy(fsdp2_full_state_dict(model))
+
+        restored = self._make_model(
+            grad_accumulation_steps=grad_accumulation_steps)
+        restored_performer = self._wrap(restored)
+        restored.critic.requires_grad_(False)
+        # Ensure restore loads the saved groups, not just the tensor state.
+        for optimizer in restored.optimizers():
+            for group in optimizer.param_groups:
+                group['lr'] = 0.9
+        load_fsdp2_full_state_dict(restored, saved)
+        self.assertTrue(all(p.grad is None for p in restored.parameters()))
+        for original_opt, restored_opt in zip(model.optimizers(),
+                                              restored.optimizers()):
+            self.assertEqual(restored_opt._grad_counter, 0)
+            self.assertEqual([g['lr'] for g in original_opt.param_groups],
+                             [g['lr'] for g in restored_opt.param_groups])
+            for original, restored_param in zip(
+                    (p for g in original_opt.param_groups for p in g['params']),
+                    (p for g in restored_opt.param_groups for p in g['params'])):
+                expected_state = original_opt.state.get(original, {})
+                actual_state = restored_opt.state.get(restored_param, {})
+                self.assertEqual(expected_state.keys(), actual_state.keys())
+                for name, value in expected_state.items():
+                    actual = actual_state[name]
+                    if isinstance(value, DTensor):
+                        self.assertIsInstance(actual, DTensor)
+                        actual, value = actual.full_tensor(), value.full_tensor()
+                    torch.testing.assert_close(actual, value)
+
+        for _ in range(grad_accumulation_steps):
+            self._step(model, performer)
+            self._step(restored, restored_performer)
+        for actual, expected in zip(restored.parameters(), model.parameters()):
+            torch.testing.assert_close(actual.full_tensor(),
+                                       expected.full_tensor())
+
+    def test_restore_empty_frozen_critic_optimizer(self):
+        self._check_frozen_optimizer_restore(trained_critic=False)
+
+    def test_restore_previously_trained_frozen_critic_optimizer(self):
+        self._check_frozen_optimizer_restore(trained_critic=True)
+
+    def test_restore_with_gradient_accumulation(self):
+        self._check_frozen_optimizer_restore(
+            trained_critic=False, grad_accumulation_steps=6)
+
+    def test_restore_stateless_optimizers(self):
+        model = self._make_model(alf.optimizers.SGD)
+        performer = self._wrap(model)
+        model.critic.requires_grad_(False)
+        self._step(model, performer)
+        saved = fsdp2_full_state_dict(model)
+        self.assertFalse(saved[FSDP2_OPTIMIZER_STATE]['state'])
+        load_fsdp2_full_state_dict(model, saved)
+        self._step(model, performer)
 
 
 @unittest.skipUnless(torch.cuda.device_count() >= 2,
