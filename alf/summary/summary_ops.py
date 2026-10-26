@@ -430,9 +430,12 @@ def should_record_summaries():
             are identical.
 
     """
-    return (should_write_summaries()
-            or (is_summary_enabled() and _record_if_stack[-1]()
-                and _compute_summary_if_stack[-1]()))
+    # NumPy counter comparisons can return numpy.bool_, including through
+    # short-circuiting on non-writer ranks. SAC turns this flag into an integer
+    # tensor for an all-reduce, so honor the Python bool return contract.
+    return bool(should_write_summaries()
+                or (is_summary_enabled() and _record_if_stack[-1]()
+                    and _compute_summary_if_stack[-1]()))
 
 
 def should_compute_summaries():

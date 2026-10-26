@@ -13,11 +13,15 @@
 # limitations under the License.
 import os
 import tempfile
+from itertools import product
+from unittest import mock
+import numpy as np
 from tensorboard.backend.event_processing import event_file_loader
 from tensorboard.util import tensor_util
 import torch
 
 import alf
+from alf.summary import summary_ops
 
 
 def _find_event_file(root_dir):
@@ -31,6 +35,24 @@ def _find_event_file(root_dir):
 
 
 class SummaryTest(alf.test.TestCase):
+
+    def test_numpy_summary_conditions_return_python_bools(self):
+        for enabled, writer, record, compute in product((False, True), repeat=4):
+            with self.subTest(enabled=enabled, writer=writer, record=record,
+                              compute=compute), \
+                    mock.patch.object(summary_ops, '_summary_enabled', enabled), \
+                    alf.summary.push_summary_writer(object() if writer else None), \
+                    alf.summary.record_if(lambda: np.bool_(record)), \
+                    alf.summary.compute_summary_if(lambda: np.bool_(compute)):
+                expected = enabled and record and (writer or compute)
+                for predicate in (alf.summary.should_record_summaries,
+                                  alf.summary.should_compute_summaries):
+                    result = predicate()
+                    self.assertIs(type(result), bool)
+                    self.assertEqual(result, expected)
+                    # SAC creates this int32 flag before its summary all-reduce.
+                    flag = torch.empty(0).new_tensor(result, dtype=torch.int32)
+                    self.assertEqual(flag.item(), int(expected))
 
     def test_summary(self):
         with tempfile.TemporaryDirectory() as root_dir:
