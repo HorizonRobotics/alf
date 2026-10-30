@@ -149,6 +149,7 @@ class Algorithm(AlgorithmInterface):
         self._transform_state_spec = self._data_transformer.state_spec
 
         self._observers = []
+        self._replay_buffer_ctor = ReplayBuffer
         self._metrics = []
         self._replay_buffer = None
 
@@ -421,7 +422,7 @@ class Algorithm(AlgorithmInterface):
                                         is not None)
 
         exp_spec = dist_utils.to_distribution_param_spec(self._experience_spec)
-        self._replay_buffer = ReplayBuffer(
+        self._replay_buffer = self._replay_buffer_ctor(
             data_spec=exp_spec,
             num_environments=self._replay_buffer_num_envs,
             max_length=self._replay_buffer_max_length,
@@ -431,6 +432,10 @@ class Algorithm(AlgorithmInterface):
             name=f'{self._name}_replay_buffer')
         self._observers.append(lambda exp: self._replay_buffer.add_batch(
             exp, exp.env_id))
+
+    def initialize_replay_buffer_for_checkpoint(self):
+        """Construct lazy replay state before loading a replay checkpoint."""
+        self.train_iter()
 
     def preprocess_experience_for_replay(self, exp: Experience) -> Experience:
         """Preprocess experience before storing to replay buffer.
@@ -1688,7 +1693,7 @@ class Algorithm(AlgorithmInterface):
         grad_step = 0
         indices = None
         for u in range(num_updates):
-            if mini_batch_size < batch_size:
+            if mini_batch_size < batch_size and not getattr(self._replay_buffer, "preserve_sample_order", False):
                 indices = torch.randperm(batch_size,
                                          device=batch_device)
             for b in range(0, batch_size, mini_batch_size):

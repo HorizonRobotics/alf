@@ -215,14 +215,14 @@ class ReplayBuffer(RingBuffer):
 
     def _initialize_priority(self, env_ids):
         last_pos = self._current_pos[env_ids] - self._mini_batch_length
-        indices = self._env_id_idx_to_index(env_ids, self.circular(last_pos))
+        indices = self._env_id_idx_to_index(env_ids, self.circular(last_pos, env_ids))
         values = torch.full(indices.shape, self.initial_priority)
 
         if self._mini_batch_length > 1:
             last_pos = self._current_pos[env_ids] - 1
             indices = torch.cat([
                 indices,
-                self._env_id_idx_to_index(env_ids, self.circular(last_pos))
+                self._env_id_idx_to_index(env_ids, self.circular(last_pos, env_ids))
             ])
             values = torch.cat(
                 [values,
@@ -249,7 +249,7 @@ class ReplayBuffer(RingBuffer):
         env_ids = torch.arange(self._num_envs, dtype=torch.int64)
         if mini_batch_length > self._mini_batch_length:
             for i in range(self._mini_batch_length, mini_batch_length):
-                last_idx = self.circular(self._current_pos - i)
+                last_idx = self.circular(self._current_pos - i, env_ids)
                 indices = self._env_id_idx_to_index(env_ids, last_idx)
                 valid = torch.where(self._current_size >= i)[0]
                 indices = indices[valid]
@@ -257,7 +257,7 @@ class ReplayBuffer(RingBuffer):
                 self._update_segment_tree(indices, values)
         elif mini_batch_length < self._mini_batch_length:
             for i in range(mini_batch_length, self._mini_batch_length):
-                last_idx = self.circular(self._current_pos - i)
+                last_idx = self.circular(self._current_pos - i, env_ids)
                 indices = self._env_id_idx_to_index(env_ids, last_idx)
                 valid = torch.where(self._current_size >= i)[0]
                 indices = indices[valid]
@@ -285,7 +285,7 @@ class ReplayBuffer(RingBuffer):
             valid, = torch.where(positions >= self._current_pos[env_ids] -
                                  self._current_size[env_ids])
             indices = self._env_id_idx_to_index(
-                env_ids[valid], self.circular(positions[valid]))
+                env_ids[valid], self.circular(positions[valid], env_ids[valid]))
             self._update_segment_tree(indices, priorities[valid])
 
     @atomic
@@ -318,11 +318,11 @@ class ReplayBuffer(RingBuffer):
                 buffer_step_types = self._buffer.step_type
                 first, = torch.where(
                     (buffer_step_types[(env_ids,
-                                        self.circular(overwriting_pos))]
+                                        self.circular(overwriting_pos, env_ids))]
                      == ds.StepType.FIRST) *
                     (self._current_size[env_ids] == self._max_length))
                 first_env_ids = env_ids[first]
-                first_step_idx = self.circular(overwriting_pos[first])
+                first_step_idx = self.circular(overwriting_pos[first], first_env_ids)
                 self._headless_indexed_pos[first_env_ids] = self._indexed_pos[(
                     first_env_ids, first_step_idx)]
 
@@ -351,14 +351,14 @@ class ReplayBuffer(RingBuffer):
                                             env_ids)
                 # 3.3. initialize episode beginning positions to itself
                 self._indexed_pos[(env_ids[epi_first],
-                                   self.circular(overwriting_pos[epi_first])
+                                   self.circular(overwriting_pos[epi_first], env_ids[epi_first])
                                    )] = overwriting_pos[epi_first]
                 if self._record_episodic_return:
                     f_0 = (batch.discount == 0) | epi_first
                     self._store_discount_0_pos(~f_0, overwriting_pos, env_ids)
                     self._prev_disc_0_pos[(
                         env_ids[f_0], self.circular(
-                            overwriting_pos[f_0]))] = overwriting_pos[f_0]
+                            overwriting_pos[f_0], env_ids[f_0]))] = overwriting_pos[f_0]
                     # Compute episodic return even when a non-LAST step has discount 0,
                     # which happens when e.g. using AtariTerminalOnLifeLossWrapper.
                     # This has the advantage of start storing episodic return earlier,
@@ -444,12 +444,12 @@ class ReplayBuffer(RingBuffer):
             env_ids = info.env_ids
             if self._keep_episodic_info and self._record_episodic_return:
                 disc_ret = self._episodic_discounted_return[
-                    env_ids, self.circular(info.positions)]
+                    env_ids, self.circular(info.positions, env_ids)]
                 info = info._replace(discounted_return=disc_ret)
             if alf.summary.should_record_summaries():
                 # Only rewards are needed for this full-batch summary.
                 idx = self.circular(info.positions[:, None] +
-                                    torch.arange(batch_length))
+                                    torch.arange(batch_length), env_ids[:, None])
                 rewards = self._buffer.reward[env_ids[:, None], idx]
                 alf.summary.scalar(
                     "replayer/" + self._name + ".original_reward_mean",
@@ -467,7 +467,7 @@ class ReplayBuffer(RingBuffer):
         """
         with alf.device(self._device):
             idx = self.circular(batch_info.positions[:, None] +
-                                torch.arange(batch_length))
+                                torch.arange(batch_length), batch_info.env_ids[:, None])
             env_ids = batch_info.env_ids[:, None]
             result = alf.nest.map_structure(lambda b: b[env_ids, idx],
                                             self._buffer)
@@ -583,7 +583,7 @@ class ReplayBuffer(RingBuffer):
                          rounding_mode="floor") * self._max_length + x
 
     def _set_default_return(self, env_ids):
-        ind = (env_ids, self.circular(self._current_pos[env_ids] - 1))
+        ind = (env_ids, self.circular(self._current_pos[env_ids] - 1, env_ids))
         self._episodic_discounted_return[ind] = self._default_return
 
     def _compute_store_episodic_return(self, env_ids):
@@ -600,14 +600,14 @@ class ReplayBuffer(RingBuffer):
         first_step_pos = self.get_disc_0_begin_position(
             current_pos - 1, env_ids)
 
-        headless = first_step_pos < current_pos - self._max_length + 1
-        first_step_pos[headless] = (current_pos - self._max_length +
+        headless = first_step_pos < current_pos - self._capacity(env_ids) + 1
+        first_step_pos[headless] = (current_pos - self._capacity(env_ids) +
                                     1)[headless]
         max_len = torch.max(current_pos - first_step_pos) + 1
         # Indexes cover all env_ids for the length of the longest episode.
         epi_pos = current_pos.unsqueeze(1) - max_len + 1 + torch.arange(
             max_len).unsqueeze(0)
-        epi_pos_idx = self.circular(epi_pos)
+        epi_pos_idx = self.circular(epi_pos, env_ids.unsqueeze(1))
         all_ind = (env_ids.unsqueeze(1), epi_pos_idx)
         # mask for the real indices
         valid = epi_pos >= first_step_pos.unsqueeze(1)
@@ -641,11 +641,11 @@ class ReplayBuffer(RingBuffer):
         # Because this is a non-first step, the previous step's first step
         # is the same as this stored step's first step.  Look it up.
         prev_pos = _pos - 1
-        prev_idx = self.circular(prev_pos)
+        prev_idx = self.circular(prev_pos, _env_ids)
         prev_value = buffer[(_env_ids, prev_idx)]
-        prev_value_idx = self.circular(prev_value)
+        prev_value_idx = self.circular(prev_value, _env_ids)
         # Record pos of ``FIRST`` step into the current buffer
-        buffer[(_env_ids, self.circular(_pos))] = prev_value
+        buffer[(_env_ids, self.circular(_pos, _env_ids))] = prev_value
         return _env_ids, _pos, prev_value, prev_value_idx
 
     def _store_discount_0_pos(self, non_f_0, pos, env_ids):
@@ -675,7 +675,7 @@ class ReplayBuffer(RingBuffer):
                 self._indexed_pos, non_first, pos, env_ids)
 
         # Store episode end into the ``FIRST`` step of the episode.
-        has_head_cond = prev_first > _pos - self._max_length
+        has_head_cond = prev_first > _pos - self._capacity(_env_ids)
         has_head, = torch.where(has_head_cond)
         self._indexed_pos[(_env_ids[has_head],
                            prev_first_idx[has_head])] = _pos[has_head]
@@ -691,7 +691,7 @@ class ReplayBuffer(RingBuffer):
         """
         # Look up ``FIRST`` step position, then look up the stored last pos
         first_step_pos = self._indexed_pos[(env_ids, idx)]
-        first_step_idx = self.circular(first_step_pos)
+        first_step_idx = self.circular(first_step_pos, env_ids)
         result = self._indexed_pos[(env_ids, first_step_idx)]
         # If current step is FIRST, skip second lookup.
         buffer_step_types = self._buffer.step_type
@@ -706,8 +706,8 @@ class ReplayBuffer(RingBuffer):
         # (The case where current step is a ``FIRST`` step can be safely
         # ignored because the first_step_pos points to episode end which
         # is guaranteed to be existing.)
-        headless = self._current_pos[
-            env_ids] > first_step_pos + self._max_length
+        headless = (self._current_pos[env_ids] > first_step_pos + self._capacity(env_ids)) \
+            & ~self._is_frozen(first_step_pos, env_ids)
         headless_env_ids = env_ids.expand_as(idx)[headless]
         result[headless] = self._headless_indexed_pos[headless_env_ids]
         return result
@@ -722,14 +722,14 @@ class ReplayBuffer(RingBuffer):
         Returns:
             tensor of shape ``L``.
         """
-        last_pos = self._get_episode_end_pos(self.circular(pos), env_ids)
+        last_pos = self._get_episode_end_pos(self.circular(pos, env_ids), env_ids)
         return last_pos - pos
 
     def get_episode_begin_position(self, pos, env_ids):
         """
         Note that the episode begin may not still be in the replay buffer.
         """
-        indices = (env_ids, self.circular(pos))
+        indices = (env_ids, self.circular(pos, env_ids))
         first_step_pos = self._indexed_pos[indices]
         buffer_step_types = self._buffer.step_type
         is_first = buffer_step_types[indices] == ds.StepType.FIRST
@@ -740,7 +740,7 @@ class ReplayBuffer(RingBuffer):
         """
         Note that the discount 0 step may no longer be in the replay buffer.
         """
-        indices = (env_ids, self.circular(pos))
+        indices = (env_ids, self.circular(pos, env_ids))
         first_step_pos = self._prev_disc_0_pos[indices]
         return first_step_pos
 
@@ -874,13 +874,10 @@ class ReplayBuffer(RingBuffer):
         Returns:
             Tensor: with the same shape as broadcasted shape of env_ids and positions
         """
-        current_pos = self._current_pos[env_ids]
-        assert torch.all(positions < current_pos), "Invalid positions"
-        assert torch.all(positions >= current_pos -
-                         self._max_length), "Invalid positions"
+        assert torch.all(self._valid_positions(positions, env_ids)), "Invalid positions"
         field = alf.nest.map_structure(
             lambda name: alf.nest.get_field(self._buffer, name), field_name)
-        indices = (env_ids, self.circular(positions))
+        indices = (env_ids, self.circular(positions, env_ids))
         result = alf.nest.map_structure(lambda x: x[indices], field)
         return convert_device(result)
 
@@ -895,11 +892,8 @@ class ReplayBuffer(RingBuffer):
         Returns:
             Tensor: with the same shape as broadcasted shape of env_ids and positions
         """
-        current_pos = self._current_pos[env_ids]
-        assert torch.all(positions < current_pos), "Invalid positions"
-        assert torch.all(positions >= current_pos -
-                         self._max_length), "Invalid positions"
-        indices = (env_ids, self.circular(positions))
+        assert torch.all(self._valid_positions(positions, env_ids)), "Invalid positions"
+        indices = (env_ids, self.circular(positions, env_ids))
         result = self._episodic_discounted_return[indices]
         return convert_device(result)
 
@@ -919,4 +913,4 @@ class ReplayBuffer(RingBuffer):
         env_ids = env_ids[valid]
         positions = positions[valid]
         step_type = self._buffer.step_type
-        step_type[env_ids, self.circular(positions)] = int(ds.StepType.LAST)
+        step_type[env_ids, self.circular(positions, env_ids)] = int(ds.StepType.LAST)

@@ -171,9 +171,19 @@ class RingBuffer(nn.Module):
         """The spec of a single item that can be stored in this buffer."""
         return self._data_spec
 
-    def circular(self, pos):
+    def circular(self, pos, env_ids=None):
         """Mod pos by _max_length to get the actual index in the _buffer."""
         return pos % self._max_length
+
+    def _capacity(self, env_ids=None):
+        return self._max_length
+
+    def _is_frozen(self, pos, env_ids):
+        return torch.zeros_like(pos, dtype=torch.bool)
+
+    def _valid_positions(self, pos, env_ids):
+        current_pos = self._current_pos[env_ids]
+        return (pos < current_pos) & (pos >= current_pos - self._max_length)
 
     def check_convert_env_ids(self, env_ids):
         with alf.device(self._device):
@@ -266,10 +276,10 @@ class RingBuffer(nn.Module):
                     and (env_ids == self._env_ids).all()):
                 # fast path for the common case when all envs have the same
                 # current_pos, and when all envs unroll the same number of steps.
-                pos = self.circular(current_pos)
+                pos = self.circular(current_pos, env_ids)
 
                 def _set(buf, bat):
-                    buf[:, pos] = bat.detach()
+                    buf[env_ids, pos] = bat.detach()
 
                 alf.nest.map_structure(_set, self._buffer, batch)
                 self._current_pos.fill_(current_pos + 1)
@@ -284,7 +294,7 @@ class RingBuffer(nn.Module):
 
                 current_pos = self._current_pos[env_ids]
                 indices = env_ids * self._max_length + self.circular(
-                    current_pos)
+                    current_pos, env_ids)
                 alf.nest.map_structure(
                     lambda buf, bat: buf.view(-1, *buf.shape[2:]).__setitem__(
                         indices, bat.detach()), self._buffer, batch)

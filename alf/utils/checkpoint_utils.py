@@ -414,12 +414,14 @@ class Checkpointer(object):
         # The sharded replay-buffer format operates on ReplayBuffer instances
         # directly instead of parsing their flattened state_dict keys. That
         # keeps the save/load path independent of nested field names.
+        from alf.experience_replayers.replay_buffer import ReplayBuffer
+
         if type(module) == torch.nn.DataParallel:
             module = module.module
         if not isinstance(module, nn.Module):
             return
         for path, child in module.named_modules():
-            if (child.__class__.__name__ == "ReplayBuffer"
+            if (isinstance(child, ReplayBuffer)
                     and not Checkpointer._is_offline_replay_buffer_path(path)):
                 yield path, child
 
@@ -434,6 +436,7 @@ class Checkpointer(object):
             "max_length": replay_buffer.max_length,
             "num_envs": replay_buffer.num_environments,
             "episodes": [],
+            "frozen": [],
         }
         step_type = replay_buffer._buffer.step_type
         current_pos = replay_buffer._current_pos
@@ -449,7 +452,13 @@ class Checkpointer(object):
             positions = torch.arange(end_pos - size,
                                      end_pos,
                                      device=step_type.device)
-            indices = replay_buffer.circular(positions)
+            frozen_sizes = getattr(replay_buffer, "_frozen_size", None)
+            if frozen_sizes is not None:
+                frozen = int(frozen_sizes[env_id])
+                start = max(frozen, end_pos - (replay_buffer.max_length - frozen))
+                positions = torch.cat((torch.arange(frozen, device=step_type.device),
+                                       torch.arange(start, end_pos, device=step_type.device)))
+            indices = replay_buffer.circular(positions, env_id)
             steps = step_type[env_id, indices].detach().cpu().tolist()
 
             first = None
@@ -466,6 +475,7 @@ class Checkpointer(object):
                         lambda b: b[env_id, episode_indices].detach().cpu().
                         clone(), replay_buffer._buffer)
                     result["episodes"].append(alf.nest.flatten(episode))
+                    result["frozen"].append(bool(replay_buffer._is_frozen(positions[first], env_id)))
                     first = None
 
         return result
@@ -548,6 +558,7 @@ class Checkpointer(object):
                         "source_path": source_path,
                         "index": episode_index,
                         "length": int(episode[0].shape[0]),
+                        "frozen": payload.get("frozen", [False] * len(payload["episodes"]))[episode_index],
                     } for episode_index, episode in enumerate(
                         payload["episodes"])])
             del source
@@ -572,7 +583,7 @@ class Checkpointer(object):
                         "episodes": [],
                     })
             episodes = sorted(payload["episodes"],
-                              key=lambda e: e["length"],
+                              key=lambda e: (e["frozen"], e["length"]),
                               reverse=True)
             for episode in episodes:
                 # Greedy balance by total episode steps for this replay buffer.
@@ -599,19 +610,21 @@ class Checkpointer(object):
                                 "max_length": payload["max_length"],
                                 "num_envs": payload["num_envs"],
                                 "episodes": [],
+                                "frozen": [],
                             })
                     refs_by_source = {}
                     for ref in payload["episodes"]:
                         refs_by_source.setdefault(ref["source_path"],
-                                                  []).append(ref["index"])
+                                                  []).append(ref)
                     for source_path, episode_indices in refs_by_source.items():
                         source = torch.load(source_path,
                                             map_location=map_location)
                         source_episodes = source["modules"][module_name][path][
                             "episodes"]
-                        for episode_index in episode_indices:
+                        for ref in episode_indices:
                             shard_payload["episodes"].append(
-                                source_episodes[episode_index])
+                                source_episodes[ref["index"]])
+                            shard_payload["frozen"].append(ref["frozen"])
                         del source
             torch.save(shard, os.path.join(shard_dir, f"rank-{rank:05d}"))
             logging.info(
@@ -660,7 +673,11 @@ class Checkpointer(object):
                 replay_buffer = replay_buffers[path]
                 replay_buffer.clear()
                 env_lengths = [0] * replay_buffer.num_environments
-                for flat_episode in payload["episodes"]:
+                frozen_sizes = [0] * replay_buffer.num_environments
+                frozen_flags = payload.get("frozen", [False] * len(payload["episodes"]))
+                episode_order = sorted(range(len(payload["episodes"])), key=lambda i: not frozen_flags[i])
+                for episode_index in episode_order:
+                    flat_episode = payload["episodes"][episode_index]
                     episode = alf.nest.pack_sequence_as(
                         replay_buffer.data_spec, flat_episode)
                     episode_length = int(episode.step_type.shape[0])
@@ -686,6 +703,10 @@ class Checkpointer(object):
                             lambda x: x[t:t + 1], episode),
                                                 env_ids=torch.tensor([env_id]))
                     env_lengths[env_id] += episode_length
+                    if frozen_flags[episode_index]:
+                        frozen_sizes[env_id] += episode_length
+                if hasattr(replay_buffer, "freeze_successes") and any(frozen_sizes):
+                    replay_buffer.freeze_successes(frozen_sizes)
 
     def _load_sharded_replay_buffer_dir(self, replay_buffer_dir,
                                         replay_buffer_rank,

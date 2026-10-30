@@ -592,7 +592,7 @@ class Trainer(object):
             # They only appear after one training iteration. So we need to run
             # train_iter() once before loading a saved replay buffer. The dummy
             # data are replaced by the replay buffer checkpoint during loading.
-            self._algorithm.train_iter()
+            self._algorithm.initialize_replay_buffer_for_checkpoint()
         try:
             context = PerProcessContext()
             replay_buffer_rank = max(self._rank, 0)
