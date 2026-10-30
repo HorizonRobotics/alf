@@ -421,6 +421,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         self.observe_for_replay = self._observe_for_replay
 
         self._latest_parameters = LatestParameters()
+        self._num_model_publications = 0
         self._parameter_registrations = queue.Queue()
         self._communication_stop = threading.Event()
         self._communication_errors = queue.Queue()
@@ -464,6 +465,11 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         buffer = io.BytesIO()
         torch.save(self._distributed_state_dict(), buffer)
         self._latest_parameters.publish(self._total_updates, buffer.getvalue())
+        self._num_model_publications += 1
+        alf.summary.scalar('distributed/trainer/published_model_version',
+                           self._total_updates)
+        alf.summary.scalar('distributed/trainer/model_publications_total',
+                           self._num_model_publications)
 
     def _start_communication_thread(self, make_server):
 
@@ -641,6 +647,8 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
 
         steps = super()._train_iter_off_policy()
         self._total_updates += self._config.num_updates_per_train_iter
+        alf.summary.scalar('distributed/trainer/grad_updates_total',
+                           self._total_updates)
 
         with record_time("time/trainer_send_params_to_unroller"):
             if (self._total_updates %
@@ -716,6 +724,9 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         self._pull_params_process = None
         self._shared_alg_params = None
         self._loaded_params_version = -1
+        # Count successful model loads, including the initial synchronization.
+        # These counters and snapshot versions are local to this process run.
+        self._num_applied_model_syncs = 0
 
         # Record the current worker the data is being sent to
         # To maintain load balance, we want to cycle through the workers
@@ -856,7 +867,31 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
                 continue
             self._core_alg.load_state_dict(state_dict, strict=False)
             self._loaded_params_version = version
+            self._num_applied_model_syncs += 1
             updated = True
+
+    def _summarize_parameter_sync(self, start_version, syncs_before):
+        """Record applied snapshots and observed progress across an unroll.
+
+        Snapshot versions count trainer updates. Their difference includes
+        publication/transfer delay and the final sync, and may omit unpublished
+        updates. It is not an exact count of updates during the rollout's
+        wall-clock interval. Initial synchronization is excluded from the
+        per-unroll count but included in the cumulative count.
+        """
+        alf.summary.scalar(
+            'distributed/unroller/model_version_at_unroll_start',
+            start_version)
+        alf.summary.scalar('distributed/unroller/model_version_after_sync',
+                           self._loaded_params_version)
+        alf.summary.scalar(
+            'distributed/unroller/observed_grad_updates_per_unroll',
+            self._loaded_params_version - start_version)
+        alf.summary.scalar(
+            'distributed/unroller/applied_model_syncs_per_unroll',
+            self._num_applied_model_syncs - syncs_before)
+        alf.summary.scalar('distributed/unroller/applied_model_syncs_total',
+                           self._num_applied_model_syncs)
 
     def train_iter(self):
         """Perform one training iteration of the unroller.
@@ -898,10 +933,13 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             self._registered = True
 
         # Experience will be sent to the trainer in this function
+        start_version = self._loaded_params_version
+        syncs_before = self._num_applied_model_syncs
         with record_time(
                 "time/dist_unroller_train_iter/1_unroll_iter_off_policy"):
             self._unroll_iter_off_policy()
         with record_time(
                 "time/dist_unroller_train_iter/2_check_params_update"):
             self._check_params_update()
+        self._summarize_parameter_sync(start_version, syncs_before)
         return 0

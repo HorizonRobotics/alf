@@ -30,7 +30,8 @@ import zmq
 import alf
 from alf.algorithms import distributed_off_policy_transport as transport
 from alf.algorithms.distributed_off_policy_algorithm import (
-    DistributedUnroller, receive_experience_data, pull_params_from_trainer)
+    DistributedTrainer, DistributedUnroller, receive_experience_data,
+    pull_params_from_trainer)
 from alf.data_structures import Experience, TimeStep, StepType
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 from alf.utils import dist_utils
@@ -374,6 +375,7 @@ class LatestParameterTest(unittest.TestCase):
         return SimpleNamespace(_shared_alg_params=self.memory,
                                _shared_mem_lock=self.lock,
                                _loaded_params_version=-1,
+                               _num_applied_model_syncs=0,
                                _core_alg=SimpleNamespace(load_state_dict=load))
 
     def test_latest_unread_snapshot_replaces_old_and_rejects_stale(self):
@@ -400,7 +402,9 @@ class LatestParameterTest(unittest.TestCase):
         self.assertTrue(DistributedUnroller._check_params_update(unroller))
         self.assertEqual(applied, [1, 2])
         self.assertEqual(unroller._loaded_params_version, 2)
+        self.assertEqual(unroller._num_applied_model_syncs, 2)
         self.assertFalse(DistributedUnroller._check_params_update(unroller))
+        self.assertEqual(unroller._num_applied_model_syncs, 2)
 
     def test_superseded_snapshot_is_skipped_before_model_load(self):
         self._publish(1)
@@ -418,6 +422,94 @@ class LatestParameterTest(unittest.TestCase):
         with mock.patch.object(torch, 'load', side_effect=load):
             self.assertTrue(DistributedUnroller._check_params_update(unroller))
         self.assertEqual(applied, [2])
+        self.assertEqual(unroller._num_applied_model_syncs, 1)
+
+    def test_sync_summaries_measure_applied_versions_and_skipped_snapshots(
+            self):
+        unroller = self._unroller(lambda state, strict: None)
+        self._publish(20)
+        DistributedUnroller._check_params_update(unroller)
+        start_version = unroller._loaded_params_version
+        syncs_before = unroller._num_applied_model_syncs
+        self._publish(40)
+        self._publish(60)
+        self._publish(80)
+        DistributedUnroller._check_params_update(unroller)
+
+        with mock.patch.object(alf.summary, 'scalar') as scalar:
+            DistributedUnroller._summarize_parameter_sync(
+                unroller, start_version, syncs_before)
+        values = dict(call.args for call in scalar.call_args_list)
+        self.assertEqual(
+            values, {
+                'distributed/unroller/model_version_at_unroll_start': 20,
+                'distributed/unroller/model_version_after_sync': 80,
+                'distributed/unroller/observed_grad_updates_per_unroll': 60,
+                'distributed/unroller/applied_model_syncs_per_unroll': 1,
+                'distributed/unroller/applied_model_syncs_total': 2,
+            })
+
+        # No new snapshot gives zero per-unroll progress and no extra sync.
+        self.assertFalse(DistributedUnroller._check_params_update(unroller))
+        with mock.patch.object(alf.summary, 'scalar') as scalar:
+            DistributedUnroller._summarize_parameter_sync(unroller, 80, 2)
+        values = dict(call.args for call in scalar.call_args_list)
+        self.assertEqual(
+            values['distributed/unroller/observed_grad_updates_per_unroll'], 0)
+        self.assertEqual(
+            values['distributed/unroller/applied_model_syncs_per_unroll'], 0)
+        self.assertEqual(
+            values['distributed/unroller/applied_model_syncs_total'], 2)
+
+
+class DistributedSummaryTest(unittest.TestCase):
+
+    def test_publication_counter_includes_initial_snapshot_but_not_duplicates(
+            self):
+        trainer = SimpleNamespace(
+            _latest_parameters=transport.LatestParameters(),
+            _total_updates=0,
+            _num_model_publications=0,
+            _distributed_state_dict=lambda: {'weight': torch.tensor(1.)})
+        with mock.patch.object(alf.summary, 'scalar') as scalar:
+            DistributedTrainer._publish_parameters(trainer, force=True)
+            self.assertEqual(trainer._num_model_publications, 1)
+            DistributedTrainer._publish_parameters(trainer, force=True)
+            self.assertEqual(trainer._num_model_publications, 1)
+            trainer._total_updates = 20
+            DistributedTrainer._publish_parameters(trainer, force=True)
+        self.assertEqual(trainer._num_model_publications, 2)
+        self.assertEqual(trainer._latest_parameters.get()[0], 20)
+        self.assertEqual(scalar.call_count, 4)
+        values = dict(call.args for call in scalar.call_args_list)
+        self.assertEqual(
+            values, {
+                'distributed/trainer/published_model_version': 20,
+                'distributed/trainer/model_publications_total': 2,
+            })
+
+    def test_unroll_logs_once_after_applying_new_weights(self):
+        # Exercise train_iter wiring without constructing a GPU model.
+        unroller = SimpleNamespace(_config=SimpleNamespace(empty_cache=False),
+                                   _unroller_only=False,
+                                   _pull_params_process=None,
+                                   _registered=True,
+                                   _loaded_params_version=20,
+                                   _num_applied_model_syncs=1,
+                                   _unroll_iter_off_policy=mock.Mock(),
+                                   _summarize_parameter_sync=mock.Mock())
+
+        def sync():
+            unroller._loaded_params_version = 60
+            unroller._num_applied_model_syncs += 1
+
+        unroller._check_params_update = mock.Mock(side_effect=sync)
+        with mock.patch(
+                'alf.algorithms.distributed_off_policy_algorithm.record_time'):
+            self.assertEqual(DistributedUnroller.train_iter(unroller), 0)
+        unroller._unroll_iter_off_policy.assert_called_once_with()
+        unroller._check_params_update.assert_called_once_with()
+        unroller._summarize_parameter_sync.assert_called_once_with(20, 1)
 
 
 class RemoteProcessTest(_TransportTestCase):
