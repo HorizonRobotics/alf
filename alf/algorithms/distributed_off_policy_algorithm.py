@@ -19,9 +19,10 @@ import io
 import os
 import queue
 import random
-import socket as pysocket
 import threading
 import subprocess
+import uuid
+from contextlib import nullcontext
 import zmq
 
 import torch
@@ -40,11 +41,11 @@ from alf.utils.per_process_context import PerProcessContext
 from alf.utils import dist_utils
 from alf.utils.summary_utils import record_time
 from alf.utils.common_test import _test_tensor_sharing
-
-
-class UnrollerMessage(object):
-    # confirmation
-    OK = 'unroller: ok'
+from alf.algorithms.distributed_off_policy_transport import (
+    ExperienceSender, ExperienceReceiver, RegistrationServer, ParameterServer,
+    LatestParameters, register_unroller, publish_shared_parameters,
+    take_shared_parameters, shared_parameter_version, PARAM_HEADER_SIZE,
+    GET_PARAMS, PARAMS)
 
 
 def get_local_ip():
@@ -294,150 +295,72 @@ class DistributedOffPolicyAlgorithm(OffPolicyAlgorithm):
 
 def receive_experience_data(replay_buffer: ReplayBuffer,
                             new_unroller_ips_and_ports: 'Manager.Queue',
-                            worker_id: int) -> None:
-    """A worker function for consistently receiving experience data from
-    unrollers.
+                            worker_id: int,
+                            stop_event=None) -> None:
+    """Receive and acknowledge every step without blocking new connections.
 
-    It will be called in a child process. Each worker creates a ZMQ DEALER
-    socket and listen for experience data from the unrollers.
-
-    This function has to be in a process instead of a thread, because the
-    ``replay_buffer.add_batch`` will modify the global device, which causes
-    conflicts with the training code.
-
-    Args:
-        replay_buffer: an instance of ``ReplayBuffer`` to store the received
-            experience data.  It must allow multi-processing.
-        new_unroller_ips_and_ports: a queue to store the ip and port of
-            new unrollers.
-        worker_id: the id of the worker; used by each unroller to route the
-            experience data.
+    Incomplete episodes remain buffered on the trainer. Completed episodes are
+    committed under one replay lock, so MC-return training cannot sample them
+    before their LAST step has backfilled the returns. Pending experience is
+    not durable across a trainer process crash.
     """
-    # A temporary buffer for each unroller to store exp data. Because multiple
-    # unrollers might send exps to the same DDP rank at the same time, we need
-    # to differentiate the sources. When a complete segment of exp data is ready,
-    # we will add it to the replay buffer.
-    unroller_exps_buffer = {}
-    socket = None
-    # Listen for experience data forever
-    while True:
-        try:
-            unroller_ip, unroller_port = new_unroller_ips_and_ports.get_nowait(
-            )
-            # A new unroller has connected to the trainer
-            if socket is None:
-                probe = pysocket.socket()
-                probe.settimeout(3)
-                try:
-                    probe.connect((unroller_ip, unroller_port))
-                    logging.info(
-                        f"Trainer worker-{worker_id} TCP probe succeeded for "
-                        f"{unroller_ip}:{unroller_port}.")
-                except OSError as e:
-                    logging.warning(
-                        f"Trainer worker-{worker_id} TCP probe failed for "
-                        f"{unroller_ip}:{unroller_port}: {e}")
-                finally:
-                    probe.close()
-                socket, _ = create_zmq_socket(zmq.DEALER, unroller_ip,
-                                              unroller_port,
-                                              f'worker-{worker_id}')
-            else:
-                addr = 'tcp://' + ':'.join([unroller_ip, str(unroller_port)])
-                probe = pysocket.socket()
-                probe.settimeout(3)
-                try:
-                    probe.connect((unroller_ip, unroller_port))
-                    logging.info(
-                        f"Trainer worker-{worker_id} TCP probe succeeded for "
-                        f"{unroller_ip}:{unroller_port}.")
-                except OSError as e:
-                    logging.warning(
-                        f"Trainer worker-{worker_id} TCP probe failed for "
-                        f"{unroller_ip}:{unroller_port}: {e}")
-                finally:
-                    probe.close()
-                # Connect to an additional ROUTER
-                socket.connect(addr)
-        except queue.Empty:
-            pass
+    pending_episodes = {}
 
-        if socket is not None:
-            # Receive data from any router
-            unroller_id, message = socket.recv_multipart()
+    def accept(unroller_id, payload):
+        exp = torch.load(io.BytesIO(payload),
+                         map_location='cpu',
+                         weights_only=False)
+        exp = alf.utils.common.prune_exp_replay_env_info(
+            exp, env_info_spec=replay_buffer.data_spec.time_step.env_info)
+        exp.env_id.zero_()
+        episode = pending_episodes.setdefault(unroller_id, [])
+        episode.append(exp)
+        if int(exp.step_type) == StepType.LAST:
+            # add_batch() takes the same re-entrant multiprocessing lock.
+            lock = replay_buffer._lock
+            with lock if lock is not None else nullcontext():
+                for step in episode:
+                    replay_buffer.add_batch(step, step.env_id)
+            del pending_episodes[unroller_id]
 
-            buffer = io.BytesIO(message)
-            # weights_only need to be False starting from torch 2.6 since we have
-            # alf's Experience data structure in it.
-            exp_params = torch.load(buffer,
-                                    map_location='cpu',
-                                    weights_only=False)
-            # we prune env_info according to the replay buffer for the following reasons:
-            # 1) avoid env_info mismatch and allow the distributed unroller to have
-            # a customized env_info for tb summarization,
-            # 2) reduce memory usage for the replay buffer
-            exp_params = alf.utils.common.prune_exp_replay_env_info(
-                exp_params,
-                env_info_spec=replay_buffer.data_spec.time_step.env_info)
-
-            # Use a temp buffer to store the received exps
-            if unroller_id not in unroller_exps_buffer:
-                unroller_exps_buffer[unroller_id] = []
-            unroller_exps_buffer[unroller_id].append(exp_params)
-            logging.info(
-                f"Trainer worker-{worker_id} received step_type="
-                f"{int(exp_params.step_type)} from {unroller_id.decode()}, "
-                f"buffered_steps={len(unroller_exps_buffer[unroller_id])}.")
-
-            if int(exp_params.step_type) == StepType.LAST:
-                # Add the temp exp buffer to the replay buffer
-                # ``DistributedOffPolicyAlgorithm`` assumes batch_size=1
-                exp_params.env_id.zero_()
-                for i, exp_params in enumerate(
-                        unroller_exps_buffer[unroller_id]):
-                    replay_buffer.add_batch(exp_params, exp_params.env_id)
-                unroller_exps_buffer[unroller_id] = []
-        else:
-            time.sleep(0.1)
+    receiver = ExperienceReceiver(
+        new_unroller_ips_and_ports,
+        worker_id,
+        accept,
+        discard=lambda identity: pending_episodes.pop(identity, None))
+    try:
+        while stop_event is None or not stop_event.is_set():
+            receiver.run_once()
+    finally:
+        receiver.close()
 
 
-def pull_params_from_trainer(memory_name: str, memory_lock: mp.Lock,
-                             unroller_id: str, params_socket_rank: int):
-    """ Once new params arrive, we put it in the shared memory and mark updated.
-    Later after the current unroll finishes, the unroller can load the
-    new params.
-
-    Args:
-        memory_name: the name of the shared memory which is used to store the
-            updated params for the main process.
-        memory_lock: the lock for the shared memory write/read.
-        unroller_id: the id of the unroller.
-        params_socket_rank: which DDP rank will be syncing params with this unroller.
-    """
-    socket, _ = create_zmq_socket(
-        zmq.DEALER, _trainer_addr_config.ip,
-        _trainer_addr_config.port + _params_port_offset + params_socket_rank,
-        unroller_id + "_params")
-    logging.info(
-        f"Unroller {unroller_id} connected param socket to "
-        f"{_trainer_addr_config.ip}:"
-        f"{_trainer_addr_config.port + _params_port_offset + params_socket_rank}."
-    )
+def pull_params_from_trainer(memory_name, memory_lock, unroller_id,
+                             params_socket_rank, trainer_ip, trainer_port):
+    """Request the latest version and replace older unread snapshots."""
+    socket, context = create_zmq_socket(
+        zmq.DEALER, trainer_ip,
+        trainer_port + _params_port_offset + params_socket_rank,
+        unroller_id + '_params')
+    socket.setsockopt(zmq.LINGER, 0)
     params = SharedMemory(name=memory_name)
-    # signifies that this unroller is ready to receive params
-    socket.send_string(UnrollerMessage.OK)
-    logging.info(
-        f"Unroller {unroller_id} sent initial param-ready signal to trainer.")
-    while True:
-        data = socket.recv()
-        logging.info(f"Unroller {unroller_id} received param payload of "
-                     f"{len(data) / 1024 / 1024:.2f} MB from trainer.")
-        with memory_lock:
-            params.buf[0] = 1
-            params.buf[1:] = data
-        socket.send_string(UnrollerMessage.OK)
-        logging.info(
-            f"Unroller {unroller_id} acknowledged param payload to trainer.")
+    received_version = -1
+    try:
+        while True:
+            socket.send_multipart([GET_PARAMS, str(received_version).encode()])
+            if not socket.poll(500):
+                continue
+            frames = socket.recv_multipart()
+            if len(frames) != 3 or frames[0] != PARAMS:
+                raise ValueError('Invalid parameter snapshot message')
+            _, version, payload = frames
+            version = int(version)
+            publish_shared_parameters(params, memory_lock, version, payload)
+            received_version = max(received_version, version)
+    finally:
+        params.close()
+        socket.close()
+        context.term()
 
 
 @alf.configurable(
@@ -497,8 +420,14 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         # by the parent ``RLAlgorithm``
         self.observe_for_replay = self._observe_for_replay
 
-        self._params_socket, _ = create_zmq_socket(
-            zmq.ROUTER, '*', self._port + _params_port_offset + self._ddp_rank)
+        self._latest_parameters = LatestParameters()
+        self._parameter_registrations = queue.Queue()
+        self._communication_stop = threading.Event()
+        self._communication_errors = queue.Queue()
+        self._communication_threads = []
+        self._data_receiver_process = None
+        self._data_receiver_stop = None
+        self._communication_manager = None
 
         assert config.unroll_length == -1, (
             'unroll_length must be -1 (no unrolling)')
@@ -527,136 +456,77 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
     def is_main_ddp_rank(self):
         return self._ddp_rank == 0
 
-    def _send_params_to_unroller(self,
-                                 unroller_id: str,
-                                 first_time: bool = False) -> bool:
-        """Send model params to a specified unroller.
-
-        Args:
-            unroller_id: id (bytes str) of the unroller.
-            first_time: whether this is the first time this function gets called.
-                For the first time, we need to wait for the unroller's socket ready
-                signal.
-
-        Returns:
-            bool: True if the unroller is still alive.
-        """
-        unroller_id1 = unroller_id + b'_params'
-        if first_time:
-            # Block until the unroller is ready to receive params
-            # If we don't do so, the outgoing params might get lost before
-            # the receiving socket is actually created.
-            logging.info(
-                f"Rank {self._ddp_rank} waiting for initial param-ready "
-                f"signal from unroller {unroller_id.decode()}.")
-            unroller_id_, message = self._params_socket.recv_multipart()
-            assert unroller_id_ == unroller_id1
-            assert message == UnrollerMessage.OK.encode()
-            logging.info(
-                f"Rank {self._ddp_rank} received initial param-ready signal "
-                f"from unroller {unroller_id.decode()}.")
-
-        # Get all parameters/buffers in a state dict and send them out
-        logging.info(
-            f"Rank {self._ddp_rank} starting param serialization for "
-            f"unroller {unroller_id.decode()} ({_memory_debug_info()}).")
+    def _publish_parameters(self, force=False):
+        """Serialize in the training thread, outside any optimizer update."""
+        version, _ = self._latest_parameters.get()
+        if version == self._total_updates or (version >= 0 and not force):
+            return
         buffer = io.BytesIO()
-        state_dict = self._distributed_state_dict()
-        logging.info(
-            f"Rank {self._ddp_rank} obtained distributed state dict for "
-            f"unroller {unroller_id.decode()} ({_memory_debug_info()}).")
-        torch.save(state_dict, buffer)
-        logging.info(f"Rank {self._ddp_rank} finished torch.save for unroller "
-                     f"{unroller_id.decode()} ({_memory_debug_info()}).")
-        payload = buffer.getvalue()
-        logging.info(
-            f"Rank {self._ddp_rank} materialized payload bytes for unroller "
-            f"{unroller_id.decode()} ({_memory_debug_info()}).")
-        payload_size_mb = len(payload) / 1024 / 1024
-        logging.info(
-            f"Rank {self._ddp_rank} sending params to unroller "
-            f"{unroller_id.decode()} with payload {payload_size_mb:.2f} MB.")
-        self._params_socket.send_multipart([unroller_id1, payload])
-        logging.info(
-            f"Rank {self._ddp_rank} send_multipart completed for unroller "
-            f"{unroller_id.decode()} ({_memory_debug_info()}).")
-        # 60 sec timeout for receiving unroller's acknowledgement
-        # In case some unrollers might die, we don't want to block forever
-        for _ in range(600):
+        torch.save(self._distributed_state_dict(), buffer)
+        self._latest_parameters.publish(self._total_updates, buffer.getvalue())
+
+    def _start_communication_thread(self, make_server):
+
+        def run():
+            server = None
             try:
-                _, message = self._params_socket.recv_multipart(
-                    flags=zmq.NOBLOCK)
-                assert message == UnrollerMessage.OK.encode()
-                logging.debug(
-                    f"[worker-{self._ddp_rank}] Params sent to unroller"
-                    f" {unroller_id.decode()}.")
-                logging.info(f"Rank {self._ddp_rank} received param ack from "
-                             f"unroller {unroller_id.decode()}.")
-                return True
-            except zmq.Again:
-                time.sleep(0.1)
-        logging.warning(
-            f"Rank {self._ddp_rank} timed out waiting for param ack from "
-            f"unroller {unroller_id.decode()} after sending "
-            f"{payload_size_mb:.2f} MB.")
-        return False
+                # Socket construction and all I/O belong to this thread.
+                server = make_server()
+                while not self._communication_stop.is_set():
+                    server.run_once()
+            except Exception as exc:
+                self._communication_errors.put(exc)
+            finally:
+                if server is not None:
+                    server.close()
+
+        thread = threading.Thread(target=run, daemon=True)
+        self._communication_threads.append(thread)
+        thread.start()
 
     def _create_unroller_registration_thread(self):
-        manager = Manager()
-        self._new_unroller_ips_and_ports = manager.Queue()
-        self._unrollers_to_update_params = set()
-        registered_unrollers = set()
+        self._communication_manager = Manager()
+        self._new_unroller_ips_and_ports = self._communication_manager.Queue()
 
-        def _wait_unroller_registration():
-            """Wait for new registration from a unroller.
-            """
-            total_unrollers = 0
-            # Each rank has its own port number and a registration socket to
-            # handle new unrollers.
-            register_socket, _ = create_zmq_socket(zmq.ROUTER, '*',
-                                                   self._port + self._ddp_rank)
-            while True:
-                unroller_id, message = register_socket.recv_multipart()
-                if unroller_id not in registered_unrollers:
-                    # A new unroller has connected to the trainer
-                    # The init message should always be: 'init'
-                    assert message.decode() == 'init'
-                    _, unroller_ip, unroller_port = unroller_id.decode().split(
-                        '-')
-                    # Store the new unroller ip and port so that later each rank
-                    # can connect to it for experience data.
-                    self._new_unroller_ips_and_ports.put(
-                        (unroller_ip, int(unroller_port)))
-                    registered_unrollers.add(unroller_id)
-                    logging.info(
-                        f"Rank {self._ddp_rank} registered {unroller_ip} {unroller_port}"
-                    )
+        def registered(identity, ip, port, parameter_rank):
+            self._new_unroller_ips_and_ports.put((identity, ip, port))
+            if parameter_rank == self._ddp_rank:
+                self._parameter_registrations.put(identity)
 
-                    if self.is_main_ddp_rank:
-                        # Send the number of workers to the new unroller,
-                        # so that it is able to know other workers.
-                        # Also send the DDP rank that's responsible for the unroller's
-                        # params syncing. See ``_train_iter_off_policy``
-                        # where the params sending tasks are distributed.
-                        k = total_unrollers % self._num_ranks
-                        register_socket.send_multipart([
-                            unroller_id,
-                            (f'worker-0: {self._num_ranks} {k}').encode()
-                        ])
+        self._start_communication_thread(lambda: RegistrationServer(
+            self._port + self._ddp_rank, self._ddp_rank, self._num_ranks,
+            registered))
+        self._start_communication_thread(lambda: ParameterServer(
+            self._port + _params_port_offset + self._ddp_rank, self.
+            _parameter_registrations, self._latest_parameters))
 
-                    # Then we check if its params socket communicates with the
-                    # current rank.
-                    if total_unrollers % self._num_ranks == self._ddp_rank:
-                        self._unrollers_to_update_params.add(unroller_id)
-                        # Always first sync the params with a new unroller.
-                        assert self._send_params_to_unroller(unroller_id,
-                                                             first_time=True)
+    def _check_communication_workers(self):
+        try:
+            error = self._communication_errors.get_nowait()
+        except queue.Empty:
+            error = None
+        if error is not None:
+            raise RuntimeError(
+                'Distributed communication thread failed') from error
+        if (self._data_receiver_process is not None
+                and not self._data_receiver_process.is_alive()):
+            raise RuntimeError(
+                'Distributed experience receiver exited with code '
+                f'{self._data_receiver_process.exitcode}')
 
-                    total_unrollers += 1
-
-        thread = threading.Thread(target=_wait_unroller_registration)
-        thread.daemon = True
-        thread.start()
+    def finish_train(self):
+        self._communication_stop.set()
+        for thread in self._communication_threads:
+            thread.join(timeout=2)
+        if self._data_receiver_process is not None:
+            self._data_receiver_stop.set()
+            self._data_receiver_process.join(timeout=2)
+            if self._data_receiver_process.is_alive():
+                self._data_receiver_process.terminate()
+            self._data_receiver_process.join(timeout=2)
+        if self._communication_manager is not None:
+            self._communication_manager.shutdown()
+        super().finish_train()
 
     def _create_replay_buffer_sample_experience(self):
         """Create a sample experience used to initialize the replay buffer."""
@@ -687,6 +557,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         assert self._replay_buffer is not None
         assert self._replay_buffer._allow_multiprocess
         ctx = mp.get_context('spawn')
+        self._data_receiver_stop = ctx.Event()
 
         # start the data receiver subprocess
         # Need to create the subprocess with 'spawn' so that we can pass a Module
@@ -694,9 +565,10 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         process = ctx.Process(target=receive_experience_data,
                               args=(self._replay_buffer,
                                     self._new_unroller_ips_and_ports,
-                                    self._ddp_rank),
+                                    self._ddp_rank, self._data_receiver_stop),
                               daemon=True)
         process.start()
+        self._data_receiver_process = process
         allow_child_to_ptrace(process.pid)
 
     def utd(self):
@@ -721,6 +593,10 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
             # Only open the unroller registration after we are sure that
             # the trainer's ckpt (if any) has been loaded, so that the trainer
             # will send correct params to any newly added unroller.
+            # Publish before any DDP update can block waiting for another rank's
+            # replay data. Initial sync must remain available independently of
+            # progress in the training thread.
+            self._publish_parameters(force=True)
             self._create_unroller_registration_thread()
             # Because unroll_length=-1, ``observe_for_replay`` will never be called.
             # Instead, we call a separate data receiver process that consistently
@@ -734,6 +610,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         utd_throttle_start_time = None
         utd_throttle_total_time = 0.
         while True:
+            self._check_communication_workers()
             replay_buffer_size = self._replay_buffer.total_size
             replay_buffer_not_ready = (replay_buffer_size
                                        < self._config.initial_collect_steps)
@@ -768,17 +645,7 @@ class DistributedTrainer(DistributedOffPolicyAlgorithm):
         with record_time("time/trainer_send_params_to_unroller"):
             if (self._total_updates %
                     self._push_params_every_n_grad_updates == 0):
-                # Sending params to all the connected unrollers.
-                dead_unrollers = []
-                logging.debug(
-                    f"Rank {self._ddp_rank} sends params to unrollers "
-                    f"{self._unrollers_to_update_params}")
-                for unroller_id in self._unrollers_to_update_params:
-                    if not self._send_params_to_unroller(unroller_id):
-                        dead_unrollers.append(unroller_id)
-                # remove dead unrollers
-                for unroller_id in dead_unrollers:
-                    self._unrollers_to_update_params.remove(unroller_id)
+                self._publish_parameters(force=True)
 
         self._num_train_iters += 1
 
@@ -841,11 +708,14 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         self._unroller_only = unroller_only
 
         ip = get_local_ip()
-        self._id = f"unroller-{ip}-{self._port}"
+        # A fresh process/session must not inherit a killed unroller's sequence
+        # numbers, even when the random port happens to be reused.
+        self._id = f"unroller-{ip}-{self._port}-{uuid.uuid4().hex}"
 
-        # For sending experience data
-        # We will create it in a lazy way
-        self._exp_socket = None
+        self._experience_sender = None
+        self._pull_params_process = None
+        self._shared_alg_params = None
+        self._loaded_params_version = -1
 
         # Record the current worker the data is being sent to
         # To maintain load balance, we want to cycle through the workers
@@ -856,66 +726,53 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         self._registered = False
 
     def _register_to_trainer(self):
-        """Create a REQ socket and query the number of workers, ip address, and
-        port number from the trainer.
-        """
-        # First register to the main rank
-        register_socket, cxt = create_zmq_socket(zmq.DEALER,
-                                                 _trainer_addr_config.ip,
-                                                 _trainer_addr_config.port,
-                                                 self._id)
-
-        register_socket.send_string('init')
-        message = register_socket.recv_string()
-        assert message.startswith('worker-0:')
-        # message format: "worker-0: N k"
-        num_trainer_workers, params_socket_rank = message.split(' ')[1:]
-        self._num_trainer_workers = int(num_trainer_workers)
-        self._params_socket_rank = int(params_socket_rank)
-        logging.info(
-            f'Found {self._num_trainer_workers} workers on the trainer. ')
-        # Randomly select a worker as the cycle start so that multiple unrollers
-        # won't contribute to data imbalance on the trainer side.
+        """Bind experience first, then register explicitly with every rank."""
+        self._experience_sender = ExperienceSender(self._port,
+                                                   self._id.encode())
+        address = _trainer_addr_config
+        self._num_trainer_workers, self._params_socket_rank = register_unroller(
+            address.ip, address.port, self._id.encode())
+        for rank in range(1, self._num_trainer_workers):
+            register_unroller(address.ip, address.port + rank,
+                              self._id.encode(), self._params_socket_rank)
+        # Do not collect the first rollout until all receivers have connected.
+        self._experience_sender.wait_for_workers(self._num_trainer_workers)
         self._current_worker = random.randint(0, self._num_trainer_workers - 1)
 
-        for i in range(1, self._num_trainer_workers):
-            addr = 'tcp://' + ':'.join(
-                [_trainer_addr_config.ip,
-                 str(_trainer_addr_config.port + i)])
-            register_socket.connect(addr)
-
-        # Broadcast to all trainer workers
-        for i in range(self._num_trainer_workers):
-            register_socket.send_string('init')
-
-        # Sleep to prevent closing the socket too early to send the messages
-        time.sleep(1.)
-        register_socket.close()
-        cxt.term()
-
     def _create_pull_params_subprocess(self):
-        # Compute the total size of the params
         buffer = io.BytesIO()
         torch.save(self._distributed_state_dict(), buffer)
-        size = len(buffer.getvalue())
-        # Create a shared memory object to store the new params
-        # The first char indicates whether the params have been updated
+        # Leave headroom for serialization metadata; wire payload size is stored
+        # explicitly rather than assuming identical byte lengths on both hosts.
+        capacity = len(buffer.getvalue()) + 65536
         self._shared_alg_params = SharedMemory(create=True,
-                                               size=size + 1,
+                                               size=capacity +
+                                               PARAM_HEADER_SIZE,
                                                name='params_' + self._id)
-        # Initialize the update char to False (not updated)
-        self._shared_alg_params.buf[0] = 0
-
-        self._shared_mem_lock = mp.Lock()
-
-        mp.set_start_method('fork', force=True)
-        process = mp.Process(target=pull_params_from_trainer,
-                             args=(self._shared_alg_params.name,
-                                   self._shared_mem_lock, self._id,
-                                   self._params_socket_rank),
-                             daemon=True)
+        self._shared_alg_params.buf[:PARAM_HEADER_SIZE] = bytes(
+            PARAM_HEADER_SIZE)
+        ctx = mp.get_context('spawn')
+        self._shared_mem_lock = ctx.Lock()
+        process = ctx.Process(
+            target=pull_params_from_trainer,
+            args=(self._shared_alg_params.name, self._shared_mem_lock,
+                  self._id, self._params_socket_rank, _trainer_addr_config.ip,
+                  _trainer_addr_config.port),
+            daemon=True)
         process.start()
+        self._pull_params_process = process
         allow_child_to_ptrace(process.pid)
+
+    def finish_train(self):
+        if self._pull_params_process is not None:
+            self._pull_params_process.terminate()
+            self._pull_params_process.join(timeout=2)
+        if self._shared_alg_params is not None:
+            self._shared_alg_params.close()
+            self._shared_alg_params.unlink()
+        if self._experience_sender is not None:
+            self._experience_sender.close()
+        super().finish_train()
 
     def observe_for_replay(self, exp: Experience):
         """Send experience data to the trainer.
@@ -973,58 +830,33 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
         buffer = io.BytesIO()
         torch.save(exp_params, buffer)
 
-        if self._exp_socket is None:
-            self._exp_socket, _ = create_zmq_socket(zmq.ROUTER, '*',
-                                                    self._port, self._id)
-
-        try:
-            self._exp_socket.send_multipart([
-                worker_id.encode(), self._exp_socket.identity,
-                buffer.getvalue()
-            ])
-            logging.info(
-                f"Unroller {self._id} sent step_type={int(exp_params.step_type)} "
-                f"to {worker_id}, episode_end={episode_end}.")
-        except zmq.error.ZMQError:
-            # Trainer is down.
-            # We might want to keep running the unroller but restart a trainer later.
-            logging.warning(
-                f"Trainer {worker_id} is not reachable. Skip sending exp to it."
-            )
+        # Backpressure is intentional: the next environment step must not
+        # overtake experience that the trainer has not accepted yet.
+        self._experience_sender.send(worker_id.encode(), buffer.getvalue())
 
     def _check_params_update(self) -> bool:
-        """Returns True if params have been updated.
-        """
-        # Check if the params have been updated
-        buffer = None
-        with self._shared_mem_lock:
-            if self._shared_alg_params.buf[0] == 1:
-                logging.info(
-                    f"Unroller {self._id} detected updated params in shared "
-                    f"memory ({(len(self._shared_alg_params.buf) - 1) / 1024 / 1024:.2f} MB)."
-                )
-                with record_time(
-                        "time/dist_unroller_params_update/1_buffer_from_io"):
-                    buffer = io.BytesIO(self._shared_alg_params.buf[1:])
-        if buffer is not None:
-            with record_time("time/dist_unroller_params_update/2_load_to_cpu"):
-                logging.info(
-                    f"Unroller {self._id} deserializing params from shared "
-                    f"memory.")
-                state_dict = torch.load(buffer, map_location='cpu')
-            # We might only update part of the params
-            with record_time(
-                    "time/dist_unroller_params_update/3_load_state_dict"):
-                logging.info(
-                    f"Unroller {self._id} loading params into algorithm.")
-                self._core_alg.load_state_dict(state_dict, strict=False)
-            logging.debug("Params updated from the trainer.")
-            logging.info(
-                f"Unroller {self._id} finished loading params from trainer.")
-            with self._shared_mem_lock:
-                self._shared_alg_params.buf[0] = 0
-            return True
-        return False
+        """Apply the newest available version without erasing later arrivals."""
+        updated = False
+        while True:
+            snapshot = take_shared_parameters(self._shared_alg_params,
+                                              self._shared_mem_lock)
+            if snapshot is None:
+                return updated
+            version, payload = snapshot
+            if version <= self._loaded_params_version:
+                continue
+            state_dict = torch.load(io.BytesIO(payload),
+                                    map_location='cpu',
+                                    weights_only=False)
+            # A newer snapshot may have arrived during deserialization. Skip
+            # this stale one. Arrivals during model loading are applied on the
+            # next pass, before returning to rollout.
+            if shared_parameter_version(self._shared_alg_params,
+                                        self._shared_mem_lock) > version:
+                continue
+            self._core_alg.load_state_dict(state_dict, strict=False)
+            self._loaded_params_version = version
+            updated = True
 
     def train_iter(self):
         """Perform one training iteration of the unroller.
@@ -1041,6 +873,12 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             self._unroll_iter_off_policy()
             return 0
 
+        if (self._pull_params_process is not None
+                and not self._pull_params_process.is_alive()):
+            raise RuntimeError(
+                'Distributed parameter receiver exited with code '
+                f'{self._pull_params_process.exitcode}')
+
         if not self._registered:
             # We need lazy registration so that trainer's params has a higher
             # priority than the unroller's loaded params (if enabled).
@@ -1050,6 +888,10 @@ class DistributedUnroller(DistributedOffPolicyAlgorithm):
             # get overwritten by a checkpointer.
             self._create_pull_params_subprocess()
             while True:
+                if not self._pull_params_process.is_alive():
+                    raise RuntimeError(
+                        'Distributed parameter receiver exited with code '
+                        f'{self._pull_params_process.exitcode}')
                 if self._check_params_update():
                     break
                 time.sleep(0.01)
